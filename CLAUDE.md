@@ -15,14 +15,20 @@ group-theoretic seam.
 The user is a mathematician (professor). Correctness and clean,
 close-to-the-math abstractions matter more than feature count.
 
-## Status: Phase 1 complete (geometry substrate); Phase 2 not started
+## Status: Phase 3a complete (2D solvers). Next: the 2D visualization system — plan first, no code (see PLAN.md §5.3: visualization is TWO separate systems, 2D without three.js and 3D with three.js; the first three.js-based attempt was rejected and deleted).
 
 `PLAN.md` is the working plan, edited collaboratively. In place: the
 toolchain (see Commands) and the geometry substrate — `src/math/` (Jacobi
 eigensolver, linear solve), `src/geometry/` (the six cells S/E/H × 2D/3D
 behind one `Geometry<P,I>`, walls as covectors with the uniform reflection
 I − 2(Jc)cᵀ), `src/models/` (straight + conformal charts per geometry,
-Globe2) — each folder specified by its README. `demos/hello` and
+Globe2), and `src/polytope/` (fromHalfspaces/fromVertices in all six cells
+via the J-free cross-product vertex solve; contravariant wall transport;
+the spherical hemisphere refusal), and `src/coxeter/` (the RealizationSpec
+seam: `validatePolygon` with exact classification, and the κ-Porti
+inscribed-circle solver realizing every compact 2D Coxeter polygon in
+S/E/H with verified postconditions) — each folder specified by its README.
+`demos/hello` and
 `tests/smoke.test.ts` are Phase 0 throwaways, replaced when real work lands.
 The parent systems being married (and cleaned up) in this rewrite:
 
@@ -44,6 +50,11 @@ The parent systems being married (and cleaned up) in this rewrite:
 
 ## Working norms
 
+- **A rigorous written plan precedes ANY code, every time.** Plan approval is
+  not license to build a whole phase in one burst: execute in small
+  reviewable increments, surface every interpretation of an ambiguous answer
+  before acting on it, and pause at checkpoints. The user runs one work item
+  per fresh session, inheriting the agreed plan via this file and PLAN.md.
 - **Plan collaboratively.** Discuss before building; treat vision/context
   messages as read-and-absorb, not build triggers. Do not scaffold, create
   files, or "get ahead" without explicit agreement.
@@ -54,7 +65,10 @@ The parent systems being married (and cleaned up) in this rewrite:
 - Every `src/` folder gets a `README.md` stating its mathematics, written
   first as the module's spec.
 - Dependency direction is law:
-  math → geometry → models → polytope → coxeter → group → render → app.
+  math → geometry → models → polytope → coxeter → group → {2D viz | 3D viz} → app.
+  The two visualization systems are TOTALLY SEPARATE: 2D has no three.js,
+  3D is built on three.js. Neither exists yet; each gets its own plan
+  (PLAN.md §5.3) before any code.
 - Don't create branches or commit unless asked. Commit messages end with the
   `Co-Authored-By: Claude` line.
 

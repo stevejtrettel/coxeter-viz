@@ -52,6 +52,9 @@ export class Euclidean2 implements Geometry<Vector3, Matrix3> {
   apply(g: Matrix3, p: Vector3): Vector3 {
     return p.clone().applyMatrix3(g);
   }
+  applyDual(g: Matrix3, c: Vector3): Vector3 {
+    return c.clone().applyMatrix3(g.clone().invert().transpose());
+  }
   compose(g: Matrix3, h: Matrix3): Matrix3 {
     return new Matrix3().multiplyMatrices(g, h);
   }
@@ -102,6 +105,9 @@ export class Euclidean3 implements Geometry<Vector4, Matrix4> {
   }
   apply(g: Matrix4, p: Vector4): Vector4 {
     return p.clone().applyMatrix4(g);
+  }
+  applyDual(g: Matrix4, c: Vector4): Vector4 {
+    return c.clone().applyMatrix4(g.clone().invert().transpose());
   }
   compose(g: Matrix4, h: Matrix4): Matrix4 {
     return new Matrix4().multiplyMatrices(g, h);

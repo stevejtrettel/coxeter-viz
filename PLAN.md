@@ -1,9 +1,10 @@
 # coxeter-viz — build plan
 
-> Status: **planning**. This document is being edited collaboratively; nothing in
-> the repo is code yet. Companion documents: `coxeter-viz-DESIGN.md` (in
-> `hyperbolic-polytopes/`, the original product design) and this plan, which
-> supersedes it where they disagree (notably: the role of the Gram matrix).
+> Status: **building** — Phases 0–2 and 3a complete (see CLAUDE.md for the
+> current state); this document remains the collaboratively-edited plan.
+> Companion: `docs/DESIGN-original.md` (the original product design), which
+> this plan supersedes where they disagree (notably: the role of the Gram
+> matrix).
 
 ## 1. What we are building
 
@@ -135,18 +136,16 @@ Agreed contract rules:
 - The spec is **internal** (and a handy hand-written fixture format). The
   public/Python contract stays pure group theory.
 
-### The solver dispatch table
+### The solver collection
 
-`(geometry, dim) → solver`. Simplices collapse to one shared path in all six
-cells: their decorations determine the Gram matrix outright, and the
-generalized diagonalization (`realize` accepting all three signatures) reads
-off the walls.
+**(Revised during Phase 3a scoping — the Gram path is 3D-only.)**
 
-| | 2D | 3D |
+| solver | covers | notes |
 |---|---|---|
-| **S** | triangles only — rigid, simplex path | tetrahedra — rigid, simplex path |
-| **E** | 3 triangles + the square (moduli → inscribed circle) | simplices + products (boxes, prisms) — **moduli story to be worked out** |
-| **H** | Porti canonical polygon (port) | Andreev + Newton/LM (port), with **seedless initialization**: realize the dual graph as a convex Euclidean polyhedron (Tutte embedding + lifting, combinatorially verified), polarize, scale into the ball, convert to Lorentz normals; straight-line angle continuation as fallback; Roeder's Whitehead-move homotopy as the later guaranteed global initializer |
+| **inscribed-circle polygon** (κ-Porti) | *all of 2D*: S/E/H, simplex and non-simplex alike | Porti's construction is not hyperbolic-specific: walls tangent to an incircle of radius r about the origin, normal gaps Δφᵢ = 2·arcsin(cos(βᵢ/2)/C(r)) with C = cos r (S), 1 (E — closes with **no root solve**, exactly when the data is Euclidean), cosh r (H). Triangles are the n = 3 case (0 moduli; every triangle has an incircle). One 2D solver, **no Gram/diagonalization anywhere in 2D**, every chamber in canonical position (incenter = origin — the natural Cayley base point). |
+| **Gram simplex solver** (diagonalize) | all 3D simplices: S³, E³ (+ offsets-=-1 insphere step), H³ Lannér | The Gram path earns its keep only in 3D: Andreev's theorem excludes tetrahedra (they have their own existence theory — for simplices it IS the Gram signature), S³/E³ have no numeric solver, and diagonalization is exact and closed-form. |
+| **LM polyhedron solver** (seedless) | H³, ≥ 5 walls | Andreev-gated Newton/LM with **seedless initialization**: realize the dual graph as a convex Euclidean polyhedron (Tutte embedding + lifting, combinatorially verified), polarize, scale into the ball, convert to Lorentz normals; straight-line angle continuation as fallback; Roeder's Whitehead-move homotopy as the later guaranteed global initializer. Phase 3b, with the careful Roeder read. |
+| **E³ product solver** | box, prisms | after the E³ enumeration/moduli discussion. S³ non-simplices don't exist (chambers of finite reflection groups are simplices). |
 
 The graph-realization subroutine ("convex Euclidean polyhedron with a
 prescribed 3-connected planar 1-skeleton") is **shared infrastructure**, not
@@ -176,10 +175,11 @@ over; `NumericGeometry` and the capability system stay behind.
 Hull in the straight chart, V/E/F lattice, `fromVertices`/`fromHalfspaces`,
 transforms, views. Spherical hemisphere policy handled explicitly.
 
-**Phase 3 — the seam + solvers.** `RealizationSpec`, `validate`, dispatch;
-universal simplex solver; Porti (2D H); the small 2D E/S cases; 3D H with
-seedless initialization (careful Roeder read happens here). 3D E deferred
-until the moduli discussion. Postconditions everywhere.
+**Phase 3 — the seam + solvers.** Split: **3a** = the seam (`RealizationSpec`
++ `validate` with classification cross-check) and the single κ-Porti 2D
+solver with postconditions — everything Milestone 1 needs. **3b** (after
+Milestone 1) = the 3D solvers: Gram simplex solver, seedless H³ LM pipeline
+(careful Roeder read first), E³ products after the moduli discussion.
 
 **Phase 4 — group layer.** `CoxeterGroup` generic over the six cells, orbit
 BFS with per-geometry dedup tolerances (spherical exhausts; Euclidean and
@@ -280,6 +280,58 @@ Tests pin the mathematics:
 
 Acceptance: `typecheck` + `test` green; every new folder has its README-spec;
 no downward imports (math ← geometry ← models); `hello` still builds.
+
+### 5.3 The visualization architecture — DECIDED: two separate systems
+
+**(Decided 2026-07-04, after the rejected R1 attempt.)** Visualization is
+**two totally separate systems**, each with its own rigorous plan (written
+and approved before any code, in its own session):
+
+1. **The 2D system — NO three.js.** Draws the flat charts (Klein, Poincaré,
+   gnomonic, stereographic, Cartesian). Rendering technology (SVG /
+   Canvas2D / other) is the first thing its plan must decide.
+2. **The 3D system — built on three.js.** Draws renderDim-3 content: the S²
+   globe now; H³/S³/E³ in the 3D era. Planned separately, later.
+
+History: an earlier R1 attempt (one three.js render layer with dual
+tube/ribbon stroke backends) was built in one burst on 2026-07-04 and
+rejected + deleted — both for how it was built (see CLAUDE.md working
+norms: plan before code, small increments) and because it blurred exactly
+this 2D/3D boundary.
+
+**Questions the 2D system's plan must settle** (first session's agenda):
+
+- **The "no three.js" boundary.** The math core (geometry/models/polytope/
+  coxeter) currently uses three.js `Vector3`/`Matrix3` as plain linear-
+  algebra types — no renderer, no WebGL. Does "no three.js" mean only "no
+  three.js *rendering*" (core types stay), or must the 2D system's inputs be
+  plain arrays/numbers (an adapter at the model boundary)? Settle this
+  FIRST; everything else depends on it.
+- Rendering target: SVG (crisp, vector-exportable, DOM events, slower for
+  thousands of tiles) vs Canvas2D (fast, raster) vs both behind one scene
+  description. Note the eventual product exports self-contained HTML — SVG
+  export is a natural fit for *paper figures*, a stated user interest.
+- The stroke model: geometric widths (intrinsic width × `model.scaleAt`,
+  varying along a stroke — the parents' signature look, needs paths built
+  as filled outlines) vs constant-width strokes (native SVG/Canvas strokes,
+  simpler, diagram-like). Possibly both, but that choice burned R1 — ask,
+  don't assume.
+- Viewport/framing policy per chart (disk models are naturally framed;
+  plane charts need a fit policy), pan/zoom, and export.
+- Module decomposition + naming (e.g. `render2d/`; the layer law's `render`
+  slot splits in two). The deleted R1's ideas — sample geodesic in canonical
+  coords → project → per-point widths; jacobian-shaped vertex marks
+  (ellipses in Klein); renormalized-barycentric fills; domain dressing;
+  dispose-and-rebuild — are renderer-agnostic mathematics and remain
+  *candidates* for the plan, not defaults.
+- Demo/consumer surface: what a demo writes; the hand-rolled UI kit (no
+  lil-gui — user finds it ugly) can be re-derived from the deleted R1's
+  design if wanted.
+
+**Questions for the 3D system's plan** (later, its own session): scope (S²
+globe only, until the 3D solvers exist?), the tube stroke pipeline
+(parents' proven mechanics), theme, and its relationship to the 2D system's
+scene description (shared styling vocabulary?).
 
 ### Milestones cut vertically, not horizontally
 

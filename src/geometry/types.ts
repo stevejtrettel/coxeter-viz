@@ -50,6 +50,12 @@ export interface Geometry<P extends Vec<P>, I> {
 
   identity(): I;
   apply(g: I, p: P): P;
+  /**
+   * Transport a covector: c ↦ (g⁻¹)ᵀ c, the contravariant action, so that
+   * side values are equivariant: ((g⁻¹)ᵀc) · (g·p) = c·p. (For S/H this
+   * equals JgJ·c; computed uniformly as the inverse-transpose.)
+   */
+  applyDual(g: I, c: P): P;
   /** The product g·h (apply h first). */
   compose(g: I, h: I): I;
   inverse(g: I): I;

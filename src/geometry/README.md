@@ -55,6 +55,12 @@ For S/H this is the usual p ↦ p − 2⟨p,n⟩n. For E, with c = (−d, a), |a
 it is the affine reflection x ↦ x − 2(a·x − d)a in homogeneous form; row 0 of
 R is e₀ᵀ because (Jc)₀ = 0, so the slice is preserved.
 
+Under an isometry g, points move covariantly (p ↦ gp) but covectors
+**contravariantly**: c ↦ (g⁻¹)ᵀc (`Geometry.applyDual`), so that side values
+are equivariant, ((g⁻¹)ᵀc)·(gp) = c·p. In S/H this coincides with JgJ·c and
+the distinction is invisible; with Euclidean homogeneous matrices it is real
+(a translation moves a wall's offset entry, not its direction).
+
 ## Exponential map and distance (unit curvature)
 
 With the κ-trig pair (cos/sin for S, identity for E, cosh/sinh for H) and a
