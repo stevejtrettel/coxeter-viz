@@ -15,11 +15,16 @@ group-theoretic seam.
 The user is a mathematician (professor). Correctness and clean,
 close-to-the-math abstractions matter more than feature count.
 
-## Status: PLANNING
+## Status: Phase 1 complete (geometry substrate); Phase 2 not started
 
-There is no code yet. `PLAN.md` is the working plan; it is being edited
-collaboratively. The parent systems being married (and cleaned up) in this
-rewrite:
+`PLAN.md` is the working plan, edited collaboratively. In place: the
+toolchain (see Commands) and the geometry substrate — `src/math/` (Jacobi
+eigensolver, linear solve), `src/geometry/` (the six cells S/E/H × 2D/3D
+behind one `Geometry<P,I>`, walls as covectors with the uniform reflection
+I − 2(Jc)cᵀ), `src/models/` (straight + conformal charts per geometry,
+Globe2) — each folder specified by its README. `demos/hello` and
+`tests/smoke.test.ts` are Phase 0 throwaways, replaced when real work lands.
+The parent systems being married (and cleaned up) in this rewrite:
 
 - `/Users/strettel/Code/homogeneous-spaces` — geometry substrate (S/E/H
   geometries, models, metric-correct rendering)
@@ -27,6 +32,15 @@ rewrite:
   engine, solvers, groups, Cayley); also holds `coxeter-viz-DESIGN.md` (the
   original product design) and `COX_COMPUTE/` (the seedless 3D solver
   pipeline, after Roeder)
+
+## Commands
+
+- `npm run dev <demo>` — run a demo (Vite; one server per demo, ports 5173+).
+  Demos live in `demos/<name>/main.ts`; pages are synthesized (no index.html
+  files on disk); the dev-server root `/` lists all demos.
+- `npm run build <demo>` / `npm run preview <demo>` — build into `dist/<demo>`.
+- `npm run typecheck` — `tsc --noEmit` (strict).
+- `npm run test` / `npm run test:watch` — vitest (`tests/*.test.ts`).
 
 ## Working norms
 

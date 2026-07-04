@@ -163,14 +163,14 @@ hand (fixtures, demos).
 
 ## 5. Phases
 
-**Phase 0 — scaffold.** Vite + strict TS, `demos/<name>/main.ts` +
-run-demo script, vitest, typecheck, CLAUDE.md, glossary. Design docs moved
-in/adapted.
+**Phase 0 — scaffold.** Detailed plan in §5.1 below.
 
 **Phase 1 — geometry substrate** (from homogeneous-spaces, re-derived +
 trimmed). `math/`, `Geometry<P,I>` for the six cells, `Hyperplane`
 (wall = covector, reflection per geometry), models with the straight
 chart designated per geometry. Euclidean isometries as homogeneous matrices.
+**Decided:** only the quadratic-form fast-path geometries (Sⁿ/Eⁿ/Hⁿ) come
+over; `NumericGeometry` and the capability system stay behind.
 
 **Phase 2 — polytope engine** (from hyperbolic-polytopes, re-derived).
 Hull in the straight chart, V/E/F lattice, `fromVertices`/`fromHalfspaces`,
@@ -194,6 +194,92 @@ functions) as its own research-flavored item.
 single `render(container, scene)` entry, Vite library bundle, HTML exporter,
 thin Python builder. The inference layer (§4) lands alongside so the Python
 seam can be purely group-theoretic.
+
+### 5.1 Phase 0 in detail — scaffold
+
+Tooling is infrastructure, not mathematics: the "re-derive everything" rule
+targets math code. For tooling we adapt the proven setup from
+`hyperbolic-polytopes` (the leaner, newer parent) with understanding, keeping
+its two good ideas: **no `index.html` files on disk** (a Vite plugin
+synthesizes each demo page and a clickable index at `/`), and **one dev
+server per demo** on consecutive free ports.
+
+Deliverables:
+
+| file | contents / provenance |
+|---|---|
+| `package.json` | name `coxeter-viz` (placeholder, private — final name is an open question), `type: module`; scripts `dev`/`build`/`preview` (via run-demo), `typecheck`, `test`, `test:watch`; deps: `three` ^0.184; devDeps: `@types/three`, `typescript` ~5.9, `vite` ^7, `vitest` ^4. No `lil-gui` yet — it enters with the Params-harness decision. |
+| `tsconfig.json` | the parents' strict config verbatim-in-spirit: ES2022, bundler resolution, `strict`, `noUnusedLocals/Parameters`, `erasableSyntaxOnly` (no parameter properties / enums), `@/*` → `src/*` |
+| `vite.config.ts` | `base: './'`, `@` alias, the `demoPages()` plugin (adapted; drop the parent's demo-specific middleware) |
+| `vitest.config.ts` | `tests/**/*.test.ts` |
+| `scripts/run-demo.mjs` | adapted: multi-demo dev servers, per-demo `dist/<name>` builds via a throwaway root `index.html` |
+| `.gitignore` | `node_modules/`, `dist/` |
+| `docs/DESIGN-original.md` | `coxeter-viz-DESIGN.md` copied in for reference, with a header noting PLAN.md supersedes it where they disagree |
+| `demos/hello/main.ts` | a minimal three.js scene (nothing mathematical) proving the whole chain; **deleted when the first real demo lands** |
+| `tests/smoke.test.ts` | one trivial test proving vitest wiring; replaced by real tests in Phase 1 |
+
+No `src/` folders in Phase 0: per rule 3, each layer folder is created
+together with its `README.md` spec when its phase begins — empty folders
+with placeholder READMEs would invert that.
+
+Acceptance (all must pass before Phase 0 is done):
+
+- `npm install` clean;
+- `npm run dev hello` serves the demo; `/` lists demos;
+- `npm run build hello` emits `dist/hello/`;
+- `npm run typecheck` and `npm run test` pass;
+- CLAUDE.md and PLAN.md agree with what was actually built.
+
+### 5.2 Phase 1 in detail — geometry substrate
+
+The mathematical conventions, fixed here once:
+
+- **Coordinate 0 is distinguished and comes first** (the parents' time-first
+  convention, extended): ambient R^{n+1} with form **J = diag(κ, 1, …, 1)**,
+  κ = +1 (S), 0 (E), −1 (H). Points: ⟨p,p⟩ = 1 (sphere), the slice p₀ = 1
+  (Euclidean), ⟨p,p⟩ = −1 with p₀ > 0 (hyperboloid). The origin is
+  (1, 0, …, 0) in all three. Unit curvature throughout v1.
+- **A wall is fundamentally a covector c** (normalized cᵀJc = 1); its **pole
+  is p = Jc**; incidence/side is the plain pairing c·p; and the reflection is
+  the **uniform formula R = I − 2 (Jc) cᵀ** in all three geometries. In E the
+  covector (−d, a) carries the affine offset that the (degenerate) pole
+  (0, a) cannot — so `fromPole` exists for S/H and *throws* for E with a
+  mathematical explanation.
+- exp/log/distance via the κ-trig pair (cos/sin, identity, cosh/sinh); the
+  Euclidean cell is exact affine arithmetic, not a limit.
+- Isometries: `Matrix3`/`Matrix4`; Euclidean elements are automatically
+  homogeneous ([[1,0],[t,R]] shape) because reflections preserve the slice.
+
+Files (each `src/` folder README written first, as the spec):
+
+| file | contents |
+|---|---|
+| `src/math/README.md`, `symmetricEig.ts`, `linearSolve.ts` | generic numerics: cyclic Jacobi eigensolver for symmetric matrices; Gaussian elimination with partial pivoting |
+| `src/geometry/README.md`, `types.ts` | `Geometry<P,I>`: kind, dim, `form`, `pairing`, `dual` (J·), `origin`, `normalize`, `distance`, `exp`, `log`, `geodesic`, `identity`, `apply`, `compose`, `inverse`, `reflection(wall)` |
+| `src/geometry/ambient.ts` | the shared ambient toolkit: κ-forms, duals, the uniform reflection matrix, for Vector3/Matrix3 and Vector4/Matrix4 |
+| `src/geometry/Spherical.ts`, `Euclidean.ts`, `Hyperbolic.ts` | the six cells: `Spherical2/3`, `Euclidean2/3`, `Hyperbolic2/3` |
+| `src/geometry/Hyperplane.ts` | wall = covector + pole; `fromCovector` / `fromPole`; `side` |
+| `src/models/README.md`, `types.ts` | `Model<P>`: project/unproject, `scaleAt`/`jacobianAt`, `renderDim`, `domain`, and the **`straight` flag** designating the computational chart |
+| `src/models/klein.ts`, `gnomonic.ts`, `cartesian.ts` | the straight charts: Klein disk/ball (H), gnomonic (S, hemisphere domain), the plane/space itself (E) |
+| `src/models/poincare.ts`, `stereographic.ts` | the conformal charts (H, S) |
+| `src/models/globe.ts` | `Globe2`: S² drawn as the round sphere in R³ (isometric) |
+| `src/models/radial.ts` | shared helper for rotationally-symmetric charts: jacobian from radial/transverse scales |
+| `tests/math.test.ts`, `geometry.test.ts`, `reflections.test.ts`, `models.test.ts` | see below |
+
+Tests pin the mathematics:
+
+- exp/log round-trips, distance checks against closed forms, normalize
+  idempotence — per geometry;
+- reflections: R² = I, form preservation, wall fixed pointwise, sides swap;
+- **the Coxeter-flavored invariant**: two walls meeting at angle π/m have
+  (R₁R₂)^m = 1 — verified in all three geometries;
+- models: project∘unproject = id, straight charts send geodesics to straight
+  lines, conformal `scaleAt` matches numerical differentiation of
+  project∘exp, Globe2 isometric;
+- eigensolver reconstructs QΛQᵀ; linear solver on random systems.
+
+Acceptance: `typecheck` + `test` green; every new folder has its README-spec;
+no downward imports (math ← geometry ← models); `hello` still builds.
 
 ### Milestones cut vertically, not horizontally
 
@@ -226,10 +312,8 @@ tile/Cayley coloring by word lists).
   automaton (Tits / ShortLex) is the eventual correct answer.
 - **Non-compact (ideal/hyperideal) chambers**: detect and refuse with a good
   message in v1; drawing them is future work.
-- **How much homogeneous-spaces generality survives the trim** (proposal:
-  copy the interfaces and the six quadric fast-path geometries; leave
-  NumericGeometry/capabilities behind until needed).
-- **When the reactive Params/View harness comes in** (Phase 0 vs. with the
-  schema layer).
+- **When the reactive Params/View harness comes in**, and what the demo UI
+  is — likely our own (lil-gui judged ugly; it was deliberately left out of
+  the dependencies).
 - **Names**: repo, pip package, JS import (candidates: coxeter-viz, wythoff,
   kaleidoscope — check availability).
