@@ -192,6 +192,31 @@ Milestone 1) = the 3D solvers: Gram simplex solver, seedless H³ LM pipeline
 BFS with per-geometry dedup tolerances (spherical exhausts; Euclidean and
 hyperbolic entries grow differently), Cayley graph, word images, tessellate.
 
+**NEXT (chosen 2026-07-05, after both render systems shipped): the 2D
+group layer, toward Milestone 1.** PLANNED — the planning session ran
+2026-07-05; its agenda (kept below for the record) is settled in §5.4:
+
+- **The seam**: the layer sits after `coxeter` — presumably it consumes a
+  `RealizedPolygon` (walls → generators via `geom.reflection`) plus the
+  spec's exact data; what exactly does a group element carry (word, matrix,
+  length, parity)?
+- **Enumeration & dedup**: BFS over words with per-geometry quantization
+  (spherical exhausts — check against known orders; H matrix entries grow
+  exponentially — dedup on the orbit of an interior point instead?); the
+  Tits/ShortLex automaton stays the eventual correct answer (§6).
+- **Depth policy**: fixed word-length cap vs geometric cutoff (stop when a
+  tile's screen extent would cull — but canonical data is camera-free, so
+  a geometric cutoff needs an intrinsic proxy; decide honestly).
+- **Identity**: tile id = the word (shared indexing law); Cayley vertices =
+  orbit of the incenter, edges labeled by generator index — fix the id
+  scheme once, here.
+- **Output vocabulary**: the layer emits Scene items (polygons for tiles,
+  points/segments for Cayley) or its own structures the demo converts?
+  Immediate mode says canonical data is built once and re-rendered freely.
+- **Success criterion (Milestone 1)**: (2,3,7), (2,4,4), (2,3,5)
+  tessellations + Cayley graphs, drawn through at least two models per
+  geometry — including the (2,3,5) on the perspective globe.
+
 **Phase 5 — geometric computations.** Areas via Gauss–Bonnet (2D);
 elementary volumes (S³/E³); hulls of tile sets; H³ volume (Lobachevsky
 functions) as its own research-flavored item.
@@ -548,6 +573,146 @@ builder + tests · **P3** demo — the V1 (2,3,5) chamber scene UNCHANGED,
 viewed from an angle that wraps the walls' far arcs behind the sphere:
 front arcs vivid, back arcs dimmed, widths shrinking with depth; screenshot
 verified.
+
+**Stage 1 DONE, approved 2026-07-05** (`src/sphereview/`,
+`demos/sphereview`; 16 tests), with notes: a circle centered on the view
+axis is a latitude circle (constant p₀) and can never straddle — beyond
+the cap it is entirely back, fill intact (pinned by test after a wrong
+test scenario assumed otherwise); point marks are classified whole by
+their center; rootless closed curves are sampled open with coincident
+endpoints (a butt-cap seam, invisible under dimming); the globe
+disk/rim ignore style overrides (view dressing, not scene content).
+Stage 2 (dashed back arcs) and the rest stay parked in §6.
+
+### 5.4 Phase 4 in detail — the 2D group layer (decided 2026-07-05)
+
+**Decision record.** Parent references: hyperbolic-polytopes
+`coxeter/CoxeterGroup.ts`, `group/orbit.ts`, `CayleyGraph.ts`,
+`CoxeterPolytope.ts` — re-derived, not copied, per the rules.
+
+- **The seam**: the layer consumes a `RealizedPolygon`. It already carries
+  everything the parent's constructor assembled by hand — the geometry
+  instance, walls by generator index, the verified chamber, and the incenter
+  at the origin (the canonical Cayley base point). The group derives
+  `reflections[i] = geom.reflection(walls[i])` and verifies nothing else:
+  the solver's postconditions already proved the realization.
+- **An element is `{word, element}`** — the word (generator indices, applied
+  left to right) and the isometry matrix. Depth (= `word.length`) and parity
+  are derived, never stored.
+- **A class** (user ruling; also the repo's own pattern — mathematical
+  objects with construction invariants are classes, like `Hyperplane` and
+  `Polytope`; the invariant here is walls/reflections aligned by generator
+  index). Immutable, no lazy state — the parent memoized its fundamental
+  domain, ours arrives pre-built. The generic orbit BFS stays a **free
+  function** (`orbit.ts`): it needs only identity/compose/key, nothing
+  Coxeter. Generic `CoxeterGroup<P, I>` with the 2D factory from
+  `RealizedPolygon` — the phase header says "generic over the six cells"
+  and Milestone 2 instantiates the 3D types, so this is not a
+  single-instantiation generic (the render2d V0 objection doesn't apply);
+  veto point if unwanted.
+- **Word convention = the parent's = the glossary's**, matched at every
+  composition site (user ruling: "make sure the ORDER matches the parent"):
+  `word([i₀,…,i_k])` is the matrix R_{i_k}···R_{i₀} (i₀ applied first); BFS
+  appends a letter by composing on the LEFT; the neighbor across wall i of
+  tile g·F is g·R_i, word `[i, …w]` (prepending = composing on the RIGHT);
+  Cayley edges join g to g·R_i. After dedup, an element's word is the first
+  BFS word that reached it (shortest; ties broken by generator order);
+  Cayley edges are found by matrix-key lookup, never word surgery.
+- **Dedup**: the parent's quantized-matrix-entry key (quantum 1e-5 and
+  maxCount default 5000 are inherited constants, kept for now). Documented
+  limitation: H matrix entries grow like cosh(distance), so absolute
+  quantization can split deep elements — fine at Milestone-1 depths; the
+  Tits/ShortLex automaton stays the parked correct answer (§6).
+- **Depth policy**: `maxWord` + `maxCount`, camera-free. No geometric
+  cutoff: tiles are isometric copies (nothing intrinsic shrinks — only
+  chart images do), and the camera-dependent cut lives where the camera
+  lives: render2d already culls sub-pixel items per frame. Generate
+  generously; the renderer culls.
+- **Identity** (the id scheme, fixed once, here): a word serializes with
+  `.` separators, the empty word as `"e"` (so `[0,1,2]` → `"0.1.2"`),
+  provided by one helper (`wordId`) in the group layer. Downstream scene
+  ids: `tile:<word>`, `cay:<word>`, `cayedge:<word>:<i>`.
+- **Output vocabulary**: the layer emits **its own structures** (user
+  ruling; the dependency law forces the direction anyway — group precedes
+  the viz systems and cannot import them). A tile is
+  `{word, element, polytope}` (the chamber carried by `transformPolytope`);
+  the Cayley graph is combinatorial — nodes are elements, undirected edges
+  {g, g·R_i} labelled by generator, each once — with geometric placement
+  (node g at g·basePoint) immediate downstream. Conversion to render2d
+  Scene items lives in the demo for Milestone 1, promotable to an adapter
+  module if demos repeat themselves. No `CayleyGraphView` equivalent.
+- **Left out deliberately** (parent features Milestone 1 doesn't need):
+  `subgroup` enumeration, Wythoff. They return in later phases.
+
+**Module: `src/group/`** (README written first, as the spec): `orbit.ts`
+(the generic BFS engine: `GroupOps<I>`, `orbit`, the quantized matrix key),
+`CoxeterGroup.ts` (the class, the tile type, `wordId`), `cayley.ts` (the
+combinatorial graph types; the builder is a class method). Depends on
+math/geometry/polytope/coxeter.
+
+**Tests pin the mathematics**:
+
+- convention pins: `word([i,j])` = the matrix product R_j·R_i (not
+  R_i·R_j); `neighbor(tile, i)` has element g·R_i and word `[i, …w]`, and
+  its polytope shares wall-i's image with the tile;
+- relations: `word([i,j] repeated m_ij times)` = identity, per decorated
+  pair, all three geometries;
+- **spherical exhaustion against known orders**: (2,3,3) → 24, (2,3,4) →
+  48, (2,3,5) → 120 — the BFS frontier empties at the right count with
+  maxWord generous, pinning that dedup neither splits nor merges;
+- dedup honesty in E/H: orbit-of-base-point pairwise distinct at
+  Milestone-1 depths; element count = tile count;
+- Cayley: node degree ≤ rank, every edge's endpoints differ by R_i
+  (matrix check), each undirected edge once.
+
+**Increments** (small, checkpointed, `typecheck` + `test` green):
+
+- **G0** — `src/group/README.md` spec + type shapes; approved before
+  further code. **DONE, approved 2026-07-05**, with shape choices ratified:
+  the 2D factory is a free function `groupFromPolygon(r)`; `OrbitElement`
+  and `CayleyNode` are bare `{word, element}` (no stored depth/key);
+  `matrixKey` takes the flat `Float64Array` directly; `neighbor`'s word
+  `[i, …w]` is documented as the adjacency word, not necessarily the
+  element's stored shortest word.
+- **G1** — `orbit.ts` + tests. **DONE 2026-07-05** (engine pinned on the
+  free monoid — the left-composition convention — plus C₅/I₂(3) exhaustion,
+  shell sizes, tie-break to `[0,1,0]`, maxWord/maxCount stops, and
+  `matrixKey` quantization).
+- **G2** — the `CoxeterGroup` class: factory from `RealizedPolygon`,
+  `word`, `basePoint`, orbit wiring, `tessellate`, `neighbor` + the
+  convention/order/relation tests. **DONE 2026-07-05**, one shape amendment
+  pending ratification: the class is `CoxeterGroup<P extends Vec, I extends
+  Float64Array>` (the G0 shape left `I` bare) — the constraint states the
+  real requirement that geometric dedup keys on matrix entries, and both
+  Isometry2/Isometry3 satisfy it; the alternative is an internal cast.
+  Tests add: spherical exhaustion 24/48/120 with frontier-emptied
+  idempotence; neighbor's shared wall pinned as the same hyperplane with
+  the covector sign flipped; E/H base-point orbits pairwise distinct at
+  maxWord 6.
+- **G3** — the Cayley graph + tests. **DONE 2026-07-05** (`cayley.ts`
+  types + the `cayleyGraph` class method, matrix-key edge lookup, a < b
+  emission). Tests add: the full (2,3,5) graph is 3-regular, 120 nodes /
+  180 edges, connected; every edge matrix-checked as {g, g·R_i}, each once;
+  the truncated (2,3,7) ball is the connected induced subgraph (dropping a
+  word's FIRST letter is a g·R_i step down in length, so right-edge
+  connectivity of the ball holds — noted in the test). The left-BFS /
+  right-edge pairing and why it is the standard, forced structure is
+  written up in the README ("Why left and right both appear").
+- **G4** — **the Milestone-1 demo**: (2,3,7) H, (2,4,4) E, (2,3,5) S
+  tessellations + Cayley graphs through at least two models per geometry,
+  including (2,3,5) on the perspective globe. **BUILT 2026-07-05, pending
+  the user's visual approval** (`demos/group`, `npm run dev group`): 3 × 2
+  grid — Klein + Poincaré (H, maxWord 16 = 540 tiles), Cartesian fit +
+  detail (E, maxWord 12 = 209 tiles; straight = conformal, so the two E
+  panels vary scale), stereographic + perspective globe (S, exhausted =
+  120 tiles; spherical shells verified palindromic 1,3,…,3,1 with top
+  degree 15 — the H₃ Poincaré polynomial). Scene conversion lives in the
+  demo per the plan: parity-colored tiles (identity emphasized), Cayley
+  nodes at g·basePoint, edges colored by generator; ids tile:/cay:/cayedge:
+  via wordId. Demo chrome: in the stereographic chart the tile containing
+  the projection antipode has an unbounded image (its fill would paint the
+  frame) — the view is tipped off-axis and that one tile's fill is omitted,
+  noted in the panel title.
 
 ### Milestones cut vertically, not horizontally
 
