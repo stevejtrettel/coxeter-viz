@@ -441,9 +441,30 @@ chart, in one demo, static camera.
 
 **Increments** (small, checkpointed, `typecheck`+`test` green):
 
-- **V0** — README spec + types; approved before any further code.
+- **V0** — README spec + types; approved before any further code. **DONE,
+  approved 2026-07-04** (`src/render2d/README.md` + `types.ts`), with three
+  approved amendments: a fourth item kind `circle` (finite intrinsic radius,
+  honestly sampled via exp — incircles need it, a jacobian ellipse is wrong
+  at finite radius); types fixed to `Point2`/`Isometry2` (the 2D system is
+  all this layer will ever be — no generics with a single instantiation);
+  path-list representation details (interleaved `Float64Array` contours,
+  even-odd fill, list order = paint order, flat `StyleOverride` bag, default
+  tolerances) accepted PROVISIONALLY — revisit when V1 shows pictures.
 - **V1** — sample/stroke/marks/scene + Canvas painter + the success-criterion
-  demo above.
+  demo above. **DONE, approved 2026-07-05** (`demos/render2d`; 22 tests pin
+  the math), with amendments: the flatness criterion reads "projected
+  midpoint vs. chord" as distance to the chord as a SEGMENT
+  (parameterization-insensitive — a straight Klein chord's canonical
+  midpoint lands on the chord but away from its center, so the
+  chord-midpoint reading over-refines straight charts); gnomonic walls are
+  clipped to the visible branch in closed form (p₀(s) = A·cos(s−φ) ⇒ branch
+  = (φ−π/2, φ+π/2), bisected back to the frame), other spherical walls cap
+  at |s| ≤ π; polygon edge strokes are one path per edge (overlapping
+  butt-capped outlines in a single even-odd path cancel at corners) with
+  butt-joined corners — proper joins are V2 polish if wanted; provisional
+  constants pending pictures-driven review: wall-clip margin 40 px,
+  boundary-accumulation threshold 0.25 px; the disk-chart domain circle in
+  the demo is demo chrome — domain dressing proper is V2.
 - **V2** — tile fills, domain dressing, culling polish, SVG export.
 - **V3** — interaction: screen zoom/pan, isometry dragging, hover highlight.
 
@@ -493,6 +514,14 @@ tile/Cayley coloring by word lists).
   the dependencies).
 - **Names**: repo, pip package, JS import (candidates: coxeter-viz, wythoff,
   kaleidoscope — check availability).
+- **Perspective spherical view** (user, 2026-07-05, after approving render2d
+  V1): project S² onto the plane as seen in 3D perspective — edge widths
+  correct for the perspective view, back-hemisphere strokes dotted. A later
+  project, its own session. Open questions when it comes up: it is a
+  two-sheeted chart (front/back — occlusion enters, unlike every current
+  `Model`), and dotted strokes are a new path-list style; whether it lives
+  in the 2D system as a special chart or belongs near Globe2/the 3D system
+  is part of the design.
 - **Branded (compiler-enforced) Point/Covector types**: proposed by Claude
   mid-conversation during Phase 1b planning; no precedent in the user's
   repos; parked, default OUT. The Phase 1b aliases already mark the duality
