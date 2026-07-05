@@ -1,8 +1,18 @@
 import { addScaled, scale, vec3, type Vec, type Vec3 } from '@/math/vec';
-import { applyToVector } from '@/math/mat';
+import { applyToVector, type Mat3 } from '@/math/mat';
 import type { Geometry, Isometry2, Point2 } from '@/geometry/types';
-import type { Model } from '@/models/types';
 import type { RenderTolerances } from './types';
+
+/**
+ * The minimal chart capability the sampling/stroking/marking machinery
+ * needs: a projection and its distortion. Every `Model<Point2>` satisfies
+ * it structurally; so does the sphere view's two-sheeted perspective
+ * projection (which is deliberately NOT a Model — no unproject).
+ */
+export interface Chart2 {
+  project(p: Point2): Vec3;
+  jacobianAt(p: Point2): Mat3;
+}
 
 /**
  * Adaptive sampling of projected curves (see README, "Sampling, clipping,
@@ -77,7 +87,7 @@ export function sampleCurve(
   gamma: (t: number) => Point2,
   t0: number,
   t1: number,
-  model: Model<Point2>,
+  model: Chart2,
   scalePx: number,
   tol: RenderTolerances,
   halfWidth = 0,
@@ -95,7 +105,7 @@ export function sampleCurve(
 /** Sample the geodesic segment a → b. */
 export function sampleSegment(
   geom: Geometry<Point2, Isometry2>,
-  model: Model<Point2>,
+  model: Chart2,
   a: Point2,
   b: Point2,
   scalePx: number,
@@ -116,7 +126,7 @@ const CIRCLE_SEED_DEPTH = 3;
  */
 export function sampleCircle(
   geom: Geometry<Point2, Isometry2>,
-  model: Model<Point2>,
+  model: Chart2,
   center: Point2,
   radius: number,
   scalePx: number,
@@ -138,7 +148,7 @@ export function sampleCircle(
   return { closed: true, samples };
 }
 
-function sampleAt(gamma: (t: number) => Point2, model: Model<Point2>, t: number): CurveSample {
+function sampleAt(gamma: (t: number) => Point2, model: Chart2, t: number): CurveSample {
   const p = gamma(t);
   return { t, p, u: model.project(p) };
 }
@@ -149,7 +159,7 @@ function sampleAt(gamma: (t: number) => Point2, model: Model<Point2>, t: number)
  */
 function subdivide(
   gamma: (t: number) => Point2,
-  model: Model<Point2>,
+  model: Chart2,
   scalePx: number,
   tol: RenderTolerances,
   halfWidth: number,
@@ -188,7 +198,7 @@ function chordDistance(u: Vec3, a: Vec3, b: Vec3): number {
  * the outline's polygonal error.
  */
 function widthVariationPx(
-  model: Model<Point2>,
+  model: Chart2,
   scalePx: number,
   halfWidth: number,
   a: CurveSample,

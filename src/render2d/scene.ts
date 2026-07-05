@@ -217,7 +217,7 @@ function resolvedOpacity(base: number | undefined, ov?: StyleOverride): number {
   return ov?.opacity ?? base ?? 1;
 }
 
-function resolveStroke(sty: StrokeStyle, ov?: StyleOverride): StrokeStyle & { opacity: number } {
+export function resolveStroke(sty: StrokeStyle, ov?: StyleOverride): StrokeStyle & { opacity: number } {
   return {
     color: ov?.color ?? sty.color,
     width: ov?.width ?? sty.width,
@@ -225,7 +225,7 @@ function resolveStroke(sty: StrokeStyle, ov?: StyleOverride): StrokeStyle & { op
   };
 }
 
-function resolvePoint(sty: PointStyle, ov?: StyleOverride): PointStyle & { opacity: number } {
+export function resolvePoint(sty: PointStyle, ov?: StyleOverride): PointStyle & { opacity: number } {
   return {
     color: ov?.color ?? sty.color,
     radius: ov?.radius ?? sty.radius,
@@ -233,7 +233,7 @@ function resolvePoint(sty: PointStyle, ov?: StyleOverride): PointStyle & { opaci
   };
 }
 
-interface ResolvedRegion {
+export interface ResolvedRegion {
   fill?: FillStyle & { opacity: number };
   edge?: StrokeStyle & { opacity: number };
 }
@@ -243,7 +243,7 @@ interface ResolvedRegion {
  * provided FillStyle/StrokeStyle replaces it; the flat color/opacity/width
  * fields then recolor/resize whatever parts remain.
  */
-function resolveRegion(sty: RegionStyle, ov?: StyleOverride): ResolvedRegion {
+export function resolveRegion(sty: RegionStyle, ov?: StyleOverride): ResolvedRegion {
   const fillBase = ov?.fill === null ? undefined : (ov?.fill ?? sty.fill);
   const edgeBase = ov?.edge === null ? undefined : (ov?.edge ?? sty.edge);
   const out: ResolvedRegion = {};
@@ -265,8 +265,11 @@ function resolveRegion(sty: RegionStyle, ov?: StyleOverride): ResolvedRegion {
 
 // ── Culling ─────────────────────────────────────────────────────────────────
 
-/** Keep an item iff its contours are finite, intersect the frame, and exceed cullPx. */
-function keepContours(
+/**
+ * Keep an item iff its contours are finite, intersect the frame, and exceed
+ * cullPx. Shared with sphereview's builder.
+ */
+export function keepContours(
   contours: readonly Float64Array[],
   frame: Frame,
   scalePx: number,

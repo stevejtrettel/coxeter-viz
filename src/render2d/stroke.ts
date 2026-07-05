@@ -1,7 +1,5 @@
 import { applyToVector } from '@/math/mat';
-import type { Model } from '@/models/types';
-import type { Point2 } from '@/geometry/types';
-import type { CurveSample, SampledCurve } from './sample';
+import type { Chart2, CurveSample, SampledCurve } from './sample';
 
 /**
  * Filled-outline strokes (see README, "Intrinsic styling"): a stroke of
@@ -28,7 +26,7 @@ const EPS_DIR = 1e-12;
  */
 export function strokeOutline(
   curve: SampledCurve,
-  model: Model<Point2>,
+  model: Chart2,
   width: number,
 ): Float64Array[] {
   const { samples, closed } = curve;

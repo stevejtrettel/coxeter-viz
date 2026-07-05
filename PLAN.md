@@ -478,6 +478,77 @@ globe only, until the 3D solvers exist?), the tube stroke pipeline
 (parents' proven mechanics), theme, and its relationship to the 2D system's
 scene description (shared styling vocabulary?).
 
+#### 5.3.2 The perspective sphere view — stage 1 PLAN (decided 2026-07-05)
+
+**Provenance**: user idea 2026-07-05 (parking lot), staged by the user the
+same day (stage 1: translucent sphere, no dashing); width law decided by the
+user 2026-07-05: **round tubes**.
+
+**What it is**: a third consumer of the render2d path list — the SAME Scene
+items and the SAME painters, through a perspective projection of S² instead
+of a flat chart. S²-only; it is NOT a `Model` (two-sheeted: `unproject`
+needs a sheet choice, deferred with hit-testing to the interaction stage).
+
+**The view formula**: screen = V ∘ P_d ∘ apply(g, ·), with the eye on the
+distinguished axis at distance d > 1 (canonical coordinates, so g ∈ O(3) is
+the same view isometry as everywhere) and the image plane p₀ = 0:
+
+    P_d(p) = (p₁, p₂) · d/(d − p₀)
+
+`SphereCamera` = render2d `Camera` + `eyeDistance`.
+
+**Width law (ribbons — user 2026-07-05, revising an initial tubes ruling
+the same day: "it's a 2D view!")**: strokes are surface ink, exactly as in
+every flat chart. J(p) = √(MMᵀ), the symmetric polar factor of the
+perspective derivative M on an orthonormal tangent frame at p — the
+frame-choice drops out (M ↦ MO leaves MMᵀ fixed), and J generalizes
+`jacobianAt` verbatim: the V1 ellipse-membership tests apply unchanged.
+Widths taper to a hairline where a curve meets the silhouette (ink seen
+edge-on; cut ends feather rather than ending blunt); marks become slivers
+near the horizon — honest edge-on disks. The tube alternative (isotropic
+d/(d − p₀), full-bodied at the cut) stays a small variant if ever wanted.
+
+**Visibility**: the visible cap is ⟨p, ê⟩ = p₀ > 1/d; the silhouette
+p₀ = 1/d projects to the circle of radius d/√(d² − 1) (larger than the
+equator's image — correct for perspective). Every stage-1 curve is a circle
+in R³, so the sheet function h = p₀ − 1/d along any of them is
+A·cos t + B·sin t + C: **splits are closed-form** (one trig-root helper),
+no root-finding.
+
+**Two-pass paint** (occlusion on a sphere is only front-over-back): back
+pieces first, then the silhouette disk as an ordinary translucent filled
+path (`SphereStyle`; a px-width rim allowed as view dressing — it is not
+scene content), then front pieces. Back content dims by the disk's opacity,
+for free.
+
+**Fills**: drawn when the whole region lies on one sheet (back fills simply
+dim under the disk); a region straddling the silhouette gets its boundary
+drawn split as usual but its FILL SKIPPED — a loud refusal; proper region
+clipping against the cap is stage-2 work if wanted.
+
+**Enabling refactor in render2d** (type-only, no behavior change):
+`sample`/`stroke`/`marks` accept a minimal `{project, jacobianAt}` chart
+interface that `Model` satisfies structurally; the culling helper is shared.
+
+**Module `src/sphereview/`** (README written first, as the spec):
+`types.ts` (SphereCamera, SphereStyle), `projection.ts` (P_d, jacobian,
+silhouette, trig splits), `scene.ts` (buildSpherePathList, two-pass).
+Depends on math/geometry/render2d; no three.js.
+
+**Tests pin the math**: stroke offsets lie on the jacobian ellipse of
+P_d ∘ exp via numerical differentiation (the V1 harness, unchanged —
+that test IS the ribbon semantics); J symmetric and frame-independent;
+split points satisfy p₀ = 1/d exactly and pieces are pure-sheet;
+back-disk-front emission order; disk radius d/√(d² − 1);
+straddling-fill skip.
+
+**Increments**: **P0** this plan + README spec + types + the render2d
+chart-interface refactor · **P1** projection + splits + tests · **P2** the
+builder + tests · **P3** demo — the V1 (2,3,5) chamber scene UNCHANGED,
+viewed from an angle that wraps the walls' far arcs behind the sphere:
+front arcs vivid, back arcs dimmed, widths shrinking with depth; screenshot
+verified.
+
 ### Milestones cut vertically, not horizontally
 
 **Milestone 1 (the proof of the unification): 2D end-to-end, all three
@@ -514,14 +585,19 @@ tile/Cayley coloring by word lists).
   the dependencies).
 - **Names**: repo, pip package, JS import (candidates: coxeter-viz, wythoff,
   kaleidoscope — check availability).
-- **Perspective spherical view** (user, 2026-07-05, after approving render2d
-  V1): project S² onto the plane as seen in 3D perspective — edge widths
-  correct for the perspective view, back-hemisphere strokes dotted. A later
-  project, its own session. Open questions when it comes up: it is a
-  two-sheeted chart (front/back — occlusion enters, unlike every current
-  `Model`), and dotted strokes are a new path-list style; whether it lives
-  in the 2D system as a special chart or belongs near Globe2/the 3D system
-  is part of the design.
+- **Perspective sphere view — stage 2 and beyond** (stage 1 is planned and
+  in flight: §5.3.2). Remaining, parked:
+  - *Dashed back-side strokes*: a StrokeStyle dash field (types amendment) +
+    chopping outlines into dash contours (keeps SVG export identical by
+    construction). Dash parametrization (screen vs intrinsic arclength)
+    decided here.
+  - *Region clipping against the cap* (fills straddling the silhouette —
+    stage 1 skips them).
+  - *Hit-testing / unproject with a sheet choice* (it is not a `Model`).
+  - Whether it generalizes to a 3D-objects → 2D vector renderer seamed at
+    renderDim-3 models with chain-rule jacobians (a Claude suggestion,
+    unvalidated — would serve H³/S³ ball paper figures in the 3D era;
+    general hidden-line removal stays out of scope regardless).
 - **Branded (compiler-enforced) Point/Covector types**: proposed by Claude
   mid-conversation during Phase 1b planning; no precedent in the user's
   repos; parked, default OUT. The Phase 1b aliases already mark the duality

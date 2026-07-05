@@ -19,8 +19,6 @@ import type { Camera, Scene } from '@/render2d/types';
 import { buildPathList } from '@/render2d/scene';
 import { paint } from '@/render2d/canvas';
 
-/** Panel size: three columns fitting the viewport, within sane bounds. */
-const SIZE = Math.max(280, Math.min(460, Math.floor((window.innerWidth - 2 * 24 - 2 * 20) / 3)));
 const WALL_COLORS = ['#c0392b', '#27ae60', '#2f6fb7'];
 
 function triangleSpec(geometry: GeometryKind, orders: [number, number, number]): RealizationSpec {
@@ -83,19 +81,19 @@ function chamberScene(realized: RealizedPolygon): Scene {
  * classic picture); plane charts fit the chamber with room for the walls
  * to sweep past.
  */
-function panelCamera(realized: RealizedPolygon, model: Model<Point2>): Camera {
+function panelCamera(realized: RealizedPolygon, model: Model<Point2>, sizePx: number): Camera {
   let scalePx: number;
   if (model.domain.kind === 'disk') {
-    scalePx = SIZE / 2 / (model.domain.radius * 1.08);
+    scalePx = sizePx / 2 / (model.domain.radius * 1.08);
   } else {
     let extent = 0;
     for (const v of realized.chamber.vertices) {
       const u = model.project(v);
       extent = Math.max(extent, Math.hypot(u[0], u[1]));
     }
-    scalePx = SIZE / 2 / (extent * 2.2);
+    scalePx = sizePx / 2 / (extent * 2.2);
   }
-  return { view: realized.geom.identity(), scalePx, centerPx: [SIZE / 2, SIZE / 2] };
+  return { view: realized.geom.identity(), scalePx, centerPx: [sizePx / 2, sizePx / 2] };
 }
 
 interface Panel {
@@ -119,47 +117,65 @@ const panels: Panel[] = [
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-document.body.style.cssText =
-  'margin:0;padding:24px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222';
+const PAD = 20;
+const GAP = 16;
+const TITLE_H = 24;
+
+document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
 const heading = document.createElement('h2');
 heading.textContent = 'render2d V1 — chambers, walls, incircles through straight and conformal charts';
-heading.style.cssText = 'font-weight:600;margin:0 0 16px';
+heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 12px';
 document.body.appendChild(heading);
 
 const grid = document.createElement('div');
-grid.style.cssText = `display:grid;grid-template-columns:repeat(3,${SIZE}px);gap:20px`;
 document.body.appendChild(grid);
 
-const dpr = window.devicePixelRatio || 1;
-
-for (const panel of panels) {
-  const cell = document.createElement('div');
-  const title = document.createElement('div');
-  title.textContent = panel.title;
-  title.style.cssText = 'font-size:13px;margin-bottom:6px;color:#555';
-  const canvas = document.createElement('canvas');
-  canvas.width = SIZE * dpr;
-  canvas.height = SIZE * dpr;
-  canvas.style.cssText = `width:${SIZE}px;height:${SIZE}px;background:#fff;border-radius:4px`;
-  cell.append(title, canvas);
-  grid.appendChild(cell);
-
-  const g = canvas.getContext('2d');
-  if (!g) continue;
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const camera = panelCamera(panel.realized, panel.model);
-  const size = { widthPx: SIZE, heightPx: SIZE };
-
-  // Demo chrome: the domain boundary of disk charts.
-  if (panel.model.domain.kind === 'disk') {
-    g.beginPath();
-    g.arc(SIZE / 2, SIZE / 2, panel.model.domain.radius * camera.scalePx, 0, 2 * Math.PI);
-    g.strokeStyle = '#ccc';
-    g.lineWidth = 1;
-    g.stroke();
-  }
-
-  const scene = chamberScene(panel.realized);
-  paint(g, buildPathList(scene, { geom: panel.realized.geom, model: panel.model, camera, size }), camera);
+/** Panel size: the 3 × 2 grid fits BOTH viewport dimensions. */
+function panelSize(): number {
+  const headingH = heading.offsetHeight + 12;
+  const wFit = Math.floor((window.innerWidth - 2 * PAD - 2 * GAP) / 3);
+  const hFit = Math.floor((window.innerHeight - 2 * PAD - headingH - GAP - 2 * TITLE_H) / 2);
+  return Math.max(220, Math.min(460, wFit, hFit));
 }
+
+function renderAll(): void {
+  const size = panelSize();
+  grid.style.cssText = `display:grid;grid-template-columns:repeat(3,${size}px);gap:${GAP}px`;
+  grid.replaceChildren();
+  const dpr = window.devicePixelRatio || 1;
+
+  for (const panel of panels) {
+    const cell = document.createElement('div');
+    const title = document.createElement('div');
+    title.textContent = panel.title;
+    title.style.cssText = `font-size:12px;height:${TITLE_H - 6}px;margin-bottom:6px;color:#555;white-space:nowrap;overflow:hidden`;
+    const canvas = document.createElement('canvas');
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.cssText = `width:${size}px;height:${size}px;background:#fff;border-radius:4px`;
+    cell.append(title, canvas);
+    grid.appendChild(cell);
+
+    const g = canvas.getContext('2d');
+    if (!g) continue;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const camera = panelCamera(panel.realized, panel.model, size);
+
+    // Demo chrome: the domain boundary of disk charts.
+    if (panel.model.domain.kind === 'disk') {
+      g.beginPath();
+      g.arc(size / 2, size / 2, panel.model.domain.radius * camera.scalePx, 0, 2 * Math.PI);
+      g.strokeStyle = '#ccc';
+      g.lineWidth = 1;
+      g.stroke();
+    }
+
+    const scene = chamberScene(panel.realized);
+    const ctx = { geom: panel.realized.geom, model: panel.model, camera, size: { widthPx: size, heightPx: size } };
+    paint(g, buildPathList(scene, ctx), camera);
+  }
+}
+
+renderAll();
+window.addEventListener('resize', renderAll);

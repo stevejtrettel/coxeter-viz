@@ -1,6 +1,6 @@
 import type { Point2 } from '@/geometry/types';
-import type { Model } from '@/models/types';
 import type { RenderTolerances } from './types';
+import type { Chart2 } from './sample';
 
 /**
  * Point marks (see README, "Intrinsic styling"): a point of intrinsic radius
@@ -23,7 +23,7 @@ const MAX_VERTICES = 64;
  * the mark's semi-axes per unit intrinsic radius. Flat charts keep the
  * render plane invariant, so only the upper-left 2×2 block acts.
  */
-export function markAxes(model: Model<Point2>, p: Point2): [number, number] {
+export function markAxes(model: Chart2, p: Point2): [number, number] {
   const J = model.jacobianAt(p);
   const a = J[0];
   const b = J[1];
@@ -40,7 +40,7 @@ export function markAxes(model: Model<Point2>, p: Point2): [number, number] {
  * coordinates) approximating the ellipse project(p) + r·J·(unit circle).
  */
 export function markEllipse(
-  model: Model<Point2>,
+  model: Chart2,
   p: Point2,
   radius: number,
   scalePx: number,
