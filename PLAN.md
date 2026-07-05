@@ -394,6 +394,64 @@ this 2D/3D boundary.
   lil-gui — user finds it ugly) can be re-derived from the deleted R1's
   design if wanted.
 
+#### 5.3.1 The 2D system — PLAN (decided 2026-07-04, collaboratively)
+
+**Decisions:**
+
+- **Canvas-first, SVG as export.** One backend-agnostic **path list** (styled
+  filled paths in render coords) produced by the geometry pipeline; consumed
+  by (a) the Canvas painter — immediate mode, the instrument — and (b) a
+  one-file SVG serializer for paper figures. The exported figure is
+  geometrically identical to the screen by construction. No SVG interactive
+  backend, ever needed.
+- **All styling is intrinsic** (the user's requirement, = the parents'
+  signature look): strokes are FILLED OUTLINES — sample the canonical
+  geodesic, project, offset ±(w/2)·J·n̂ per sample from `jacobianAt` (width
+  varies along a stroke; anisotropic in Klein) — native constant-width
+  strokes are unusable and unused. Points are jacobian-image ellipses of
+  intrinsic radius. Geodesics are adaptively sampled (flatness +
+  width-variation tolerances in px) even in straight charts (width still
+  varies along a chord). No screen-width "diagram mode" in v1 — not built,
+  not designed for.
+- **The camera contains a group element**: view = affine viewport ∘
+  `model.project` ∘ `apply(g, ·)`. Isometry dragging composes into g — the
+  translation q₀ → q₁ is a product of two perpendicular-bisector
+  reflections, built from the existing `Hyperplane`/`reflection` machinery.
+  Content's canonical coordinates never change.
+- **Scene items carry identity** ({id, kind, canonical data, style}; wall id
+  = generator index, load-bearing as everywhere). Highlighting is a
+  per-frame style override by id, never a scene mutation. Hit-testing is
+  mathematical: `unproject` the pointer, side-test against walls — exact.
+- **Immediate mode throughout**: every change (drag, highlight, model
+  switch) rebuilds the path list and repaints; sub-pixel items are culled
+  (deep-tessellation tiles shrink toward the boundary and drop out). No
+  retained scene graph — the R1 trap.
+
+**Module: `src/render2d/`** (README written first, as the spec): `types.ts`
+(SceneItem / Style / Camera / path list), `sample.ts`, `stroke.ts`,
+`marks.ts`, `scene.ts` (scene → path list: apply g, project, clip walls to
+frame, cull), `canvas.ts`, `svg.ts`, `interact.ts`. Depends only on
+math/geometry/models/polytope.
+
+**Success criterion — the milestone that matters (V1): solid Point,
+Geodesic, and Polygon primitives drawing correctly in multiple models per
+geometry.** Concretely: the solved (2,3,7) H, (2,4,4) E, (2,3,5) S chambers
+with their walls and incircles, each through its straight AND conformal
+chart, in one demo, static camera.
+
+**Increments** (small, checkpointed, `typecheck`+`test` green):
+
+- **V0** — README spec + types; approved before any further code.
+- **V1** — sample/stroke/marks/scene + Canvas painter + the success-criterion
+  demo above.
+- **V2** — tile fills, domain dressing, culling polish, SVG export.
+- **V3** — interaction: screen zoom/pan, isometry dragging, hover highlight.
+
+**Tests pin the math**: outline half-width at a sample ≈ (w/2)·|J·n̂|
+against numerical differentiation; mark-ellipse axes = jacobian singular
+values; sampled-polyline deviation under tolerance; serializer path
+geometry identical to the painter's input; cull thresholds.
+
 **Questions for the 3D system's plan** (later, its own session): scope (S²
 globe only, until the 3D solvers exist?), the tube stroke pipeline
 (parents' proven mechanics), theme, and its relationship to the 2D system's

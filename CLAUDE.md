@@ -16,7 +16,7 @@ package drives it through a pure group-theoretic seam.
 The user is a mathematician (professor). Correctness and clean,
 close-to-the-math abstractions matter more than feature count.
 
-## Status: Phases 3a (2D solvers) and 1b (own linear algebra — PLAN.md §5.2b, retrofit 2026-07-04: three.js is out of src/, replaced by our flat Float64Array layer) complete. Next: the 2D visualization system — plan first, no code (see PLAN.md §5.3: visualization is TWO separate systems, 2D without three.js and 3D with three.js; the first three.js-based attempt was rejected and deleted).
+## Status: Phases 3a (2D solvers) and 1b (own linear algebra — PLAN.md §5.2b, retrofit 2026-07-04: three.js is out of src/, replaced by our flat Float64Array layer) complete. The 2D visualization system is PLANNED (PLAN.md §5.3.1, decided 2026-07-04: Canvas painter + SVG serializer over one path list; intrinsic-width filled-outline strokes; camera contains a view isometry; identity-carrying scene items). Next: execute render2d V0 (README spec + types, approved before further code), then V1 — solid Point/Geodesic/Polygon primitives drawing in multiple models per geometry is the success criterion.
 
 `PLAN.md` is the working plan, edited collaboratively. In place: the
 toolchain (see Commands) and the geometry substrate — `src/math/` (the
