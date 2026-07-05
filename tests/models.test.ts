@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
+import { cross, norm, scale, sub, vec3, type Vec } from '@/math/vec';
+import { applyToVector } from '@/math/mat';
 import type { Model } from '@/models/types';
 import { Klein2, Klein3 } from '@/models/klein';
 import { Poincare2, Poincare3 } from '@/models/poincare';
@@ -10,7 +11,7 @@ import { Cartesian2, Cartesian3 } from '@/models/cartesian';
 import { cells, expectVecClose, randomPoint, randomTangent, rng, type Cell } from './helpers';
 
 interface ModelCase {
-  model: Model<any>;
+  model: Model<Vec>;
   cell: Cell;
   conformal: boolean;
 }
@@ -49,8 +50,8 @@ describe.each(cases)('$model.name ($cell.name)', ({ model, cell, conformal }) =>
     for (let k = 0; k < 8; k++) {
       const p = randomPoint(cell, rand);
       const v = randomTangent(cell, p, rand, 1);
-      const w = model.project(geom.exp(p, v, h)).sub(model.project(p)).divideScalar(h);
-      expect(w.length()).toBeCloseTo(model.scaleAt(p), 4);
+      const w = scale(sub(model.project(geom.exp(p, v, h)), model.project(p)), 1 / h);
+      expect(norm(w)).toBeCloseTo(model.scaleAt(p), 4);
     }
   });
 
@@ -63,35 +64,33 @@ describe.each(cases)('$model.name ($cell.name)', ({ model, cell, conformal }) =>
       const a = model.project(p);
       const b = model.project(q);
       const m = model.project(geom.geodesic(p, q)(0.5));
-      const cross = new Vector3().subVectors(m, a).cross(new Vector3().subVectors(b, a));
-      expect(cross.length()).toBeLessThan(1e-8);
+      expect(norm(cross(sub(m, a), sub(b, a)))).toBeLessThan(1e-8);
     }
   });
 });
 
 describe('non-conformal jacobians (radial/transverse scales)', () => {
   const flatCases = [
-    { model: new Klein2() as Model<any>, cell: byName('H2'), sr: (r2: number) => 1 - r2 },
-    { model: new Gnomonic2() as Model<any>, cell: byName('S2'), sr: (r2: number) => 1 + r2 },
+    { model: new Klein2() as Model<Vec>, cell: byName('H2'), sr: (r2: number) => 1 - r2 },
+    { model: new Gnomonic2() as Model<Vec>, cell: byName('S2'), sr: (r2: number) => 1 + r2 },
   ];
 
   it.each(flatCases)('$model.name: numeric pushforward matches s_r and s_t', ({ model, cell, sr }) => {
     const { geom } = cell;
-    const u = new Vector3(0.5, 0, 0);
+    const u = vec3(0.5, 0, 0);
     const p = model.unproject(u);
     const h = 1e-6;
-    const push = (target: Vector3) => {
+    const push = (target: Vec) => {
       const v = geom.log(p, model.unproject(target));
-      const vUnit = v.clone().multiplyScalar(1 / Math.sqrt(geom.form(v, v)));
-      return model.project(geom.exp(p, vUnit, h)).sub(model.project(p)).divideScalar(h).length();
+      const vUnit = scale(v, 1 / Math.sqrt(geom.form(v, v)));
+      return norm(scale(sub(model.project(geom.exp(p, vUnit, h)), model.project(p)), 1 / h));
     };
     const r2 = 0.25;
-    expect(push(new Vector3(0.6, 0, 0))).toBeCloseTo(sr(r2), 4); // radial
-    expect(push(new Vector3(0.5, 0.01, 0))).toBeCloseTo(Math.sqrt(sr(r2)), 3); // transverse
+    expect(push(vec3(0.6, 0, 0))).toBeCloseTo(sr(r2), 4); // radial
+    expect(push(vec3(0.5, 0.01, 0))).toBeCloseTo(Math.sqrt(sr(r2)), 3); // transverse
     // and the jacobian matrix agrees on the radial unit vector
     const J = model.jacobianAt(p);
-    const radial = new Vector3(1, 0, 0).applyMatrix3(J);
-    expect(radial.length()).toBeCloseTo(sr(r2), 6);
+    expect(norm(applyToVector(J, vec3(1, 0, 0)))).toBeCloseTo(sr(r2), 6);
   });
 });
 
@@ -102,7 +101,7 @@ describe('Globe2', () => {
     const rand = rng(24);
     for (let k = 0; k < 10; k++) {
       const p = randomPoint(cell, rand);
-      expect(model.project(p).length()).toBeCloseTo(1, 12);
+      expect(norm(model.project(p))).toBeCloseTo(1, 12);
     }
   });
 });

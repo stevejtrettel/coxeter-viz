@@ -1,4 +1,5 @@
-import { Matrix3, Vector3 } from 'three';
+import { normSq, scale, type Vec3 } from '@/math/vec';
+import { identity, matAdd, matScale, outer, type Mat3 } from '@/math/mat';
 
 /**
  * The distortion jacobian of a rotationally-symmetric chart at image point u:
@@ -7,15 +8,9 @@ import { Matrix3, Vector3 } from 'three';
  *
  *    J = s_t·I + (s_r − s_t)·û ûᵀ .
  */
-export function radialJacobian(u: Vector3, sr: number, st: number): Matrix3 {
-  const r = u.length();
-  if (r < 1e-15) return new Matrix3().multiplyScalar(st);
-  const { x, y, z } = new Vector3().copy(u).multiplyScalar(1 / r);
-  const d = sr - st;
-  // prettier-ignore
-  return new Matrix3().set(
-    st + d * x * x,      d * x * y,      d * x * z,
-         d * y * x, st + d * y * y,      d * y * z,
-         d * z * x,      d * z * y, st + d * z * z,
-  );
+export function radialJacobian(u: Vec3, sr: number, st: number): Mat3 {
+  const r2 = normSq(u);
+  if (r2 < 1e-30) return matScale(identity(3), st);
+  const uhat = scale(u, 1 / Math.sqrt(r2));
+  return matAdd(matScale(identity(3), st), matScale(outer(uhat, uhat), sr - st));
 }

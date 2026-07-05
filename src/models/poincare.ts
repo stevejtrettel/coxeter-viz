@@ -1,4 +1,6 @@
-import { Matrix3, Vector3, Vector4 } from 'three';
+import { normSq, vec3, vec4, type Vec3 } from '@/math/vec';
+import { identity, matScale, type Mat3 } from '@/math/mat';
+import type { Point2, Point3 } from '@/geometry/types';
 import type { Domain, Model } from './types';
 
 /**
@@ -8,50 +10,50 @@ import type { Domain, Model } from './types';
  * geodesics are circular arcs meeting the boundary orthogonally.
  */
 
-export class Poincare2 implements Model<Vector3> {
+export class Poincare2 implements Model<Point2> {
   readonly name = 'poincare-disk';
   readonly kind = 'hyperbolic' as const;
   readonly renderDim = 2 as const;
   readonly domain: Domain = { kind: 'disk', radius: 1 };
   readonly straight = false;
 
-  project(p: Vector3): Vector3 {
-    const f = 1 / (1 + p.x);
-    return new Vector3(f * p.y, f * p.z, 0);
+  project(p: Point2): Vec3 {
+    const f = 1 / (1 + p[0]);
+    return vec3(f * p[1], f * p[2], 0);
   }
-  unproject(x: Vector3): Vector3 {
-    const r2 = x.x * x.x + x.y * x.y;
+  unproject(x: Vec3): Point2 {
+    const r2 = x[0] * x[0] + x[1] * x[1];
     const f = 1 / (1 - r2);
-    return new Vector3(f * (1 + r2), 2 * f * x.x, 2 * f * x.y);
+    return vec3(f * (1 + r2), 2 * f * x[0], 2 * f * x[1]);
   }
-  scaleAt(p: Vector3): number {
-    return (1 - this.project(p).lengthSq()) / 2;
+  scaleAt(p: Point2): number {
+    return (1 - normSq(this.project(p))) / 2;
   }
-  jacobianAt(p: Vector3): Matrix3 {
-    return new Matrix3().multiplyScalar(this.scaleAt(p));
+  jacobianAt(p: Point2): Mat3 {
+    return matScale(identity(3), this.scaleAt(p));
   }
 }
 
-export class Poincare3 implements Model<Vector4> {
+export class Poincare3 implements Model<Point3> {
   readonly name = 'poincare-ball';
   readonly kind = 'hyperbolic' as const;
   readonly renderDim = 3 as const;
   readonly domain: Domain = { kind: 'ball', radius: 1 };
   readonly straight = false;
 
-  project(p: Vector4): Vector3 {
-    const f = 1 / (1 + p.x);
-    return new Vector3(f * p.y, f * p.z, f * p.w);
+  project(p: Point3): Vec3 {
+    const f = 1 / (1 + p[0]);
+    return vec3(f * p[1], f * p[2], f * p[3]);
   }
-  unproject(x: Vector3): Vector4 {
-    const r2 = x.lengthSq();
+  unproject(x: Vec3): Point3 {
+    const r2 = normSq(x);
     const f = 1 / (1 - r2);
-    return new Vector4(f * (1 + r2), 2 * f * x.x, 2 * f * x.y, 2 * f * x.z);
+    return vec4(f * (1 + r2), 2 * f * x[0], 2 * f * x[1], 2 * f * x[2]);
   }
-  scaleAt(p: Vector4): number {
-    return (1 - this.project(p).lengthSq()) / 2;
+  scaleAt(p: Point3): number {
+    return (1 - normSq(this.project(p))) / 2;
   }
-  jacobianAt(p: Vector4): Matrix3 {
-    return new Matrix3().multiplyScalar(this.scaleAt(p));
+  jacobianAt(p: Point3): Mat3 {
+    return matScale(identity(3), this.scaleAt(p));
   }
 }

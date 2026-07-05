@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { vec3, type Covec3 } from '@/math/vec';
 import type { GeometryKind } from '@/geometry/types';
 import type { ValidatedPolygon } from './spec';
 
@@ -13,7 +13,7 @@ import type { ValidatedPolygon } from './spec';
 
 export interface InscribedPolygon {
   /** Wall covectors indexed by GENERATOR (cyclic position unwound). */
-  covectors: Vector3[];
+  covectors: Covec3[];
   /** Gram matrix ⟨nᵢ,nⱼ⟩ of the poles, by generator index (E: directions only). */
   gram: number[][];
   /** Inradius (r ≡ 1 for E: the scale modulus, fixed by convention). */
@@ -90,25 +90,25 @@ export function buildInscribedPolygon(v: ValidatedPolygon): InscribedPolygon {
 
   // The wall tangent to the incircle at angle φ (README table), and the
   // matching pole/curvature data for the Gram byproduct.
-  const covectorAt = (angle: number): Vector3 => {
+  const covectorAt = (angle: number): Covec3 => {
     switch (geometry) {
       case 'spherical':
-        return new Vector3(-Math.sin(r), Math.cos(r) * Math.cos(angle), Math.cos(r) * Math.sin(angle));
+        return vec3(-Math.sin(r), Math.cos(r) * Math.cos(angle), Math.cos(r) * Math.sin(angle));
       case 'euclidean':
-        return new Vector3(-1, Math.cos(angle), Math.sin(angle));
+        return vec3(-1, Math.cos(angle), Math.sin(angle));
       case 'hyperbolic':
-        return new Vector3(-Math.sinh(r), Math.cosh(r) * Math.cos(angle), Math.cosh(r) * Math.sin(angle));
+        return vec3(-Math.sinh(r), Math.cosh(r) * Math.cos(angle), Math.cosh(r) * Math.sin(angle));
     }
   };
 
   // Unwind cyclic position → generator index.
-  const covectors = new Array<Vector3>(n);
+  const covectors = new Array<Covec3>(n);
   for (let k = 0; k < n; k++) covectors[cyclicOrder[k]] = covectorAt(phi[k]);
 
   // Gram of the poles: ⟨Jcᵢ, Jcⱼ⟩_J = cᵢᵀ J cⱼ, with J = diag(κ, 1, 1).
   const kappa = geometry === 'spherical' ? 1 : geometry === 'euclidean' ? 0 : -1;
   const gram = covectors.map((ci) =>
-    covectors.map((cj) => kappa * ci.x * cj.x + ci.y * cj.y + ci.z * cj.z),
+    covectors.map((cj) => kappa * ci[0] * cj[0] + ci[1] * cj[1] + ci[2] * cj[2]),
   );
 
   return { covectors, gram, inradius: r, diagnostics: { closureError } };

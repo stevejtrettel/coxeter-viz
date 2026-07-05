@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
+import { add, vec3 } from '@/math/vec';
 import { Hyperplane } from '@/geometry/Hyperplane';
 import { Euclidean2 } from '@/geometry/Euclidean';
 import { cells, expectVecClose, matrixDiff, randomPoint, rng, type Cell } from './helpers';
 
 /** A generic test wall per cell (not through the origin, nothing axis-aligned). */
-function sampleWall(cell: Cell): Hyperplane<any> {
+function sampleWall(cell: Cell): Hyperplane {
   const { geom, vec, dim } = cell;
   // covector components chosen so cᵀJc > 0 in every geometry
   const c = dim === 2 ? vec(0.3, 1.0, 0.5) : vec(0.3, 1.0, 0.5, -0.4);
@@ -50,7 +50,7 @@ describe.each(cells)('$name reflections', (cell) => {
     expect(wall.side(Rp)).toBeCloseTo(-wall.side(p), 9);
 
     // the geodesic midpoint of p and Rp lies on the wall and is fixed
-    const m = geom.normalize(p.clone().addScaledVector(Rp, 1));
+    const m = geom.normalize(add(p, Rp));
     expect(wall.side(m)).toBeCloseTo(0, 9);
     expectVecClose(comps, geom.apply(R, m), m, 1e-9);
   });
@@ -77,7 +77,7 @@ describe.each(cells)('$name reflections', (cell) => {
 describe('Euclidean specifics', () => {
   it('fromPole throws with a mathematical explanation', () => {
     const geom = new Euclidean2();
-    expect(() => Hyperplane.fromPole(geom, new Vector3(0, 1, 0))).toThrow(/affine offset/);
+    expect(() => Hyperplane.fromPole(geom, vec3(0, 1, 0))).toThrow(/affine offset/);
   });
 
   it('reflection matrices are homogeneous (slice-preserving)', () => {
@@ -85,9 +85,9 @@ describe('Euclidean specifics', () => {
     const cell = cells.find((c) => c.name === 'E2')!;
     const wall = sampleWall(cell);
     const R = geom.reflection(wall);
-    // row 0 of R is e₀ᵀ ⇒ column-major elements 0,3,6 are 1,0,0
-    expect(R.elements[0]).toBeCloseTo(1, 12);
-    expect(R.elements[3]).toBeCloseTo(0, 12);
-    expect(R.elements[6]).toBeCloseTo(0, 12);
+    // row 0 of R is e₀ᵀ ⇒ row-major entries 0,1,2 are 1,0,0
+    expect(R[0]).toBeCloseTo(1, 12);
+    expect(R[1]).toBeCloseTo(0, 12);
+    expect(R[2]).toBeCloseTo(0, 12);
   });
 });

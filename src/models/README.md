@@ -41,7 +41,7 @@ Additionally `Globe2` draws S² as the round unit sphere in R³ (`renderDim`
 - `scaleAt(p)` — isotropic render-length per unit intrinsic length. **Exact
   for conformal charts**; for the non-conformal straight charts we return the
   transverse scale (see below), documented as an approximation.
-- `jacobianAt(p)` — the full distortion as a `Matrix3` on render-space
+- `jacobianAt(p)` — the full distortion as a `Mat3` on render-space
   tangents (a round intrinsic disk renders as an ellipse: this is how Klein
   models draw correctly-sized objects).
 
@@ -62,7 +62,8 @@ radius ε at p should render in thickness.
 
 ## Files
 
-- `types.ts` — `Model<P>`, `Domain`.
+- `types.ts` — `Model<P>`, `Domain`. No rendering library anywhere in this
+  folder (the core has no three.js; PLAN.md §5.2b).
 - `radial.ts` — the shared jacobian helper for rotationally-symmetric charts.
 - `klein.ts` (`Klein2/3`), `gnomonic.ts` (`Gnomonic2/3`), `cartesian.ts`
   (`Cartesian2/3`) — the straight charts.

@@ -1,4 +1,5 @@
-import type { Geometry, Vec } from './types';
+import { scale, type Covec, type Vec } from '@/math/vec';
+import type { Geometry } from './types';
 
 /**
  * A wall (mirror hyperplane): fundamentally a unit covector c (cᵀJc = 1),
@@ -6,19 +7,17 @@ import type { Geometry, Vec } from './types';
  * { p : c·p ≤ 0 }, and the reflection in it is geometry.reflection(wall)
  * = I − 2 (Jc) cᵀ. See the folder README for why the covector — not the
  * pole — is the fundamental datum (the Euclidean pole loses the affine
- * offset).
+ * offset). The ambient dimension is the array length; one class serves both.
  */
-export class Hyperplane<P extends Vec<P>> {
+export class Hyperplane {
   /** Unit covector: cᵀJc = 1. */
-  readonly covector: P;
-  /** The pole Jc. */
-  readonly pole: P;
-  private readonly pair: (c: P, p: P) => number;
+  readonly covector: Covec;
+  /** The pole Jc — an ambient vector, NOT generally a point of the space. */
+  readonly pole: Vec;
 
-  private constructor(covector: P, pole: P, pair: (c: P, p: P) => number) {
+  private constructor(covector: Covec, pole: Vec) {
     this.covector = covector;
     this.pole = pole;
-    this.pair = pair;
   }
 
   /**
@@ -26,13 +25,13 @@ export class Hyperplane<P extends Vec<P>> {
    * covector is not spacelike-dual (cᵀJc ≤ 0) — such a c does not cut the
    * point locus in a totally-geodesic hypersurface.
    */
-  static fromCovector<P extends Vec<P>, I>(geom: Geometry<P, I>, c: P): Hyperplane<P> {
+  static fromCovector<P extends Vec, I>(geom: Geometry<P, I>, c: Covec): Hyperplane {
     const norm2 = geom.pairing(c, geom.dual(c)); // cᵀJc
     if (!(norm2 > 1e-24)) {
       throw new Error(`Hyperplane: covector must satisfy cᵀJc > 0 (got ${norm2}); not a wall.`);
     }
-    const covector = c.clone().multiplyScalar(1 / Math.sqrt(norm2));
-    return new Hyperplane(covector, geom.dual(covector), (a, p) => geom.pairing(a, p));
+    const covector = scale(c, 1 / Math.sqrt(norm2));
+    return new Hyperplane(covector, geom.dual(covector));
   }
 
   /**
@@ -41,7 +40,7 @@ export class Hyperplane<P extends Vec<P>> {
    * carry the wall's affine offset — construct from the covector (−d, a)
    * for the wall { a·x = d }.
    */
-  static fromPole<P extends Vec<P>, I>(geom: Geometry<P, I>, n: P): Hyperplane<P> {
+  static fromPole<P extends Vec, I>(geom: Geometry<P, I>, n: Vec): Hyperplane {
     if (geom.kind === 'euclidean') {
       throw new Error(
         'Hyperplane.fromPole: a Euclidean pole (0, a) loses the affine offset d; ' +
@@ -55,7 +54,9 @@ export class Hyperplane<P extends Vec<P>> {
    * The signed side of p: the plain pairing c·p. Zero on the wall, negative
    * in the wall's half-space { c·p ≤ 0 }.
    */
-  side(p: P): number {
-    return this.pair(this.covector, p);
+  side(p: Vec): number {
+    let s = 0;
+    for (let i = 0; i < this.covector.length; i++) s += this.covector[i] * p[i];
+    return s;
   }
 }

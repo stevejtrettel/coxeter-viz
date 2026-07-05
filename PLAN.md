@@ -1,7 +1,8 @@
 # coxeter-viz — build plan
 
-> Status: **building** — Phases 0–2 and 3a complete (see CLAUDE.md for the
-> current state); this document remains the collaboratively-edited plan.
+> Status: **building** — Phases 0–2, 3a, and 1b (own linear algebra,
+> retrofit; §5.2b) complete (see CLAUDE.md for the current state); this
+> document remains the collaboratively-edited plan.
 > Companion: `docs/DESIGN-original.md` (the original product design), which
 > this plan supersedes where they disagree (notably: the role of the Gram
 > matrix).
@@ -171,6 +172,12 @@ chart designated per geometry. Euclidean isometries as homogeneous matrices.
 **Decided:** only the quadratic-form fast-path geometries (Sⁿ/Eⁿ/Hⁿ) come
 over; `NumericGeometry` and the capability system stay behind.
 
+**Phase 1b — own the linear algebra** (decided 2026-07-04, retrofit; detail
+in §5.2b). Replace the three.js value types — an *inherited, never-decided*
+assumption from the parents — with our own flat `Float64Array` layer in
+`src/math/`; three.js exits `src/` entirely (mechanically enforced by a
+permanent test) and remains only a demo / future-render3d dependency.
+
 **Phase 2 — polytope engine** (from hyperbolic-polytopes, re-derived).
 Hull in the straight chart, V/E/F lattice, `fromVertices`/`fromHalfspaces`,
 transforms, views. Spherical hemisphere policy handled explicitly.
@@ -281,6 +288,66 @@ Tests pin the mathematics:
 Acceptance: `typecheck` + `test` green; every new folder has its README-spec;
 no downward imports (math ← geometry ← models); `hello` still builds.
 
+### 5.2b Phase 1b in detail — own the linear algebra
+
+**Decision record (2026-07-04).** The core's use of three.js
+`Vector3`/`Matrix3`/`Vector4`/`Matrix4` was inherited from
+homogeneous-spaces and never surfaced as a decision (a process failure —
+inherited elements must be flagged as forks, per the working norms).
+Decided: own the types. Every design element below traces to the user's own
+repos (limit-sets `src/core/matrix.ts`, `verify.ts`) or an explicit ruling
+in the planning conversation. **Semantics freeze:** types and idioms change;
+no algorithm, tolerance, or convention changes.
+
+**The layer** (`src/math/vec.ts`, `mat.ts`):
+
+- Vectors and matrices are flat `Float64Array`s (matrices row-major, n
+  inferred from length, so one kernel serves 3×3 and 4×4 alike).
+- **Immutable free functions** — every op returns a fresh array; reads like
+  the mathematics (`pairing(c, p)`, not method chains).
+- Readable constructors `vec3/vec4/mat3/mat4` (rows in, flat out).
+- **Indexed components** `v[0]` — coordinate 0 is the distinguished one;
+  kills the three.js confusion where `.x` denoted the time/affine coordinate.
+- **Documentation aliases, placed by which world the object lives in**
+  (the limit-sets `verify.ts` pattern — names and stampers do the work;
+  compiler-enforced brands are parked, §6). `Covec3/4` live in `math/`
+  beside `Vec3/4`: vector and covector are both *linear* objects (V and
+  V*), and their pairing needs no geometry. `Point2/3` is *geometry's*
+  concept — an element of the nonlinear locus, not a linear object — so its
+  alias lives in `geometry/types.ts`, produced by `normalize` (the stamper),
+  with wall constructors and `applyDual` stamping covectors.
+
+**Translation table** (from the call-site grep: 16 src + 5 test files):
+`a.clone().multiplyScalar(s)` → `scale(a,s)`; `.addScaledVector` →
+`addScaled(a,b,s)`; `.add/.sub/.dot` → `add/sub/dot(a,b)`;
+`.length/.lengthSq` → `norm/normSq` (Euclidean render/chart norms; ambient
+J-forms stay in `geometry.form`); `new Vector3` / `Matrix3().set` →
+`vec3(…)` / `mat3(rows)`; `.applyMatrix3/4` → `applyToVector(M,v)` on
+vectors, `applyToCovector(M,c)` (= c·M) on covectors — the two actions are
+different, per limit-sets `verify.ts`, and wall transport is
+`applyToCovector(matInverse(g), c)`;
+`.invert/.transpose` → `matInverse/matTranspose`; `crossVectors` →
+`cross(a,b)` (the 4D triple cross moves into `math/` from the polytope
+engine); `.toArray/.getComponent(i)` → the array itself / `v[i]`.
+
+**Increments** (each ends `typecheck` + `test` green; checkpoint between):
+
+- **I1 — the layer** (purely additive): `vec.ts`, `mat.ts`, kernel tests
+  (inverse·M = I, transpose involution, cross/tripleCross orthogonality,
+  outer-product identity), README update.
+- **I2 — the sweep**: capture `solvePolygon` snapshots (walls, gram,
+  inradius, vertices; all three geometries) *before*, then migrate
+  geometry → models → polytope → coxeter → tests in one mechanical pass
+  guided by the table; snapshots must match to 1e-12. One increment, not
+  per-layer shims: the types thread through every generic signature, and
+  temporary adapters would cost more review than they de-risk.
+- **I3 — enforcement + docs**: permanent test failing on any `from 'three'`
+  under `src/`; README/PLAN/CLAUDE updates. `three` stays in package.json
+  (demos/hello now, render3d later).
+
+**Acceptance:** all green; zero three.js imports in `src/` (enforced);
+snapshots ≤ 1e-12; READMEs agree with code.
+
 ### 5.3 The visualization architecture — DECIDED: two separate systems
 
 **(Decided 2026-07-04, after the rejected R1 attempt.)** Visualization is
@@ -301,12 +368,11 @@ this 2D/3D boundary.
 
 **Questions the 2D system's plan must settle** (first session's agenda):
 
-- **The "no three.js" boundary.** The math core (geometry/models/polytope/
-  coxeter) currently uses three.js `Vector3`/`Matrix3` as plain linear-
-  algebra types — no renderer, no WebGL. Does "no three.js" mean only "no
-  three.js *rendering*" (core types stay), or must the 2D system's inputs be
-  plain arrays/numbers (an adapter at the model boundary)? Settle this
-  FIRST; everything else depends on it.
+- **The "no three.js" boundary — RESOLVED by Phase 1b (§5.2b).** The core
+  now owns its linear algebra (flat `Float64Array` vectors/covectors/
+  matrices); nothing under `src/` imports three.js, and a permanent test
+  enforces it. "No three.js in the 2D system" is literal: its inputs are
+  the core's own types, no adapter needed.
 - Rendering target: SVG (crisp, vector-exportable, DOM events, slower for
   thousands of tiles) vs Canvas2D (fast, raster) vs both behind one scene
   description. Note the eventual product exports self-contained HTML — SVG
@@ -369,3 +435,8 @@ tile/Cayley coloring by word lists).
   the dependencies).
 - **Names**: repo, pip package, JS import (candidates: coxeter-viz, wythoff,
   kaleidoscope — check availability).
+- **Branded (compiler-enforced) Point/Covector types**: proposed by Claude
+  mid-conversation during Phase 1b planning; no precedent in the user's
+  repos; parked, default OUT. The Phase 1b aliases already mark the duality
+  at every signature; if enforcement is ever wanted, alias → brand is a
+  small mechanical upgrade evaluated on its own.

@@ -1,14 +1,13 @@
 /**
- * Phase 0 smoke test: proves the vitest + TS + three.js wiring. Replaced by
- * real behavior tests in Phase 1.
+ * Phase 0 smoke test: proves the vitest + TS wiring against the math layer.
+ * (Originally exercised three.js; the core no longer imports it — §5.2b.)
  */
 
 import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
+import { norm, vec3 } from '@/math/vec';
 
 describe('toolchain smoke', () => {
-  it('resolves three.js and does arithmetic', () => {
-    const v = new Vector3(1, 2, 2);
-    expect(v.length()).toBeCloseTo(3, 12);
+  it('resolves the math layer and does arithmetic', () => {
+    expect(norm(vec3(1, 2, 2))).toBeCloseTo(3, 12);
   });
 });

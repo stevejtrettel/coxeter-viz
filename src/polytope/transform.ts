@@ -1,19 +1,21 @@
+import type { Vec } from '@/math/vec';
 import { Hyperplane } from '@/geometry/Hyperplane';
-import type { Geometry, Vec } from '@/geometry/types';
+import type { Geometry } from '@/geometry/types';
 import { Polytope } from './Polytope';
 
 /**
  * The image g(P) of a polytope under an isometry. The face lattice is
  * invariant, so nothing is re-hulled: vertices map covariantly (v ↦ g·v,
  * re-normalized against float drift) and wall covectors CONTRAvariantly
- * (c ↦ (g⁻¹)ᵀc via geometry.applyDual), which keeps side values equivariant
- * — the transported wall bounds the transported polytope exactly. O(V+F).
+ * (c ↦ c·g⁻¹ via geometry.applyDual — the covector action), which keeps side
+ * values equivariant — the transported wall bounds the transported polytope
+ * exactly. O(V+F).
  *
  * A reflection reverses orientation, so face loops come back wound the other
  * way; nothing downstream currently depends on winding (revisit if outward
  * orientation starts to matter).
  */
-export function transformPolytope<P extends Vec<P>, I>(
+export function transformPolytope<P extends Vec, I>(
   poly: Polytope<P>,
   geom: Geometry<P, I>,
   g: I,

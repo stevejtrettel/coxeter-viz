@@ -1,9 +1,36 @@
-# `math/` — generic numerics
+# `math/` — generic numerics and the linear-algebra layer
 
-Dimension- and geometry-agnostic numerical linear algebra on plain
-`number[][]` matrices. Nothing in this folder knows about geometry, three.js,
-or Coxeter groups; everything below `src/` may depend on it, it depends on
-nothing.
+Dimension- and geometry-agnostic numerics. Nothing in this folder knows about
+geometry, rendering, or Coxeter groups; everything under `src/` may depend on
+it, it depends on nothing (three.js included — this repo's core has no
+three.js; see PLAN.md §5.2b).
+
+## `vec.ts` / `mat.ts` — the ambient linear algebra
+
+Vectors in R³/R⁴ and 3×3/4×4 matrices as flat `Float64Array`s (matrices
+row-major, dimension inferred from length so one kernel serves both sizes),
+operated on by **immutable free functions**: `add`, `scale`, `addScaled`,
+`dot`, `cross` (R³), `tripleCross` (R⁴, the orthogonal complement of three
+vectors — the polytope vertex solve), `matMul`, `matVec`, `matTranspose`,
+`matInverse` (Gauss–Jordan, partial pivoting), `outer` (u vᵀ — the reflection
+formula's building block). Readable constructors `vec3/vec4/mat3/mat4` take
+rows; everything downstream consumes the flat form. Coordinate 0 is the
+distinguished (time-first / affine) coordinate: `v[0]` is p₀. The type
+aliases are documentation — TypeScript is structural — and the sign
+conventions are fixed by `dot(cross(a,b), x) = det[x;a;b]` and
+`dot(tripleCross(a,b,c), x) = det[x;a;b;c]`.
+
+**Vectors and covectors are the two fundamental types, and both live here**
+(`Vec3/4`, `Covec3/4`): the two sides of the *linear* duality V / V*, paired
+by `dot`, with **matrices acting on them differently** — `applyToVector(M,v)
+= M·v` and `applyToCovector(M,c) = c·M` (the pair settled in limit-sets
+`verify.ts`; transporting a wall by c ↦ c·g⁻¹ is what keeps half-space
+membership isometry-invariant). A **point** does not live here: it is an
+element of a geometry's nonlinear locus, a geometric concept; `Point2/3` is
+aliased in `geometry/`, produced by `normalize`.
+
+`dot`/`norm`/`normSq` here are the plain **Euclidean coordinate** operations
+(chart/render-space lengths); the ambient J-forms live in `geometry/`.
 
 ## `symmetricEig.ts`
 

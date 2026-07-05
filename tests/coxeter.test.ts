@@ -98,8 +98,8 @@ describe('the inscribed-circle solver', () => {
     const r = solvePolygon(polygonSpec('euclidean', [2, 2, 2, 2]));
     expect(r.chamber.vertices).toHaveLength(4);
     for (const v of r.chamber.vertices) {
-      expect(Math.abs(v.y)).toBeCloseTo(1, 9);
-      expect(Math.abs(v.z)).toBeCloseTo(1, 9);
+      expect(Math.abs(v[1])).toBeCloseTo(1, 9);
+      expect(Math.abs(v[2])).toBeCloseTo(1, 9);
     }
     for (const [a, b] of r.chamber.edges) {
       expect(r.geom.distance(r.chamber.vertices[a], r.chamber.vertices[b])).toBeCloseTo(2, 9);

@@ -9,16 +9,19 @@ orders of pairwise products — into geometric realizations of the group in the
 three constant-curvature geometries (S/E/H, dimensions 2 & 3), and everything
 downstream: tessellations, Cayley graphs, word-list images, hulls,
 areas/volumes, rendered through swappable coordinate models. TypeScript +
-three.js + Vite; a thin Python package drives it through a pure
-group-theoretic seam.
+Vite, with our own linear algebra in the core (three.js appears only in
+demos and the future 3D render layer — enforced by a test); a thin Python
+package drives it through a pure group-theoretic seam.
 
 The user is a mathematician (professor). Correctness and clean,
 close-to-the-math abstractions matter more than feature count.
 
-## Status: Phase 3a complete (2D solvers). Next: the 2D visualization system — plan first, no code (see PLAN.md §5.3: visualization is TWO separate systems, 2D without three.js and 3D with three.js; the first three.js-based attempt was rejected and deleted).
+## Status: Phases 3a (2D solvers) and 1b (own linear algebra — PLAN.md §5.2b, retrofit 2026-07-04: three.js is out of src/, replaced by our flat Float64Array layer) complete. Next: the 2D visualization system — plan first, no code (see PLAN.md §5.3: visualization is TWO separate systems, 2D without three.js and 3D with three.js; the first three.js-based attempt was rejected and deleted).
 
 `PLAN.md` is the working plan, edited collaboratively. In place: the
-toolchain (see Commands) and the geometry substrate — `src/math/` (Jacobi
+toolchain (see Commands) and the geometry substrate — `src/math/` (the
+linear layer: `Vec`/`Covec` with the two matrix actions `applyToVector` /
+`applyToCovector`, flat row-major matrices; plus the Jacobi
 eigensolver, linear solve), `src/geometry/` (the six cells S/E/H × 2D/3D
 behind one `Geometry<P,I>`, walls as covectors with the uniform reflection
 I − 2(Jc)cᵀ), `src/models/` (straight + conformal charts per geometry,

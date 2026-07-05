@@ -1,4 +1,6 @@
-import { Matrix3, Vector3 } from 'three';
+import { vec3, type Vec3 } from '@/math/vec';
+import { identity, type Mat3 } from '@/math/mat';
+import type { Point2 } from '@/geometry/types';
 import type { Domain, Model } from './types';
 
 /**
@@ -8,23 +10,23 @@ import type { Domain, Model } from './types';
  * (0,0,1). Isometric ⇒ scale 1, identity jacobian.
  */
 
-export class Globe2 implements Model<Vector3> {
+export class Globe2 implements Model<Point2> {
   readonly name = 'globe';
   readonly kind = 'spherical' as const;
   readonly renderDim = 3 as const;
   readonly domain: Domain = { kind: 'sphere', radius: 1 };
   readonly straight = false;
 
-  project(p: Vector3): Vector3 {
-    return new Vector3(p.y, p.z, p.x);
+  project(p: Point2): Vec3 {
+    return vec3(p[1], p[2], p[0]);
   }
-  unproject(x: Vector3): Vector3 {
-    return new Vector3(x.z, x.x, x.y);
+  unproject(x: Vec3): Point2 {
+    return vec3(x[2], x[0], x[1]);
   }
   scaleAt(): number {
     return 1;
   }
-  jacobianAt(): Matrix3 {
-    return new Matrix3();
+  jacobianAt(): Mat3 {
+    return identity(3);
   }
 }

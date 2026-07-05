@@ -1,5 +1,4 @@
-import { Matrix3, Vector3 } from 'three';
-import type { Geometry, GeometryKind } from '@/geometry/types';
+import type { Geometry, GeometryKind, Isometry2, Point2 } from '@/geometry/types';
 import { Hyperplane } from '@/geometry/Hyperplane';
 import { Spherical2 } from '@/geometry/Spherical';
 import { Euclidean2 } from '@/geometry/Euclidean';
@@ -18,11 +17,11 @@ import { buildInscribedPolygon } from './polygon';
 export interface RealizedPolygon {
   spec: RealizationSpec;
   geometry: GeometryKind;
-  geom: Geometry<Vector3, Matrix3>;
+  geom: Geometry<Point2, Isometry2>;
   /** Walls by generator index; the chamber is { side ≤ 0 for all }. */
-  walls: Hyperplane<Vector3>[];
+  walls: Hyperplane[];
   /** The chamber, built and verified by the polytope engine. */
-  chamber: Polytope<Vector3>;
+  chamber: Polytope<Point2>;
   /** Byproduct: ⟨nᵢ,nⱼ⟩ by generator index (E: wall directions only). */
   gram: number[][];
   /** The incenter is the origin; this is its distance to every wall (E: 1). */
@@ -31,7 +30,7 @@ export interface RealizedPolygon {
 }
 
 /** The 2D geometry instance for a kind (shared with the group layer). */
-export function makeGeometry2(kind: GeometryKind): Geometry<Vector3, Matrix3> {
+export function makeGeometry2(kind: GeometryKind): Geometry<Point2, Isometry2> {
   switch (kind) {
     case 'spherical':
       return new Spherical2();

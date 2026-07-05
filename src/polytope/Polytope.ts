@@ -1,5 +1,4 @@
 import type { Hyperplane } from '@/geometry/Hyperplane';
-import type { Vec } from '@/geometry/types';
 
 /**
  * Where a vertex lives relative to the geometry. v1 builds only 'finite'
@@ -25,7 +24,7 @@ export interface PolytopeFace {
  * vertices are cyclically ordered, edges are consecutive pairs, `faces` is
  * empty. Model-free: draw it through any chart.
  */
-export class Polytope<P extends Vec<P>> {
+export class Polytope<P> {
   readonly dim: 2 | 3;
   /** Canonical vertices on the point locus (cyclically ordered in 2D). */
   readonly vertices: P[];
@@ -35,7 +34,7 @@ export class Polytope<P extends Vec<P>> {
   /** 2-faces (empty in 2D). */
   readonly faces: PolytopeFace[];
   /** The bounding walls; the polytope is { p : side(p) ≤ 0 for all walls }. */
-  readonly facets: Hyperplane<P>[];
+  readonly facets: Hyperplane[];
 
   constructor(
     dim: 2 | 3,
@@ -43,7 +42,7 @@ export class Polytope<P extends Vec<P>> {
     vertexKind: VertexKind[],
     edges: [number, number][],
     faces: PolytopeFace[],
-    facets: Hyperplane<P>[],
+    facets: Hyperplane[],
   ) {
     this.dim = dim;
     this.vertices = vertices;
