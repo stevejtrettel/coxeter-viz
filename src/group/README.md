@@ -119,10 +119,43 @@ depths; the Tits/ShortLex automaton is the parked correct answer (PLAN.md
 
 **Depth policy is camera-free**: `maxWord` bounds word length, `maxCount`
 caps the element count (a hard stop — hitting it may truncate the last
-shell mid-depth). No geometric cutoff: tiles are isometric copies of F, so
-nothing intrinsic shrinks — only chart images do — and the camera-dependent
-cut lives where the camera lives (render2d culls sub-pixel items per
-frame). Generate generously; the renderer culls.
+shell mid-depth). No chart-dependent cutoff: tiles are isometric copies of
+F, so nothing intrinsic shrinks — only chart images do — and the
+camera-dependent cut lives where the camera lives (viz2d/render culls
+sub-pixel items per frame). Generate generously; the renderer culls.
+
+**The metric bound (§5.6 T6)**: word length is the wrong unit for "how much
+of the plane" — the exchange rate between letters and distance is
+group-dependent (a right-angled pentagon's fat chamber reaches a given
+intrinsic radius in far fewer letters than (2,3,7)'s sliver). So `orbit`
+accepts an optional `admit(element)` predicate — children failing it are
+not enqueued and not marked seen (they may be re-proposed by other paths
+and re-rejected; bounded, since admit is deterministic) — and the class
+adds `tessellateBall(radius, maxCount?)`, which prunes at
+`d(g·x₀, x₀) ≤ radius + diam(F)`. The layering stays camera-free: the
+radius is an INTRINSIC length; converting a camera/chart/pixel-threshold
+into one is the consumer's business (the tiling shader's vector twin does
+this in `coverageRadius`).
+
+*Correctness of the prune.* Pruned BFS returns exactly the admitted
+elements reachable through admitted paths, so completeness needs the
+admitted set to be connected in the LEFT Cayley graph (our BFS composes
+generators on the left). Argument: `h ↦ h⁻¹` is an isomorphism from the
+left graph to the right graph and preserves the ball, since
+`d(h⁻¹x₀, x₀) = d(x₀, h·x₀)`. In the right graph, steps are chamber
+adjacencies (the tessellation's dual), and for any `g` with
+`d(g·x₀, x₀) ≤ R` the chambers crossed by the geodesic segment
+`[x₀, g·x₀]` form a gallery from F to gF whose every chamber contains a
+point of the segment — hence has base point within `R + diam(F)`. So the
+ball with the `diam(F)` margin is right-connected, therefore
+left-connected, and the pruned BFS reaches every element with
+`d(g·x₀, x₀) ≤ R`. The margin is TRAVERSAL-INTERNAL: the result filters
+back to `R` (in H the margin shell is exponentially the majority of the
+walked set — returning it would triple the output). One caveat: BFS words are shortest *within the
+pruned graph* and may exceed the true length when every geodesic word
+exits the ball; they remain valid words with the correct length PARITY
+(any word for g has length ≡ sign character mod 2), which is all
+downstream identity and parity coloring use.
 
 ## The group (`CoxeterGroup.ts`)
 
@@ -137,6 +170,14 @@ Milestone 2 adds the 3D factory.
 - `tessellate(maxWord, maxCount?)` — a **tile** per orbit element:
   `{ word, element, polytope }`, the chamber carried by `transformPolytope`
   (face lattice invariant, walls transported contravariantly).
+- `chamberDiameter()` — the chamber's intrinsic diameter (max pairwise
+  vertex distance; F compact) — the traversal margin of the metric ball.
+- `orbitBall(radius, maxCount?)` — exactly the ELEMENTS whose base-point
+  images lie within the INTRINSIC radius, by the pruned BFS above
+  (traversal margin internal); group-independent coverage where `maxWord`
+  is not.
+- `tessellateBall(radius, maxCount?)` — `orbitBall` with the chamber
+  carried: one tile per ball element.
 - `neighbor(tile, i)` — the adjacent tile across wall i's image, as above.
 - `cayleyGraph(maxWord, maxCount?)` — the combinatorial graph, below.
 
@@ -145,6 +186,41 @@ separators and the empty word as `"e"`: `wordId([0,1,2]) = "0.1.2"`,
 `wordId([]) = "e"`. Downstream scene ids build on it — `tile:<word>`,
 `cay:<word>`, `cayedge:<word>:<i>` — but constructing those strings is the
 consumer's business; this layer provides only `wordId`.
+
+## Uniform tilings (`wythoff.ts`) — §5.7 C3
+
+The Wythoff construction over a realized TRIANGLE (simplex chambers only —
+the seed solve needs exactly as many walls as ambient dimensions; n-gon
+chambers throw). Conventions re-derived from the parent
+(hyperbolic-polytopes `src/coxeter/wythoff.ts` as reference):
+
+- **The seed** (`wythoffPoint(poly, rings)`): the ringed-node convention —
+  `rings[i]` true means the seed lies OFF mirror i at unit "depth", false
+  means ON it. In our covector vocabulary that is the plain 3×3 linear
+  system `cᵢ·p = tᵢ` with `tᵢ = −1` (ringed) or `0` (unringed), solved
+  directly in ambient coordinates — κ-uniform, no Gram inversion, since
+  the pairing is coordinate pairing in every geometry. Sign-fixed to the
+  upper sheet / p₀ > 0, then `geom.normalize`. Equal targets ⇒ equal
+  perpendicular depths ⇒ the UNIFORM edge lengths of the ringed mirrors
+  (normalization rescales all targets together, so only the ratios — and
+  hence uniformity — matter). At least one ring required (all-unringed
+  pins the seed to the triple intersection, which is empty).
+- **Base faces**: one candidate per decorated wall pair (i, j) — in a
+  triangle those are exactly the maximal parabolics W_{ij}, the vertex
+  dihedrals, enumerated by `subgroup([Rᵢ, Rⱼ])` (finite, order 2m). The
+  face is the geodesic hull (`fromVertices2`) of the seed's dihedral
+  orbit; orbits with < 3 distinct points (the seed fixed by the dihedral —
+  both walls unringed) are DEGENERATE and skipped.
+- **The tiling** (`uniformCells(group, poly, rings, radius, maxCount?)`):
+  base faces carried over `orbitBall(radius)` by `transformPolytope`,
+  deduplicated by the quantized centroid (normalize of the vertex sum),
+  returning `{ type, polytope }[]` with `type` = the wall-pair index — the
+  face-type coloring key.
+
+Pinned exactly on (2,3,5): all rings (the omnitruncation) gives 30
+squares + 20 hexagons + 12 decagons (62 faces; V−E+F = 120−180+62 = 2);
+rings (1,0,0) collapses two face types and yields the 12 pentagons of the
+dodecahedron; ringed edges all share one intrinsic length.
 
 ## The Cayley graph (`cayley.ts`)
 
@@ -156,7 +232,7 @@ induced subgraph). It is the dual graph of the tessellation: one node per
 tile, one edge per shared wall image.
 
 Geometric placement is immediate *downstream*: node g sits at g·basePoint,
-edges are geodesics between node points. Conversion to render2d Scene items
+edges are geodesics between node points. Conversion to viz2d/render Scene items
 lives in the Milestone-1 demo (promotable to an adapter module if demos
 repeat themselves); there is no `CayleyGraphView` equivalent here.
 

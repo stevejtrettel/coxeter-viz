@@ -2,8 +2,8 @@ import { vec3, type Vec3 } from '@/math/vec';
 import type { Mat3 } from '@/math/mat';
 import type { Point2 } from '@/geometry/types';
 import { Spherical2 } from '@/geometry/Spherical';
-import { tangentFrame, type Chart2 } from '@/render2d/sample';
-import type { ScreenUnprojector } from '@/render2d/interact';
+import { tangentFrame, type Chart2 } from '@/viz2d/render/sample';
+import type { ScreenUnprojector } from '@/viz2d/render/interact';
 
 /**
  * The perspective projection of S² and its ribbon jacobian (see README).

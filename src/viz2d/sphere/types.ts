@@ -1,4 +1,4 @@
-import type { Camera, FillStyle } from '@/render2d/types';
+import type { Camera, FillStyle } from '@/viz2d/render/types';
 
 /**
  * The sphere view's vocabulary (see README, the spec). Everything else —

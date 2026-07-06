@@ -1,9 +1,18 @@
 import type { GeometryKind, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
 import type { RealizedPolygon } from '@/coxeter/solve';
-import type { Camera } from '@/render2d/types';
+import type { Camera } from '@/viz2d/render/types';
 import type { TilingStyle } from './types';
-import { chartId, edgeThreshold, kappaOf, packVec3s, vertexThreshold } from './uniforms';
+import {
+  chartId,
+  edgeThreshold,
+  footOnWall,
+  geodesicThrough,
+  kappaOf,
+  packVec3s,
+  regionSignRows,
+  vertexThreshold,
+} from './uniforms';
 import { DEFAULT_MAX_FOLDS, FRAG_SRC, MAX_VERTS, MAX_WALLS, VERT_SRC } from './shader';
 
 /**
@@ -101,6 +110,54 @@ export class TilingShader {
     gl.uniform4f(u('uColorEdge'), ...style.edge);
     gl.uniform4f(u('uColorVertex'), ...style.vertex);
     gl.uniform1i(u('uMaxFolds'), style.maxFolds ?? DEFAULT_MAX_FOLDS);
+
+    // ── Field programs (README §5.8) ──
+    const geom = poly.geom;
+    gl.uniform1i(u('uMode'), style.coset ? 1 : style.regions ? 2 : 0);
+    const cAnchor = style.coset?.anchor ?? geom.origin();
+    gl.uniform3f(u('uCosetAnchor'), cAnchor[0], cAnchor[1], cAnchor[2]);
+    gl.uniform2f(u('uCosetSL'), style.coset?.saturation ?? 0.55, style.coset?.lightness ?? 0.78);
+
+    const star = style.star;
+    const bands = (star?.bands ?? []).filter(
+      (b) => Math.abs(poly.walls[b.wall].side(star!.anchor)) > 1e-9, // anchor on the wall ⇒ no band
+    );
+    gl.uniform1i(u('uNStar'), bands.length);
+    if (star && bands.length > 0) {
+      const lines = bands.map((b) =>
+        geodesicThrough(geom, star.anchor, footOnWall(geom, star.anchor, poly.walls[b.wall])),
+      );
+      gl.uniform3fv(u('uStarLine'), packVec3s(lines, MAX_WALLS));
+      gl.uniform3fv(
+        u('uStarWallC'),
+        packVec3s(bands.map((b) => poly.walls[b.wall].covector), MAX_WALLS),
+      );
+      const mins = new Float32Array(MAX_WALLS);
+      bands.forEach((b, k) => (mins[k] = poly.walls[b.wall].side(star.anchor)));
+      gl.uniform1fv(u('uStarMin'), mins);
+      const colors = new Float32Array(4 * MAX_WALLS);
+      bands.forEach((b, k) => colors.set(b.color, 4 * k));
+      gl.uniform4fv(u('uStarColor'), colors);
+      gl.uniform1f(u('uStarSin'), edgeThreshold(kappa, star.halfWidth));
+    }
+    const nodeP = star?.anchor ?? geom.origin();
+    gl.uniform3f(u('uNodeP'), nodeP[0], nodeP[1], nodeP[2]);
+    gl.uniform4f(u('uNodeColor'), ...(star?.node?.color ?? ([0, 0, 0, 0] as const)));
+    gl.uniform1f(u('uNodeQ'), star?.node ? vertexThreshold(kappa, star.node.radius) : 0);
+
+    if (style.regions) {
+      const { split, rows } = regionSignRows(poly, style.regions.seed);
+      gl.uniform3fv(u('uSplit'), packVec3s(split, 3));
+      const signs = new Float32Array(9);
+      const colors = new Float32Array(12);
+      rows.forEach((row, r) => {
+        if (!row) return; // degenerate face: transparent, all-signs-fail via alpha
+        signs.set(row, 3 * r);
+        colors.set(style.regions!.colors[r] ?? [0, 0, 0, 0], 4 * r);
+      });
+      gl.uniform3fv(u('uRegionSigns'), signs);
+      gl.uniform4fv(u('uRegionColor'), colors);
+    }
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);

@@ -30,6 +30,14 @@ export interface OrbitElement<I> {
  * it — shortest, ties broken by generator order. `maxCount` is a hard stop
  * (the last shell may come back truncated mid-depth).
  *
+ * `admit` (optional) prunes: children failing it are not enqueued and NOT
+ * marked seen — another path may re-propose them and the deterministic
+ * admit re-rejects. The result is the admitted elements reachable through
+ * admitted paths; completeness over a target set is the CALLER's argument
+ * (for metric balls: the README's convexity-margin argument). Under
+ * pruning, words are shortest within the pruned graph — possibly longer
+ * than the true length, always parity-correct.
+ *
  * Appending a letter i to a word applies R_i LAST, so the child of g is
  * compose(generators[i], g) — the new generator on the LEFT (README, "Words
  * and composition").
@@ -39,6 +47,7 @@ export function orbit<I>(
   generators: I[],
   maxWord: number,
   maxCount = 5000,
+  admit?: (element: I) => boolean,
 ): OrbitElement<I>[] {
   const id: OrbitElement<I> = { word: [], element: ops.identity() };
   const seen = new Map<string, OrbitElement<I>>([[ops.key(id.element), id]]);
@@ -51,6 +60,7 @@ export function orbit<I>(
         const h = ops.compose(generators[i], e.element);
         const k = ops.key(h);
         if (seen.has(k)) continue;
+        if (admit && !admit(h)) continue;
         const child: OrbitElement<I> = { word: [...e.word, i], element: h };
         seen.set(k, child);
         next.push(child);

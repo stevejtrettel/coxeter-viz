@@ -19,15 +19,16 @@ import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
 import { groupFromPolygon, wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
 import { hullOfTiles, hullOfWords } from '@/group/wordlists';
 import { polygonArea } from '@/polytope/measure';
-import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/render2d/types';
-import { buildPathList } from '@/render2d/scene';
-import { paint } from '@/render2d/canvas';
-import { toSvg } from '@/render2d/svg';
-import { attachInteraction, hitTest, modelUnprojector } from '@/render2d/interact';
-import { renderPng, sceneLayer, type RasterLayer } from '@/render2d/png';
-import { TilingShader } from '@/tilingshader/TilingShader';
-import { tilingLayer } from '@/tilingshader/layer';
-import type { TilingStyle } from '@/tilingshader/types';
+import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/viz2d/render/types';
+import { buildPathList } from '@/viz2d/render/scene';
+import { paint } from '@/viz2d/render/canvas';
+import { toSvg } from '@/viz2d/render/svg';
+import { attachInteraction, hitTest, modelUnprojector } from '@/viz2d/render/interact';
+import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
+import { TilingShader } from '@/viz2d/shader/TilingShader';
+import { tilingLayer } from '@/viz2d/shader/layer';
+import { coverageRadius, fieldScene, mergeFieldPaths } from '@/viz2d/shader/vector';
+import type { TilingStyle } from '@/viz2d/shader/types';
 // The example ships with the demo and auto-loads through the SAME parser a
 // picked file goes through.
 import exampleRaw from './example-words.json?raw';
@@ -38,6 +39,15 @@ const TILE_ODD = '#ffffff';
 const HOVER_COLOR = '#ffb454';
 /** CPU ambient background tessellation depth per geometry (GPU field off). */
 const BG_DEPTH: Record<GeometryKind, number> = { hyperbolic: 12, euclidean: 12, spherical: 20 };
+/**
+ * SVG-twin coverage is ADAPTIVE (§5.6 T6): `coverageRadius` turns the
+ * current camera + chart + this pixel threshold into an intrinsic radius,
+ * and `tessellateBall` enumerates exactly that — the same visual
+ * completeness for every (p,q,r), no per-group depth. ε = minimum tile
+ * width in px to include; the size/reach dial (1.5 ≈ a few hundred KB for
+ * (2,3,7) at the default view).
+ */
+const EXPORT_EPSILON_PX = 1.5;
 
 /**
  * The GPU field's ambience (§5.6 T4): quiet parity in the house cream/white,
@@ -128,15 +138,21 @@ function realize(
     kind === 'hyperbolic' ? new Poincare2() : kind === 'euclidean' ? new Cartesian2() : new Stereographic2();
 
   const tiles = group.tilesFor(words);
+  // The GPU field replaces the CPU domain FILL and the depth-capped ambient
+  // tessellation (§5.6: identity is the knife — the anonymous group moves to
+  // the shader, unlimited depth); the rim stays as chrome. With the field
+  // off, the original CPU ambience is drawn as before.
   const scene: Scene = [
     {
       id: 'domain',
       kind: 'domain',
-      style: { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
+      style: gpuField
+        ? { rim: { color: '#bbbbbb', widthPx: 1.25 } }
+        : { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
     },
     // The ambient tessellation, faint — the word list reads as a HIGHLIGHTED
     // PATCH within the tiling, not as tiles floating in space.
-    ...group.tessellate(BG_DEPTH[kind], 20000).map((t) => ({
+    ...(gpuField ? [] : group.tessellate(BG_DEPTH[kind], 20000)).map((t) => ({
       id: `bg:${wordId(t.word)}`,
       kind: 'polygon' as const,
       vertices: t.polytope.vertices,
@@ -194,6 +210,7 @@ function realize(
   return {
     kind,
     group,
+    poly: realized,
     model,
     tiles,
     scene,
@@ -241,18 +258,49 @@ const hullToggle = (label: string, checked: boolean): HTMLInputElement => {
   controls.appendChild(wrap);
   return box;
 };
-controls.append(ordersInput, fileInput, sampleBtn, saveBtn);
+const pngBtn = document.createElement('button');
+pngBtn.textContent = 'PNG';
+pngBtn.style.cssText = sampleBtn.style.cssText;
+const kSelect = document.createElement('select');
+kSelect.style.cssText = 'font-size:12px;padding:2px;border:1px solid #ccc;border-radius:3px;background:#fff';
+for (const k of [1, 2, 4, 8]) {
+  const opt = document.createElement('option');
+  opt.value = String(k);
+  opt.textContent = `${k}×`;
+  kSelect.appendChild(opt);
+}
+kSelect.value = '2';
+const pxLabel = document.createElement('span');
+pxLabel.style.cssText = 'font-size:11px;color:#999';
+controls.append(ordersInput, fileInput, sampleBtn, saveBtn, pngBtn, kSelect, pxLabel);
 const hullCentersBox = hullToggle('hull of centers', true);
 const hullTilesBox = hullToggle('hull of tiles', true);
+const gpuBox = hullToggle('GPU field', true);
 controls.appendChild(status);
 document.body.appendChild(controls);
 
+// The layer stack (§5.6 T4): the GPU field UNDER the transparent Canvas2D
+// that carries every named element; one controller on the top canvas.
+const stack = document.createElement('div');
+stack.style.cssText = 'position:relative;background:#fff;border-radius:4px';
+const glCanvas = document.createElement('canvas');
+glCanvas.style.cssText = 'position:absolute;inset:0';
 const canvas = document.createElement('canvas');
-document.body.appendChild(canvas);
+canvas.style.cssText = 'position:absolute;inset:0';
+stack.append(glCanvas, canvas);
+document.body.appendChild(stack);
+const shader = new TilingShader(glCanvas);
+
+let currentSize = 0;
+/** The k-selector's price tag: exact export dimensions + megapixels. */
+function updatePxLabel(): void {
+  const d = Math.round(currentSize * Number(kSelect.value));
+  pxLabel.textContent = currentSize ? `${d} × ${d} px (${((d * d) / 1e6).toFixed(1)} MP)` : '';
+}
 
 // The ball of (2,3,7) words to depth 6 — an alternative built-in list.
 function sampleWords(): number[][] {
-  const g = realize([2, 3, 7], [], { centers: false, tiles: false }).group;
+  const g = realize([2, 3, 7], [], { centers: false, tiles: false }, true).group;
   return g.orbit(6).map((e) => e.word);
 }
 
@@ -266,10 +314,12 @@ function rebuild(): void {
     if (nums.length !== 3 || nums.some((n) => !Number.isInteger(n) || n < 2)) {
       throw new Error('orders must be three integers ≥ 2');
     }
-    state = realize(nums as [number, number, number], currentWords, {
-      centers: hullCentersBox.checked,
-      tiles: hullTilesBox.checked,
-    });
+    state = realize(
+      nums as [number, number, number],
+      currentWords,
+      { centers: hullCentersBox.checked, tiles: hullTilesBox.checked },
+      gpuBox.checked,
+    );
   } catch (err) {
     status.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
     return;
@@ -286,12 +336,24 @@ function rebuild(): void {
     Math.min(760, window.innerWidth - 2 * PAD, window.innerHeight - 2 * PAD - headH),
   );
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = size * dpr;
-  canvas.height = size * dpr;
-  canvas.style.cssText = `width:${size}px;height:${size}px;background:#fff;border-radius:4px`;
+  for (const c of [glCanvas, canvas]) {
+    c.width = size * dpr;
+    c.height = size * dpr;
+    c.style.width = `${size}px`;
+    c.style.height = `${size}px`;
+  }
+  stack.style.width = `${size}px`;
+  stack.style.height = `${size}px`;
+  glCanvas.style.display = gpuBox.checked ? 'block' : 'none';
   const g = canvas.getContext('2d');
   if (!g) return;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (gpuBox.checked) {
+    shader.setPolygon(state.poly);
+    shader.setChart(state.model);
+  }
+  currentSize = size;
+  updatePxLabel();
 
   // Camera: disk charts frame the domain; plane charts fit the tiles.
   let scalePx: number;
@@ -324,6 +386,12 @@ function rebuild(): void {
       ctx(hovered ? new Map([[hovered, { fill: { color: HOVER_COLOR, opacity: 0.95 } }]]) : undefined),
     );
   const draw = (): void => {
+    if (gpuBox.checked) {
+      shader.draw(
+        { view: camera.view, scalePx: camera.scalePx * dpr, centerPx: [camera.centerPx[0] * dpr, camera.centerPx[1] * dpr] },
+        fieldStyle(state.r0),
+      );
+    }
     g.clearRect(0, 0, size, size);
     paint(g, build(), camera);
   };
@@ -338,14 +406,42 @@ function rebuild(): void {
   };
 
   draw();
+  // SVG: with the field on, prepend its VECTOR TWIN (tilingshader/vector.ts)
+  // so the export shows the tiling the shader shows — same TilingStyle,
+  // conventions matched (exact for spherical; ball-truncated in E/H).
   saveBtn.onclick = () => {
+    const frame = { widthPx: size, heightPx: size };
+    const radius = coverageRadius(state.group, state.model, camera, frame, EXPORT_EPSILON_PX);
+    const exportScene = gpuBox.checked
+      ? [...fieldScene(state.group, fieldStyle(state.r0), { radius }, 20000), ...state.scene]
+      : state.scene;
+    const paths = mergeFieldPaths(buildPathList(exportScene, ctx()));
     const a = document.createElement('a');
     a.href = URL.createObjectURL(
-      new Blob([toSvg(build(), camera, { widthPx: size, heightPx: size })], { type: 'image/svg+xml' }),
+      new Blob([toSvg(paths, camera, { widthPx: size, heightPx: size })], { type: 'image/svg+xml' }),
     );
     a.download = `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}.svg`;
     a.click();
     URL.revokeObjectURL(a.href);
+  };
+  // PNG: the k× compositor (render2d/png.ts) — the GPU field re-evaluates
+  // per pixel, the vector layer re-samples; SVG above stays vector-only.
+  pngBtn.onclick = () => {
+    const k = Number(kSelect.value);
+    const layers: RasterLayer[] = [];
+    if (gpuBox.checked) layers.push(tilingLayer(state.poly, state.model, fieldStyle(state.r0)));
+    layers.push(sceneLayer(state.scene, state.group.geom, state.model));
+    void renderPng(layers, camera, { widthPx: size, heightPx: size }, k, '#ffffff')
+      .then((blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}-${k}x.png`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch((err: unknown) => {
+        status.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
+      });
   };
   detach?.();
   const handle = attachInteraction(canvas, {
@@ -385,6 +481,8 @@ sampleBtn.addEventListener('click', () => {
 ordersInput.addEventListener('change', rebuild);
 hullCentersBox.addEventListener('change', rebuild);
 hullTilesBox.addEventListener('change', rebuild);
+gpuBox.addEventListener('change', rebuild);
+kSelect.addEventListener('change', updatePxLabel);
 window.addEventListener('resize', rebuild);
 
 // Auto-load the shipped example (the (2,3,7) alternating-subgroup patch).

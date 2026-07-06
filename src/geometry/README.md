@@ -98,7 +98,7 @@ covector is written directly: (−(|q_s|² − |p_s|²)/2, q_s − p_s), giving
 side(p) = −|p_s − q_s|²/2 < 0. Normalized via `fromCovector`. The bisector
 passes through the geodesic midpoint of p, q and is orthogonal to the
 geodesic — pinned by tests, and the fact the drag machinery relies on
-(render2d V3): reflecting in two bisectors along a geodesic composes to the
+(viz2d/render V3): reflecting in two bisectors along a geodesic composes to the
 pure translation along it. S degeneracies: antipodal p, q give the polar
 equator (correct); p = q has no bisector (fromCovector throws on the zero
 covector — callers guard).

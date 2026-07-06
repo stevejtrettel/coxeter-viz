@@ -1,7 +1,7 @@
-# `sphereview/` — the perspective sphere view (stage 1)
+# `sphere/` — the perspective sphere view (stage 1)
 
 Draws S² scene content as a translucent globe seen in 3D perspective — the
-third consumer of the render2d path list: the **same `Scene` items** and the
+third consumer of the render path list: the **same `Scene` items** and the
 **same painters**, through a perspective projection instead of a flat chart.
 S²-only; no three.js. Planned at PLAN.md §5.3.2 (decided 2026-07-05); this
 README is the spec, written before the code.
@@ -15,8 +15,8 @@ P_d(p) = (p₁, p₂) · d / (d − p₀)
 
 The eye sits on the distinguished axis at distance `d > 1` (canonical
 coordinates — coordinate 0 points at the viewer), the image plane is
-p₀ = 0, and `V` is render2d's affine viewport unchanged. `SphereCamera` is
-render2d's `Camera` plus `eyeDistance`; the view isometry is the same group
+p₀ = 0, and `V` is render's affine viewport unchanged. `SphereCamera` is
+render's `Camera` plus `eyeDistance`; the view isometry is the same group
 element as everywhere.
 
 ## Width law: ribbons (surface ink)
@@ -92,17 +92,17 @@ pass.
 ## Back-side dashing and hover (P3)
 
 `SphereBuildContext.backDash = { on, off }` dashes all BACK stroke pieces
-with an intrinsic pattern (the hidden-line convention) via render2d's P1
+with an intrinsic pattern (the hidden-line convention) via render's P1
 dash machinery — sphere arcs are unit-speed (circles: sin r), so dashing is
 parameter arithmetic. An item's own `StrokeStyle.dash` applies to both
 sheets and wins. `sphereHitTest` (interact.ts) is front-sheet hover: the
-stage-2a unproject pulled back by the view, feeding render2d's chart-free
+stage-2a unproject pulled back by the view, feeding render's chart-free
 `hitTestCanonical`; back content is not hoverable — it is behind the globe.
 
 ## Not a Model
 
 `P_d` is 2:1 onto the visible disk — `unproject` needs a sheet choice, so
-this view does not implement `Model`. It consumes render2d's minimal chart
+this view does not implement `Model`. It consumes render's minimal chart
 interface (`Chart2`: project + jacobianAt), which `Model` also satisfies;
 hit-testing with a front-sheet preference is deferred with interaction.
 
@@ -122,7 +122,7 @@ p₀ = (kd ± √(1 + k(1 − d²))) / (1 + k)      + : front (nearer the eye), 
 null outside the silhouette. **Globe rotation** is then the flat charts'
 drag verbatim: grab the FRONT sheet under the cursor, build the S²
 double-bisector translation (a rotation), compose into `camera.view`,
-renormalize every RENORM_EVERY — all render2d V3 machinery. The controller
+renormalize every RENORM_EVERY — all render V3 machinery. The controller
 takes a pluggable `ScreenUnprojector` capability, so one controller serves
 Models and this view; `SphereCamera.eyeDistance` survives the pure camera
 transforms because they spread the input camera. Sphere hit-testing stays
@@ -135,9 +135,9 @@ deferred (§6).
 | `types.ts` | `SphereCamera`, `SphereStyle` |
 | `projection.ts` | `SpherePerspective` (P_d, jacobian, sheet, silhouette, stage-2a `unproject`), `trigRoots`, `sphereUnprojector` |
 | `scene.ts` | `buildSpherePathList`: apply g, split at the silhouette, sample/stroke/mark via the V1 machinery, two-pass emission, cull, style overrides, P3 clipped fills + back dashing |
-| `interact.ts` | `sphereHitTest`: front-sheet hover over render2d's canonical hit test |
+| `interact.ts` | `sphereHitTest`: front-sheet hover over render's canonical hit test |
 
-Depends on math → geometry → render2d. Demo: `demos/sphereview` — the V1
+Depends on math → geometry → render. Demo: `demos/sphereview` — the V1
 (2,3,5) chamber scene UNCHANGED, viewed from an angle that wraps the
 walls' far arcs behind the globe.
 

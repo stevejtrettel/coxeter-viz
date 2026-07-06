@@ -1,5 +1,5 @@
-import type { ItemId, Scene } from '@/render2d/types';
-import { hitTestCanonical } from '@/render2d/interact';
+import type { ItemId, Scene } from '@/viz2d/render/types';
+import { hitTestCanonical } from '@/viz2d/render/interact';
 import { Spherical2 } from '@/geometry/Spherical';
 import { SpherePerspective, sphereUnprojector } from './projection';
 import type { SphereCamera } from './types';

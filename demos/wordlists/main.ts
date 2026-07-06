@@ -20,11 +20,11 @@ import { matrixKey, type OrbitElement } from '@/group/orbit';
 import { cosetIndex, hullOfWords } from '@/group/wordlists';
 import { transformPolytope } from '@/polytope/transform';
 import { polygonArea } from '@/polytope/measure';
-import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverride, StyleOverrides } from '@/render2d/types';
-import { buildPathList } from '@/render2d/scene';
-import { paint } from '@/render2d/canvas';
-import { toSvg } from '@/render2d/svg';
-import { attachInteraction, hitTest, modelUnprojector } from '@/render2d/interact';
+import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverride, StyleOverrides } from '@/viz2d/render/types';
+import { buildPathList } from '@/viz2d/render/scene';
+import { paint } from '@/viz2d/render/canvas';
+import { toSvg } from '@/viz2d/render/svg';
+import { attachInteraction, hitTest, modelUnprojector } from '@/viz2d/render/interact';
 
 // ── Style ───────────────────────────────────────────────────────────────────
 

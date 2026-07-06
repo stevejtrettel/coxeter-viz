@@ -88,6 +88,51 @@ export class CoxeterGroup<P extends Vec, I extends Float64Array> {
     }));
   }
 
+  /** The chamber's intrinsic diameter (max pairwise vertex distance; F compact). */
+  chamberDiameter(): number {
+    const v = this.chamber.vertices;
+    let d = 0;
+    for (let i = 0; i < v.length; i++) {
+      for (let j = i + 1; j < v.length; j++) d = Math.max(d, this.geom.distance(v[i], v[j]));
+    }
+    return d;
+  }
+
+  /**
+   * Tile the METRIC ball: exactly the tiles whose base points lie within
+   * `radius`. The BFS traverses with a diam(F) margin — README, "The
+   * metric bound": the margin makes the admitted set connected in the left
+   * Cayley graph, so nothing inside `radius` is missed — but the margin is
+   * TRAVERSAL-INTERNAL: the result filters back to `radius` (in H the
+   * margin shell is exponentially the majority of what was walked).
+   * Group-independent coverage where `maxWord` is not: a fat chamber
+   * reaches the radius in few letters, a sliver in many, and neither needs
+   * a tuned depth. `maxCount` remains the hard backstop.
+   */
+  tessellateBall(radius: number, maxCount?: number): Tile<P, I>[] {
+    return this.orbitBall(radius, maxCount).map((e) => ({
+      word: e.word,
+      element: e.element,
+      polytope: transformPolytope(this.chamber, this.geom, e.element),
+    }));
+  }
+
+  /** The ELEMENTS of the metric ball (tessellateBall without the chamber carry). */
+  orbitBall(radius: number, maxCount?: number): OrbitElement<I>[] {
+    const ops: GroupOps<I> = {
+      identity: () => this.geom.identity(),
+      compose: (g, h) => this.geom.compose(g, h),
+      key: (g) => matrixKey(g),
+    };
+    const dist = (g: I) =>
+      this.geom.distance(this.geom.apply(g, this.basePoint), this.basePoint);
+    const cutoff = radius + this.chamberDiameter();
+    const admit = (g: I) => dist(g) <= cutoff;
+    return runOrbit(ops, this.reflections, Infinity, maxCount, admit).filter(
+      (e) => dist(e.element) <= radius,
+    );
+  }
+
   /**
    * The Cayley graph out to word length `maxWord`: one node per orbit
    * element, edges {g, g·R_i} found by MATRIX-KEY LOOKUP among the nodes —

@@ -15,9 +15,9 @@ import { Gnomonic2 } from '@/models/gnomonic';
 import { Stereographic2 } from '@/models/stereographic';
 import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
 import type { RealizationSpec } from '@/coxeter/spec';
-import type { Camera, Scene } from '@/render2d/types';
-import { buildPathList } from '@/render2d/scene';
-import { paint } from '@/render2d/canvas';
+import type { Camera, Scene } from '@/viz2d/render/types';
+import { buildPathList } from '@/viz2d/render/scene';
+import { paint } from '@/viz2d/render/canvas';
 
 const WALL_COLORS = ['#c0392b', '#27ae60', '#2f6fb7'];
 

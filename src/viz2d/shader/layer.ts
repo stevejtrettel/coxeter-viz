@@ -1,7 +1,7 @@
 import type { Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
 import type { RealizedPolygon } from '@/coxeter/solve';
-import type { RasterLayer } from '@/render2d/png';
+import type { RasterLayer } from '@/viz2d/render/png';
 import type { TilingStyle } from './types';
 import { TilingShader } from './TilingShader';
 

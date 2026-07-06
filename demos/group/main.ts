@@ -20,15 +20,15 @@ import type { RealizationSpec } from '@/coxeter/spec';
 import { groupFromPolygon, wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
 import type { CayleyGraph } from '@/group/cayley';
 import type { Isometry2 } from '@/geometry/types';
-import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/render2d/types';
-import { buildPathList } from '@/render2d/scene';
-import { paint } from '@/render2d/canvas';
-import { toSvg } from '@/render2d/svg';
-import { attachInteraction, hitTest, modelUnprojector, type ScreenUnprojector } from '@/render2d/interact';
-import { SpherePerspective, sphereUnprojector } from '@/sphereview/projection';
-import { sphereHitTest } from '@/sphereview/interact';
-import { buildSpherePathList } from '@/sphereview/scene';
-import type { SphereCamera } from '@/sphereview/types';
+import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/viz2d/render/types';
+import { buildPathList } from '@/viz2d/render/scene';
+import { paint } from '@/viz2d/render/canvas';
+import { toSvg } from '@/viz2d/render/svg';
+import { attachInteraction, hitTest, modelUnprojector, type ScreenUnprojector } from '@/viz2d/render/interact';
+import { SpherePerspective, sphereUnprojector } from '@/viz2d/sphere/projection';
+import { sphereHitTest } from '@/viz2d/sphere/interact';
+import { buildSpherePathList } from '@/viz2d/sphere/scene';
+import type { SphereCamera } from '@/viz2d/sphere/types';
 
 // Generator colors — the same indexing as walls, decorations, words.
 const GEN_COLORS = ['#c0392b', '#27ae60', '#2f6fb7'];

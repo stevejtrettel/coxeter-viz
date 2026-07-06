@@ -10,11 +10,11 @@ import {
   type Scene,
   type StyleOverrides,
   type ViewSize,
-} from '@/render2d/types';
-import { sampleCircle, sampleCurve, tangentFrame, type SampledCurve } from '@/render2d/sample';
-import { strokeOutline } from '@/render2d/stroke';
-import { markEllipse } from '@/render2d/marks';
-import type { StrokeStyle } from '@/render2d/types';
+} from '@/viz2d/render/types';
+import { sampleCircle, sampleCurve, tangentFrame, type SampledCurve } from '@/viz2d/render/sample';
+import { strokeOutline } from '@/viz2d/render/stroke';
+import { markEllipse } from '@/viz2d/render/marks';
+import type { StrokeStyle } from '@/viz2d/render/types';
 import {
   dashRanges,
   frameOf,
@@ -23,7 +23,7 @@ import {
   resolveRegion,
   resolveStroke,
   wallLine,
-} from '@/render2d/scene';
+} from '@/viz2d/render/scene';
 import { SpherePerspective, trigRoots } from './projection';
 import { DEFAULT_SPHERE_STYLE, type SphereCamera, type SphereStyle } from './types';
 

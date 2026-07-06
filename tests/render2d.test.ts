@@ -20,23 +20,23 @@ import {
   type StyleOverride,
   type StyleOverrides,
   type ViewSize,
-} from '@/render2d/types';
-import { buildPathList, dashRanges, frameOf, preCulled, type BuildContext, type Frame } from '@/render2d/scene';
-import { toSvg } from '@/render2d/svg';
-import type { PathList } from '@/render2d/types';
-import { draggedCamera, hitTest, modelUnprojector, pannedCamera, unprojectScreen, zoomedCamera, RENORM_EVERY } from '@/render2d/interact';
-import { SpherePerspective, sphereUnprojector } from '@/sphereview/projection';
-import type { SphereCamera } from '@/sphereview/types';
+} from '@/viz2d/render/types';
+import { buildPathList, dashRanges, frameOf, preCulled, type BuildContext, type Frame } from '@/viz2d/render/scene';
+import { toSvg } from '@/viz2d/render/svg';
+import type { PathList } from '@/viz2d/render/types';
+import { draggedCamera, hitTest, modelUnprojector, pannedCamera, unprojectScreen, zoomedCamera, RENORM_EVERY } from '@/viz2d/render/interact';
+import { SpherePerspective, sphereUnprojector } from '@/viz2d/sphere/projection';
+import type { SphereCamera } from '@/viz2d/sphere/types';
 import { isometryResidual } from './helpers';
 import type { GeometryKind } from '@/geometry/types';
 import type { RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
 import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
-import { paint } from '@/render2d/canvas';
-import { scaleCamera } from '@/render2d/png';
-import { sampleCircle, sampleCurve, sampleSegment, tangentFrame } from '@/render2d/sample';
-import { strokeOutline } from '@/render2d/stroke';
-import { markAxes, markEllipse } from '@/render2d/marks';
+import { paint } from '@/viz2d/render/canvas';
+import { scaleCamera } from '@/viz2d/render/png';
+import { sampleCircle, sampleCurve, sampleSegment, tangentFrame } from '@/viz2d/render/sample';
+import { strokeOutline } from '@/viz2d/render/stroke';
+import { markAxes, markEllipse } from '@/viz2d/render/marks';
 import { rng } from './helpers';
 
 type Geom2 = Geometry<Point2, Isometry2>;

@@ -1086,9 +1086,117 @@ cartesian, stereographic, gnomonic — Globe2 is renderDim 3, rejected).
   px (9.2 MP)"); k is exact against the CSS frame, no implicit dpr.
   Verified headless: 4× export decodes to exactly 3040×3040 with both
   layers composited and coincident at 1:1 crop. +2 tests (scaleCamera).
-- **T4 (parked until user directs)** — host integration (wordfile or
-  successor): WebGL canvas under the transparent Canvas2D, one controller;
-  shader-on drops the CPU domain fill + ambient background tiles.
+- **T4** — host integration (wordfile or successor): WebGL canvas under
+  the transparent Canvas2D, one controller; shader-on drops the CPU domain
+  fill + ambient background tiles. **DONE 2026-07-06** (user: "time to
+  fully incorporate things") in `demos/wordfile`: layer stack (GPU field
+  under the transparent named canvas, one controller on top, white bg on
+  the stack div); a "GPU field" checkbox (default ON) — on ⇒ the scene's
+  domain item goes RIM-ONLY and the depth-capped `bg:` ambient tessellation
+  is skipped, the shader draws the anonymous group at unlimited depth in a
+  quiet cream/white parity with faint intrinsic edges (`fieldStyle`,
+  matched to the house ambient palette; vertex layer off); off ⇒ the
+  original CPU picture, unchanged. wordfile also gains the T3 PNG button
+  (k selector + live pixel readout, white background, field composited
+  when on; SVG stays vector-only as documented). Verified headless:
+  hyperbolic (2,3,7) patch + hulls + walls over the infinite field;
+  spherical (2,3,5) — the field covers the WHOLE sphere, beyond any CPU
+  ambient depth; GPU-off regression identical in structure. Named
+  machinery (hover, hulls, SVG, interaction) untouched — identity is the
+  knife, realized.
+- **T5** — the field's VECTOR TWIN for SVG export (user-directed 2026-07-06:
+  option 2 of {omit the field, regen on CPU} chosen; "conventions must
+  match the GLSL so the look is the same"). **DONE 2026-07-06.**
+  `tilingshader/vector.ts` `fieldScene(group, style, maxWord, maxCount)`:
+  the field regenerated as render2d items from the SAME TilingStyle —
+  parity fills by word-length parity (= fold parity = the sign character),
+  edge bands as the WALL-IMAGE ORBIT (applyDual over tile elements,
+  dedup'd by quantized ±covector — one item per mirror so translucent
+  edges composite once, where per-tile strokes would double alpha),
+  vertex disks as the vertex orbit's metric circles, GPU compositing
+  order, alpha-0/zero-size hiding; a domain underlay in `even` quiets the
+  truncation frontier. Convention table in the tilingshader README ("The
+  vector twin"). Coverage: EXACT for spherical (ball exhausts); E/H
+  ball-truncated at the frontier, documented (no origin-centered ball
+  covers a hard-zoomed frame — the reason the GPU folds per pixel).
+  wordfile's SVG button prepends the twin when the field is on, at
+  EXPORT_DEPTH (28/16/20, cap 20000 — a one-shot export affords a much
+  deeper ball than the live ambience). The frontier question was settled
+  by the user 2026-07-06: a proposed opacity fade into a base color was
+  floated and withdrawn in favor of "just draw more tiles" — the frontier
+  speckles exactly as the GPU field does (which also never fades), so
+  deep-draw is both simpler AND more convention-faithful. No fade code
+  exists. The user then flagged FILE SIZE (raw depth 28 ≈ 1.1 MB; the
+  bytes were measured to be dominated by per-path attributes and
+  word-length data-ids, not coordinates — tolerance knobs bought ~3%).
+  Resolution: `mergeFieldPaths` (vector.ts) — tiles are pairwise DISJOINT,
+  so same-style `field:tile:` paths merge into ONE multi-contour even-odd
+  path with identical pixels; the domain underlay must NOT merge (it
+  contains the tiles — they'd become holes) and wall outlines must not
+  (they cross — even-odd cancels at crossings). Wired into wordfile's SVG
+  export; EXPORT_DEPTH settled at 24 (≈ 0.97 of the disk, 2762 → 569
+  paths, 314 KB raw / 97 KB gzipped; depth 28 ≈ 0.985 at 579 KB — the
+  constant is the documented size/reach dial). +2 tests (merge grouping /
+  contour conservation / pass-through; identity off-field). Merged output
+  verified pixel-identical by render. Tests
+  (+4): the (2,3,5) exact pins — 120 tiles split 60/60 by the sign
+  character, 15 icosahedral mirrors, 62 vertex-orbit points — plus GPU
+  ordering, 2w stroke widths, layer hiding. Verified headless
+  side-by-side (GPU live vs the twin SVG rendered as an <img>): spherical
+  essentially identical; hyperbolic identical in the interior with the
+  documented frontier fade. (One false alarm during verification — a
+  stray arc — was the temp verify block leaking an <img> per rebuild, not
+  a rendering defect; the minimal node repro was clean.)
+- **T6** — ADAPTIVE coverage for the twin (user-directed 2026-07-06:
+  "different tiles will need different depths … how can we choose
+  adaptively?"). Bound enumeration by INTRINSIC RADIUS, not word depth —
+  the letters↔distance exchange rate is group-dependent (right-angled
+  pentagon vs (2,3,7)). Two pieces: (1) `orbit` gains an optional
+  `admit(element)` prune (spec + correctness argument amended into the
+  group README: the metric ball with a diam(F) margin is connected in the
+  left Cayley graph, via inversion + minimal galleries along geodesic
+  segments; pruned-BFS words stay parity-correct), and
+  `CoxeterGroup.tessellateBall(radius, maxCount?)`; (2)
+  `coverageRadius(group, model, camera, size, εpx)` in the twin module —
+  frame-grid sampling of "would a tile here render ≥ ε px", max intrinsic
+  distance through view⁻¹ — so ONE pixel threshold replaces every
+  per-group depth constant; EXPORT_DEPTH dies. The camera→radius
+  conversion lives with the camera (group layer stays camera-free).
+  Remaining limits documented: origin-centered ball vs extreme boundary
+  zooms (GPU territory), maxCount backstop, coarse grid. **DONE
+  2026-07-06.** Refinements found in verification: (a) relevance tests
+  tile WIDTH (2·inradius), not diameter — chambers are slivers; ε = "min
+  tile width in px", default 1.5, the size/reach dial
+  (`EXPORT_EPSILON_PX` in wordfile; EXPORT_DEPTH deleted); (b) the diam(F)
+  traversal margin is INTERNAL — results filter back to the radius (in H
+  the margin shell tripled the output); (c) a wrong test expectation
+  exposed correct two-way adaptivity: zooming in AT THE CENTER shrinks the
+  ball to the frame bound 2·atanh(|u|corner) — fewer tiles, not more.
+  Measured, ε = 1.5, default camera: (2,3,7) radius 4.56, 3931 tiles, max
+  word 30, 536 KB (162 gz); right-angled PENTAGON radius 5.68, 561 tiles,
+  **max word 7**, 264 KB (72 gz) — the user's motivating example,
+  quantified. +4 tests (ball completeness/exactness vs deep enumeration in
+  all three geometries; pentagon≪triangle letters pin; radius-π (2,3,5)
+  exact pins; coverageRadius E-frame / H-log-law / zoom-in-shrinks pins).
+- **T7** — `demos/tilings`, the general-polygon EXPORT demo (user-directed
+  2026-07-06: "we don't need wordfile to be our export demo … all sorts of
+  different tilings (triangle quad pentagon hexagon) and the option to
+  color some set of tiles"). **DONE 2026-07-06.** Any compact 2D Coxeter
+  polygon: n vertex orders in (n ≥ 3), geometry inferred; preset buttons
+  triangle (2,3,7) / quad (2,2,2,2 — Euclidean grid) / pentagon
+  (2,2,2,2,2) / hexagon (2,2,2,2,2,2); GPU field default-on (first
+  exercise of the shader's n-gon capability: 4/5/6 walls verified);
+  word-list text entry (dot-words, letters < n) colors a tile set;
+  styling per user ruling — the FUNDAMENTAL DOMAIN is ALWAYS highlighted
+  (#f6d9a0, id `fd`), the word list draws in red (#d15954) OVER everything
+  incl. the fd; sample button fills the neighbors ball (e excluded — the
+  fd shows on its own). Exports: adaptive SVG (coverageRadius at the
+  current camera + mergeFieldPaths) and k× PNG with the pixel readout. NO
+  depth constants anywhere: the CPU-off live ambience is the vector twin
+  at a coarse ε (3 px) — T6 made the old BG_DEPTH pattern obsolete.
+  wordfile is unchanged (stays the file-driven M3.5 artifact). Verified
+  headless: pentagon/quad/hexagon renders, red-over-orange layering.
+  **§5.6 (T0–T7) IS COMPLETE pending the user's hands-on pass.**
 
 Strategy agreed in the original discussion (unchanged):
 
@@ -1125,6 +1233,176 @@ Strategy agreed in the original discussion (unchanged):
   vertex disks from the start (user ruling), palette a demo style control
   (defaults at T2); charts — ALL five flat 2D charts (user ruling); PNG
   export — simple k× button (T3).
+
+### 5.7 — the 2D content sprint (user-directed 2026-07-06)
+
+**Status: C1 + C2 + C3 DONE 2026-07-06, closing on the user's hands-on
+pass** (`npm run dev cosets` / `tilings` / `uniform`). Results: C1 —
+(2,3,7) with S = {0,1} shows 508 four-tile flowers, each its own
+golden-angle hue, the GPU field continuing past the ball; C2 — the
+generator-colored dual graph over the field, ε = 12 px picking the depth;
+C3 — `wythoff.ts` + 5 tests all passing first run (the seed's ring
+conditions pinned against wall side values in all three geometries;
+omnitruncated (2,3,5) = 30+20+12 faces with V−E+F = 120−180+62 = 2; rings
+(1,0,0) = the 12-pentagon dodecahedron; all-ringed (2,3,7) edge lengths
+equal to 1e-9), `orbitBall` extracted from tessellateBall, and
+`demos/uniform` rendering the omnitruncated {7,3} (squares/hexagons/
+14-gons by type) and the spherical dodecahedron (far face honestly
+unfilled — the pre-existing V2.3 stereographic behavior). 389 tests.
+Three user directives on top of the finished §5.6 system: (C1) a parabolic-subgroup coset-coloring demo; (C2) the Cayley
+graph as an option in the GPU-field demo; (C3) uniform tilings (Wythoff) —
+the parent repo checked as REFERENCE (hyperbolic-polytopes
+`src/coxeter/wythoff.ts`): ringed-node convention, seed from the linear
+Gram solve (⟨p,nᵢ⟩ = −1 ringed / 0 unringed), faces = seed orbits under
+maximal parabolics hulled, carried over the group with centroid dedup,
+SIMPLEX chambers only. Re-derivation in our vocabulary: the seed solves
+the 3×3 linear system `cᵢ·p = tᵢ` (t = −1 ringed / 0 unringed) directly in
+ambient coordinates — κ-uniform, no Gram inversion — then
+`geom.normalize`; 2D faces = seed orbits under the three vertex DIHEDRALS
+(`group.subgroup`), hulled by `fromVertices2`, carried over the adaptive
+metric ball (`tessellateBall`), deduplicated by quantized centroid.
+
+- **C1** — `demos/cosets`: generator checkboxes choose S; W_S =
+  `subgroup(reflections in S)` (guarded: |W_S| > 400 ⇒ treated as
+  infinite, warn); tiles of the adaptive ball colored by `cosetIndex`
+  with golden-angle hues; GPU field beneath (the anonymous group continues
+  past the colored ball); walls + rim; adaptive SVG (coset tiles merge
+  per color) + k× PNG.
+- **C2** — `demos/tilings` gains a "cayley" checkbox: nodes at
+  g·basePoint, generator-colored edges by matrix-key right-multiplication
+  lookup over the adaptive ball (the cayley.ts recipe at ball scope),
+  drawn over the field; ε = 12 px picks the legible depth automatically;
+  included in both exports.
+- **C3** — `src/group/wythoff.ts` (group README amended first):
+  `wythoffPoint(poly, rings)` + `uniformCells(group, poly, rings, radius,
+  maxCount)` → `{ type, polytope }[]` (type = the vertex-dihedral index;
+  degenerate faces — seed fixed by the dihedral — skipped); triangle
+  chambers only (throws otherwise); `orbitBall` exposed on CoxeterGroup
+  (tessellateBall refactored over it). `demos/uniform`: (p,q,r) + three
+  ring toggles, faces colored by type, adaptive coverage + both exports.
+  Pins: omnitruncated (2,3,5) = 30 squares + 20 hexagons + 12 decagons
+  (V−E+F = 120−180+62 = 2); ringed edges all the same intrinsic length;
+  degenerate-face skip.
+
+### 5.8 — FIELD PROGRAMS: the §5.7 content in the shader (user-directed 2026-07-06)
+
+**Status: D1 + D2 + D3 DONE 2026-07-06, closing on the user's hands-on
+pass.** Results: coset hues verified pixel-identical GPU-vs-CPU-overlay
+(the shared hashHue convention holds); the Cayley star runs to the
+boundary matching the CPU graph (note for the pass: the fd tile now draws
+OVER the central star at 0.92 opacity — the identity-knife layering);
+uniform regions verified on the omnitruncated {7,3} (one classifier fix
+found by the visual: a region is bounded by its OWN two splitter
+segments — the third splitter's full geodesic re-enters, so rows
+constrain only on the decoration's walls, and only where the region
+across survives), and the GPU dodecahedron FILLS THE POLE FACE the CPU
+painter leaves honest-blank (backward per-pixel mapping has no far-tile
+problem). +3 pure tests (foot ⊥ pins in all geometries, hashHue
+determinism/spread, region classification + dodecahedron collapse); 392
+total. "The same capabilities in the shader for PNG exports
+of arbitrary depth." The insight making all three §5.7 features
+GPU-foldable is that each one's data is CHAMBER-LOCAL, evaluable after the
+fold with a handful of uniforms:
+
+- **Coset coloring (mode 1)**: the left coset g·W_S of the pixel's tile is
+  determined by the image g·v of the W_S-fixed point v (the chamber vertex
+  for a wall pair, the perpendicular foot for a single wall). The fold
+  loop accumulates the INVERSE product M⁻¹ (one mat3 multiply per
+  reflection, M⁻¹ ← M⁻¹·Rᵢ), giving g·v = M⁻¹·v per pixel; hash it —
+  quantized in the bounded coordinates (y,z)/(1+|x|) — to a hue. The SAME
+  hash rule runs in float64 on the CPU (`hashHue`), so CPU tiles, SVG
+  exports, and the GPU field all agree on every coset's color by
+  construction. Float32 wobble can split hues at extreme depth
+  (documented; graceful).
+- **Cayley graph (star bands)**: the edge net is the orbit of the three
+  half-segments [x₀, mᵢ] (mᵢ = the perpendicular foot of x₀ on wall i), so
+  per pixel: band test |⟨q, Lᵢ⟩| < sin_κ(w) against the CPU-computed
+  covector Lᵢ = cross(x₀, mᵢ) of the perpendicular geodesic, clamped to
+  the segment by ⟨q, cᵢ⟩ ≥ ⟨x₀, cᵢ⟩; node disks are Q(q − x₀) < Q_r.
+  Per-generator band colors.
+- **Uniform tilings (mode 2)**: within F the Wythoff faces partition the
+  chamber into ≤ 3 regions around its vertices, separated by the SPLITTER
+  geodesics cross(seed, foot_k); a pixel's face type = the sign pattern of
+  its three splitter pairings (expected signs precomputed at each region's
+  vertex; degenerate splitters — seed on the wall — get zero rows).
+  Uniform EDGES are the star bands anchored at the seed over the ringed
+  walls; seed disks reuse the node test.
+
+Foot of perpendicular: m = normalize(p − ⟨p,c⟩·Jc), κ-uniform. Geodesic
+through two points: the cross-product covector (the polytope engine's own
+convention). All CPU-side helpers pure and tested; the star/splitter/
+anchor data ride in `TilingStyle` extensions, so `tilingLayer`/`renderPng`
+give ARBITRARY-DEPTH PNG for all three demos with no API change. SVG
+stays the CPU ball (vector, documented). Per the user's amendment ("and for live views where it's cheap!") the GPU
+modes are the LIVE renderer wherever they exist — arbitrary depth AND
+cheaper than re-enumerating balls — with the CPU ball retained only for
+the vector SVG and as the verification overlay. Increments: **D1** coset
+mode; demos/cosets draws it live + PNG, CPU tiles recolored by the shared
+`hashHue` for SVG/verify · **D2** star bands + nodes; the tilings demo's
+cayley checkbox drawn by the GPU live + PNG (CPU items retained for SVG)
+· **D3** region mode; demos/uniform live + PNG on the GPU (CPU cells for
+SVG). Verification per increment: headless GPU-vs-CPU coincidence.
+
+### 5.9 — the 2D consolidation reorg (user-directed 2026-07-06)
+
+**Status: R0 (spec) UNDERWAY.** The 2D program (§5.3.1 render2d V0–V3 +
+polish, §5.3.2 sphereview, §5.6 tilingshader, §5.7–5.8 field programs) is
+feature-complete but has accreted three seams the user wants cleaned so the
+2D code is "modular, clean, and close to the math." A review (2026-07-06)
+found the architecture sound — the layering law holds, every folder is a
+README-spec, the `Chart2` seam (`{project, jacobianAt}`) is right, and
+`sample`/`stroke`/`marks` are already generic over it — but with three
+consolidation opportunities, and the user chose the FULL PASS with an
+explicit `src/viz2d/` umbrella and the scene adapter as a first-class src
+module:
+
+1. **`render2d/scene.ts` (781 lines) wears six hats and has become an
+   undeclared shared library** — sphereview reaches into it for seven
+   helpers (`frameOf`, `keepContours`, `resolve{Stroke,Point,Region}`,
+   `wallLine`, `dashRanges`). Extract the pure/shared concerns into named
+   siblings: `style.ts` (resolve*), `cull.ts` (Frame/frameOf/distToFrame/
+   keepContours/preCulled), `wallclip.ts` (wallLine/extendWallRange/
+   shrinkOutside/wallParamRange), `dash.ts` (dashRanges/strokeContours/
+   circleSpeed), `honesty.ts` (honestFill/insideContour/polygonInterior);
+   `scene.ts` keeps only `buildPathList`.
+2. **The flat (`buildPathList`) and sphere (`buildSpherePathList`) builders
+   fork the per-item logic** — polygon-fill concat, circle fill/stroke,
+   wall-line param — differing ONLY in chart (already `Chart2`) and
+   visibility policy (flat single-pass frame/domain clip vs sphere two-pass
+   silhouette split). Factor the shared per-item contour builders into
+   `render/item.ts` called by both. **Design ruling: shared helpers, NOT a
+   single unified `buildPathList`** — the sphere's silhouette-split/two-pass
+   is genuinely different; forcing one function would be cleverness, not
+   clarity.
+3. **The demos carry a whole second application layer.** A survey found the
+   duplication far larger than the "four-times-duplicated group→Scene" note:
+   split cleanly into (a) a SCENE ADAPTER — the `realize` preamble (spec →
+   `solvePolygon` → `groupFromPolygon` → model-by-kind, ×4), `cayleyToScene`
+   (×3, identical magic constants `width:0.06·r0`/`radius:0.11·r0`),
+   `tilesToScene(colorizer)`, `wallItems`, `domainItem`, palette/`fieldStyle`
+   — first-class in `src/viz2d/adapters/`, conventions pinned once by tests;
+   and (b) an app HARNESS (page shell, DPR canvas sizing, rAF `schedule`,
+   `attachInteraction`+hover, GPU layer-stack, SVG/PNG/k× export, parsers)
+   → `demos/shared/` (app glue, not src).
+
+Target structure: `src/viz2d/{render (←render2d), sphere (←sphereview),
+shader (←tilingshader), adapters (new)}` + `src/viz2d/README.md` (umbrella
+spec). The `render2d` NAME goes away in code + folder READMEs; PLAN.md's
+historical §5.3.1/render2d references stay as-is (history is appended to,
+not rewritten). The `@/` alias rename touches ~20 import sites through one
+line each in tsconfig/vite/vitest.
+
+Increments, each a green-gated reviewable session (392 tests + typecheck the
+floor throughout): **R0** `viz2d/README.md` + this entry (spec, no code) ·
+**R1** the move (rename the three folders under `viz2d/`, update imports +
+folder READMEs; pure rename, zero logic change; gate: green + demos launch)
+· **R2** split `render/scene.ts` per #1, re-point sphere at the named
+modules (gate: green — existing tests pin the extracted behavior) · **R3**
+share the per-item builders per #2 (gate: green + a before/after path-list
+snapshot on the Milestone-1 scenes proves byte-identical output) · **R4**
+the scene adapter per #3a + convention tests, migrate the 6 group-consuming
+demos (gate: green + hands-on visual pass) · **R5** the demo harness per #3b,
+migrate demos (gate: green + hands-on). Milestone 2 (3D) stays queued after.
 
 ### Milestones cut vertically, not horizontally
 

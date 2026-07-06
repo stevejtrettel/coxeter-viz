@@ -19,14 +19,14 @@ import { identity } from '@/math/mat';
 import { classifyPolygon, type RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
 import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
-import type { Camera, Scene } from '@/render2d/types';
-import { buildPathList } from '@/render2d/scene';
-import { paint } from '@/render2d/canvas';
-import { attachInteraction, modelUnprojector } from '@/render2d/interact';
-import { renderPng, sceneLayer, type RasterLayer } from '@/render2d/png';
-import { TilingShader } from '@/tilingshader/TilingShader';
-import { tilingLayer } from '@/tilingshader/layer';
-import type { TilingStyle } from '@/tilingshader/types';
+import type { Camera, Scene } from '@/viz2d/render/types';
+import { buildPathList } from '@/viz2d/render/scene';
+import { paint } from '@/viz2d/render/canvas';
+import { attachInteraction, modelUnprojector } from '@/viz2d/render/interact';
+import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
+import { TilingShader } from '@/viz2d/shader/TilingShader';
+import { tilingLayer } from '@/viz2d/shader/layer';
+import type { TilingStyle } from '@/viz2d/shader/types';
 
 // The reference shader's palette, kept: blue tiles, cream edges, ember vertices.
 const EVEN: [number, number, number, number] = [0.55, 0.7, 0.85, 1];

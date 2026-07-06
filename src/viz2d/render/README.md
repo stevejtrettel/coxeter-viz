@@ -1,9 +1,12 @@
-# `render2d/` — the 2D visualization system
+# `render/` — the flat-chart core of `viz2d/`
 
-Draws the flat (renderDim-2) charts — Klein, Poincaré, gnomonic,
-stereographic, Cartesian — with **all styling intrinsic to the geometry**.
-Canvas is the instrument; SVG is the export. No three.js anywhere (the 3D
-system is a separate, later plan). Depends only on
+The reference painter of the 2D visualization system (`../README.md` is the
+umbrella spec) and the home of the shared seams — `Scene`, `Camera`,
+`Chart2`, `PathList`, `RasterLayer` — that the sibling painters (`sphere/`,
+`shader/`) consume. Draws the flat (renderDim-2) charts — Klein, Poincaré,
+gnomonic, stereographic, Cartesian — with **all styling intrinsic to the
+geometry**. Canvas is the instrument; SVG is the export. No three.js
+anywhere (the 3D system is a separate, later plan). Depends only on
 `math` → `geometry` → `models` → `polytope`.
 
 Decided collaboratively 2026-07-04 (PLAN.md §5.3.1); this README is the spec,
@@ -68,7 +71,7 @@ A scene is a list of items `{ id, kind, canonical data, style }`:
 
 The `domain` item draws **the geometry itself** through the chart. Its rim
 is the ONE exception to intrinsic styling (same exception, same reason as
-sphereview's globe rim): the disk boundary is at infinity in H, or is chart
+sphere's globe rim): the disk boundary is at infinity in H, or is chart
 apparatus — no intrinsic width exists. The rim is emitted as an annulus fill
 through the ordinary path list, so both backends and the SVG export inherit
 it by construction. `Model` stays pure math; the renderer interprets its
@@ -196,7 +199,7 @@ pointer/wheel events and invokes `onCamera` / `onPointer` callbacks, while
 the demo owns the rebuild-and-repaint loop (rAF-throttled; V2.1's pre-cull
 is what makes a full rebuild per frame affordable). The drag machinery's
 screen→canonical step is a pluggable **`ScreenUnprojector`** capability —
-`modelUnprojector(model)` for the flat charts, sphereview's front-sheet
+`modelUnprojector(model)` for the flat charts, sphere's front-sheet
 unprojector for the globe (its perspective is not a `Model`) — so one
 controller serves both; the camera transforms spread their input, so camera
 subtypes (`SphereCamera.eyeDistance`) pass through intact.
@@ -238,7 +241,7 @@ under the same slop; `domain` items are never hit. Hover highlighting is
 then the existing machinery — a `StyleOverrides` entry and a repaint,
 no scene mutation.
 
-**The globe stays static in V3**: sphereview has no `unproject` (the sheet
+**The globe stays static in V3**: sphere has no `unproject` (the sheet
 choice is parked in §6), and a screen-space trackball would cut against the
 house style. Sphere-view interactivity equal to the flat charts is a
 recorded WANT (§6), unlocked by that parked work.
@@ -262,7 +265,7 @@ instantiation for these types to serve.
 | `canvas.ts` | the Canvas2D painter (immediate mode) | V1 |
 | `svg.ts` | one-file path-list → SVG string builder (no DOM): the painter's viewport formula verbatim, one `<path>` per RenderPath, `fill-rule="evenodd"`, `fill-opacity`, item id as `data-id` (one item emits several paths, so not `id`), 2-decimal px coordinates | V2 |
 | `interact.ts` | pure camera transforms (zoom / pan / double-bisector drag with drift renormalization), `hitTest`, and the thin DOM controller | V3 |
-| `png.ts` | PNG export of PAINTER STACKS at k× resolution: `RasterLayer` (the camera contract as an interface — paint this camera into this many device pixels), the pure `scaleCamera` (k·scalePx, k·centerPx — layers never see k, so a GPU field re-evaluates per pixel and vector layers re-sample through their px tolerances: sharper, not upsampled), `renderPng` (one 2D assembly canvas, layers `drawImage`'d back to front, transparent unless `background`; throws past the ~16384 px canvas cap, tiled rendering deferred), `sceneLayer` (the vector painter as a layer). GPU layers implement `RasterLayer` in their own module (`tilingshader/layer.ts`); SVG stays vector-only. | §5.6 T3 |
+| `png.ts` | PNG export of PAINTER STACKS at k× resolution: `RasterLayer` (the camera contract as an interface — paint this camera into this many device pixels), the pure `scaleCamera` (k·scalePx, k·centerPx — layers never see k, so a GPU field re-evaluates per pixel and vector layers re-sample through their px tolerances: sharper, not upsampled), `renderPng` (one 2D assembly canvas, layers `drawImage`'d back to front, transparent unless `background`; throws past the ~16384 px canvas cap, tiled rendering deferred), `sceneLayer` (the vector painter as a layer). GPU layers implement `RasterLayer` in their own module (`shader/layer.ts`); SVG stays vector-only. | §5.6 T3 |
 
 Increments (PLAN.md §5.3.1): **V0** this README + `types.ts`, approved before
 further code · **V1** sample/stroke/marks/scene + Canvas painter + the

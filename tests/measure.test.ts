@@ -8,7 +8,7 @@ import { transformPolytope } from '@/polytope/transform';
 import type { RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
 import { groupFromPolygon } from '@/group/CoxeterGroup';
-import { tangentFrame } from '@/render2d/sample';
+import { tangentFrame } from '@/viz2d/render/sample';
 
 const S2 = new Spherical2();
 const E2 = new Euclidean2();
