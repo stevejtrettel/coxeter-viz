@@ -2,7 +2,7 @@ import { addScaled, clone, dot, scale, vec3, vec4, type Covec, type Vec } from '
 import { applyToCovector, applyToVector, identity, matInverse, matMul } from '@/math/mat';
 import type { Geometry, Isometry2, Isometry3, Point2, Point3 } from './types';
 import type { Hyperplane } from './Hyperplane';
-import { dual, form, reflectionMat } from './ambient';
+import { dual, form, reflectionMat, renormalizeIsometryMat } from './ambient';
 
 /**
  * Hyperbolic space Hⁿ (κ = −1): the upper sheet ⟨p,p⟩ = −1, p₀ > 0 of the
@@ -67,6 +67,9 @@ abstract class HyperbolicBase<P extends Vec, I extends Vec> implements Geometry<
   }
   reflection(wall: Hyperplane): I {
     return reflectionMat(-1, wall.covector) as I;
+  }
+  renormalizeIsometry(g: I): I {
+    return renormalizeIsometryMat(-1, g) as I;
   }
 }
 

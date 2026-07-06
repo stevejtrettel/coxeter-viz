@@ -5,7 +5,7 @@
  */
 
 import { addScaled, scale, type Vec } from '@/math/vec';
-import type { Mat } from '@/math/mat';
+import { matMul, matTranspose, type Mat } from '@/math/mat';
 import type { Geometry } from '@/geometry/types';
 import { Spherical2, Spherical3 } from '@/geometry/Spherical';
 import { Euclidean2, Euclidean3 } from '@/geometry/Euclidean';
@@ -79,4 +79,32 @@ export function matrixDiff(g: Mat, h: Mat): number {
   let m = 0;
   for (let i = 0; i < g.length; i++) m = Math.max(m, Math.abs(g[i] - h[i]));
   return m;
+}
+
+/**
+ * How far g sits from the isometry group: max |gᵀJg − J| for S/H; for E,
+ * the homogeneous checks (row 0 = e₀ᵀ, spatial block orthogonal).
+ */
+export function isometryResidual(geom: Geometry<Vec, Mat>, g: Mat): number {
+  const n = Math.round(Math.sqrt(g.length));
+  let res = 0;
+  if (geom.kind === 'euclidean') {
+    res = Math.abs(g[0] - 1);
+    for (let c = 1; c < n; c++) res = Math.max(res, Math.abs(g[c]));
+    for (let a = 1; a < n; a++) {
+      for (let b = 1; b < n; b++) {
+        let s = 0;
+        for (let r = 1; r < n; r++) s += g[r * n + a] * g[r * n + b];
+        res = Math.max(res, Math.abs(s - (a === b ? 1 : 0)));
+      }
+    }
+    return res;
+  }
+  const kappa = geom.kind === 'spherical' ? 1 : -1;
+  const J = new Float64Array(n * n);
+  J[0] = kappa;
+  for (let i = 1; i < n; i++) J[i * n + i] = 1;
+  const gtJg = matMul(matTranspose(g), matMul(J, g));
+  for (let i = 0; i < n * n; i++) res = Math.max(res, Math.abs(gtJg[i] - J[i]));
+  return res;
 }

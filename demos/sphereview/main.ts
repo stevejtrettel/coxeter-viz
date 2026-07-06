@@ -7,12 +7,15 @@
  */
 
 import { matMul, mat3 } from '@/math/mat';
-import type { GeometryKind } from '@/geometry/types';
+import type { GeometryKind, Isometry2 } from '@/geometry/types';
 import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
 import type { RealizationSpec } from '@/coxeter/spec';
 import type { Scene } from '@/render2d/types';
 import { paint } from '@/render2d/canvas';
+import { toSvg } from '@/render2d/svg';
+import { attachInteraction } from '@/render2d/interact';
 import { buildSpherePathList } from '@/sphereview/scene';
+import { SpherePerspective, sphereUnprojector } from '@/sphereview/projection';
 import type { SphereCamera } from '@/sphereview/types';
 
 const WALL_COLORS = ['#c0392b', '#27ae60', '#2f6fb7'];
@@ -90,7 +93,9 @@ function planeRotation(i: number, j: number, a: number) {
 const s235 = solvePolygon(triangleSpec('spherical', [2, 3, 5]));
 const scene = chamberScene(s235);
 // Tip the chamber off-axis so the walls' far arcs wrap behind the globe.
-const view = matMul(planeRotation(0, 1, 0.9), planeRotation(0, 2, 0.45));
+const initialView = matMul(planeRotation(0, 1, 0.9), planeRotation(0, 2, 0.45));
+// P3: back arcs dash (the hidden-line convention), sized by the inradius.
+const backDash = { on: 0.5 * s235.inradius, off: 0.35 * s235.inradius };
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
@@ -98,15 +103,27 @@ const PAD = 20;
 document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
 const heading = document.createElement('h2');
 heading.textContent =
-  'sphereview stage 1 — the (2,3,5) chamber on a translucent globe, perspective d = 5';
+  'sphereview — the (2,3,5) chamber, perspective d = 5 · drag to rotate, wheel to zoom · dashed hidden lines';
 heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 12px';
 document.body.appendChild(heading);
+
+const save = document.createElement('button');
+save.textContent = 'SVG';
+save.title = 'Download as SVG — identical to the canvas, current view included';
+save.style.cssText =
+  'font-size:11px;padding:2px 9px;margin-bottom:8px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer;display:block';
+document.body.appendChild(save);
 
 const canvas = document.createElement('canvas');
 document.body.appendChild(canvas);
 
+// The view survives resize; the affine part is re-derived from the new size.
+let savedView: Isometry2 = initialView;
+// One canvas is reused across resizes: tear down the old controller first.
+let detach: (() => void) | null = null;
+
 function renderAll(): void {
-  const headingH = heading.offsetHeight + 12;
+  const headingH = heading.offsetHeight + save.offsetHeight + 20;
   const size = Math.max(
     260,
     Math.min(760, window.innerWidth - 2 * PAD, window.innerHeight - 2 * PAD - headingH),
@@ -120,17 +137,52 @@ function renderAll(): void {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const silhouette = EYE_DISTANCE / Math.sqrt(EYE_DISTANCE * EYE_DISTANCE - 1);
-  const camera: SphereCamera = {
-    view,
+  let camera: SphereCamera = {
+    view: savedView,
     scalePx: size / 2 / (silhouette * 1.12),
     centerPx: [size / 2, size / 2],
     eyeDistance: EYE_DISTANCE,
   };
-  const paths = buildSpherePathList(scene, {
+
+  const build = () =>
+    buildSpherePathList(scene, { camera, size: { widthPx: size, heightPx: size }, backDash });
+  const draw = (): void => {
+    g.clearRect(0, 0, size, size);
+    paint(g, build(), camera);
+  };
+  let pending = false;
+  const schedule = (): void => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      draw();
+    });
+  };
+
+  draw();
+  save.onclick = () => {
+    const svg = toSvg(build(), camera, { widthPx: size, heightPx: size });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    a.download = 'sphereview-235-chamber.svg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  // Globe rotation (stage 2a): drag the front sheet, the double-bisector
+  // machinery composes the rotation into the view.
+  detach?.();
+  const handle = attachInteraction(canvas, {
+    geom: s235.geom,
+    unproject: sphereUnprojector(new SpherePerspective(EYE_DISTANCE)),
     camera,
-    size: { widthPx: size, heightPx: size },
+    onCamera: (c) => {
+      camera = c as SphereCamera;
+      savedView = c.view;
+      schedule();
+    },
   });
-  paint(g, paths, camera);
+  detach = () => handle.dispose();
 }
 
 renderAll();

@@ -559,9 +559,169 @@ chart, in one demo, static camera.
     dressing, matching sphereview's globe precedent; sphereview's builder
     explicitly skips domain items in shared scenes; `demos/render2d` and
     `demos/group` shed their hand-drawn circles) ·
-    **V2.3** wrap-around fill honesty + the demo's far-tile skip removed ·
-    **V2.4** `svg.ts` + serializer tests + the export button.
+    **V2.3** wrap-around fill honesty + the demo's far-tile skip removed —
+    **DONE 2026-07-05**, with the planned criterion REPLACED at its
+    verification gate: the adjacent-sample-jump test cannot detect the far
+    tile (its boundary stays away from the puncture — bounded, well-sampled
+    loop, no jumps; the dishonesty is containment, not proximity). The
+    shipped criterion is an interior-point winding test (circle center
+    exactly / polygon normalized vertex mean, interior for geodesically
+    convex loops; undecidable mean ⇒ keep), gated to spherical geometry by
+    the compactness argument (every flat chart of S² is punctured or
+    branched; H/E flat charts are embeddings, never tested). Pinned against
+    the real (2,3,5) far tile under the tipped view, wrapped/at-pole/honest
+    circles, and an H near-boundary polygon ·
+    **V2.4** `svg.ts` + serializer tests + the export button — **DONE
+    2026-07-05** (`toSvg(paths, camera, size)`: a pure string builder, the
+    painter's viewport verbatim incl. the y-flip; one `<path>` per
+    RenderPath with all contours in one `d` — the even-odd annulus rule
+    survives export; `data-id`, `fill-opacity` only when ≠ 1, 2-decimal px,
+    attribute escaping; degenerate contours skipped, empty paths omitted.
+    Tests: a hand-checked synthetic list with exact `d` strings, a real
+    Poincaré scene round-trip parsing coordinates back to ≤ 0.005 px, and
+    escaping. `demos/group` panels now build one path list consumed by BOTH
+    the painter and a per-panel SVG download button — the figure is the
+    screen by construction, globe panel included). **V2 code complete;
+    closes on the user's visual pass + a downloaded figure.**
 - **V3** — interaction: screen zoom/pan, isometry dragging, hover highlight.
+  **PLANNED 2026-07-05** (collaboratively; user rulings in). Decisions:
+  - **Gestures**: wheel = zoom about the cursor (affine); drag = isometry
+    drag (below); shift/middle drag = screen pan (affine). Interaction only
+    produces new cameras + per-frame overrides; content never moves.
+  - **Isometry drag = the double-bisector translation** (as decided at the
+    §5.3.1 top): unproject prev/current cursor to view-space points a₀, a₁;
+    T = R_bis(m,a₁)·R_bis(a₀,m) with m the geodesic midpoint; view ← T·view.
+    Guards: outside-domain cursors, a₀ ≈ a₁, near-antipodal (S).
+  - **`Hyperplane.bisector(geom, p, q)` lives in `geometry/`** (user
+    ruling): covector ∝ J(q−p) in S/H (q−p automatically spacelike), the
+    E covector written with its affine offset; side(p) < 0 fixed. It is the
+    Dirichlet-domain primitive of Milestone 3+, not interaction-private.
+    `Hyperplane.distanceTo(geom, p)` (κ-arcsin of the side value) joins it.
+  - **Drift renormalization every 64 compositions** (user ruling; constant
+    provisional): new `Geometry.renormalizeIsometry(g)` — J-Gram–Schmidt on
+    columns for S/H (H: column 0 timelike, upper sheet), E: row-0 reset +
+    spatial Gram–Schmidt + translation kept. Idempotent, exact
+    J-orthogonality, O(ε) move on O(ε) drift.
+  - **Hover highlight as an optional ability** (user ruling): `hitTest`
+    (topmost, reverse paint order; convex-polygon containment via
+    cross-covectors sign-matched to the vertex mean — V2.3's assumption and
+    mean; circles/points by intrinsic distance, walls by `distanceTo`, px
+    slop through `scaleAt`; `domain` never hit) → a `StyleOverrides` entry +
+    repaint. Demos may use or ignore it.
+  - **The globe stays static in V3** (user ruling), and sphere-view
+    interactivity equal to the flat charts is a recorded WANT — see the §6
+    sphereview entry (blocked on unproject + the sheet choice, not on this
+    plan).
+  - **Pure-function core, thin DOM shell**: camera transforms and hitTest
+    are pure and unit-tested (vitest has no DOM); the controller adapter
+    owns events and callbacks (`onCamera`, `onHover`); demos own the
+    rAF-throttled rebuild loop (financed by V2.1).
+  - Sub-increments, `typecheck`+`test` green: **V3.0** this entry + README
+    amendments (render2d + geometry) — **DONE, approved 2026-07-05** ·
+    **V3.1** the geometry primitives + tests — **DONE 2026-07-05**
+    (`Hyperplane.bisector` / `distanceTo`, `Geometry.renormalizeIsometry`
+    via `renormalizeIsometryMat` in ambient.ts; 30 tests across all six
+    cells: reflection-in-bisector SWAPS p and q; the double-bisector
+    translation maps p → q with J-orthogonality < 1e-12 and advances the
+    midpoint to parameter 1.5; distanceTo inverts exp along the pole;
+    renormalization is an exact projection, O(ε) move, idempotent to
+    relative float noise, E translation column untouched; a 1000-step
+    composition chain renormalized every 64 stays on the group) ·
+    **V3.2** pure camera transforms + `hitTest` + tests — **DONE
+    2026-07-05** (`interact.ts`: `zoomedCamera` / `pannedCamera` /
+    `draggedCamera` / `unprojectScreen` / `hitTest`, `RENORM_EVERY = 64`;
+    the caller owns the composition counter. Pinned: zoom fixes the cursor
+    point and composes multiplicatively; the drag lands the grabbed
+    content point under the cursor to 1e-8 px in Klein/Poincaré/Cartesian/
+    stereographic with the view an exact isometry; guards return null; a
+    600-step simulated Poincaré drag session with RENORM_EVERY stays on
+    the group; hitTest pins topmost-wins, domain-never-hit, circle
+    edge-vs-interior, wall half-width + slop, segment caps with slop-sized
+    overhang, slop-through-scaleAt, and spherical convex containment) ·
+    **V3.3** the DOM controller + `demos/group` live — **BUILT 2026-07-05,
+    pending the user's hands-on pass** (`attachInteraction`: pointer/wheel
+    adapter over the pure functions, owns the current camera and the
+    RENORM_EVERY counter, `onPointer` hover feed ready for V3.4, grab
+    cursors; `demos/group` flat panels are live — drag / shift- or
+    middle-drag pan / wheel zoom — with per-panel rAF-throttled rebuilds,
+    dragged-into views surviving resize (affine re-derived), and the SVG
+    button exporting the CURRENT view; the globe panel is titled static
+    per the ruling) · **V3.4** hover highlight in the demo — **BUILT
+    2026-07-05, pending the user's hands-on pass** (the hovered TILE gets a
+    per-frame fill override via the controller's onPointer feed + hitTest;
+    the SVG export deliberately omits hover — transient UI state, not the
+    figure). **Stage 2a addendum (globe rotation), user-directed
+    2026-07-05, BUILT same day, pending the hands-on pass**: the sphere
+    ruling ("static for now") was superseded by the user's request; §6's
+    unproject-with-sheet-choice WANT is now RESOLVED —
+    `SpherePerspective.unproject(u, sheet)` (the closed-form quadratic;
+    front = root nearer the eye; null outside the silhouette; spec at the
+    sphereview README stage-2a section), the controller generalized to a
+    pluggable `ScreenUnprojector` (Model-backed for flat charts;
+    front-sheet for the globe), camera transforms spread their input so
+    SphereCamera.eyeDistance survives, and the demo's globe panel is live
+    with the same double-bisector drag (an S² translation IS a rotation).
+    Sphere hit-testing/hover stays parked in §6. **V3 CLOSED — hands-on
+    approved 2026-07-05** ("works great": drag/pan/zoom on all flat
+    panels, tile hover, globe rotation). **V2 closed with it** (the same
+    sessions exercised domain dressing, fill honesty, and the SVG
+    buttons).
+
+- **P — the 2D polish sprint** (user-directed 2026-07-05, after V3
+  closed). Retires the parked small items; plan decided here:
+  - **P1 — dashed strokes.** `StrokeStyle.dash?: { on, off, phase? }` in
+    INTRINSIC lengths (decided: dashes are content and size like every
+    other stroke dimension — they shorten toward the Poincaré boundary; a
+    screen-px dash would be a diagram-mode exception with no customer).
+    Mechanics: all three curve generators are CONSTANT-SPEED in their
+    parameter (segments: d(a,b); walls: unit; circles: sin_κ(r)), so dash
+    chopping is exact parameter arithmetic (`dashRanges`, pure + tested);
+    each ON range samples adaptively as its own open curve; all dash
+    outlines are contours of ONE RenderPath (SVG inherits by
+    construction, as §6 predicted). Polygon edges dash per-edge, phase
+    restarting at each vertex (documented). > MAX_DASHES (1024) falls
+    back to solid.
+  - **P2 — stroke joins.** Poly­gon corners are butt-capped per edge (V1
+    note): fill the corner with the JOIN DISK — the jacobian ellipse of
+    intrinsic radius w/2 at the vertex (the markEllipse machinery),
+    emitted as separate same-id paths (same-path contours would even-odd
+    cancel against the edges). Documented tradeoff: translucent edges
+    darken slightly at corners (formerly: notches).
+  - **P3 — sphereview polish**: back-piece dashing (consumes P1; S² arcs
+    are unit-speed), sphere hover (front-sheet hitTest), and
+    straddling-fill cap clipping (the §6 stage-2 item; the heavy one,
+    last). **DONE 2026-07-06**: `SphereBuildContext.backDash` (hidden-line
+    convention; item dash wins on both sheets); `sphereHitTest`
+    (interact.ts) over the extracted chart-free `hitTestCanonical`;
+    **cap-clipped fills** (`clippedFillLoops`): pure-sheet boundary runs
+    alternate with silhouette-circle arcs (crossings = the trig roots,
+    p₀ = 1/d exactly; the silhouette projects angle-preservingly to the
+    render circle; per gap, the contained arc — convexity gives one loop
+    per sheet), plus the cap-wrap case (single-sheet boundary swallowing
+    the silhouette ⇒ ring + far cap). SEMANTICS CHANGE, recorded: the
+    stage-1 pins "straddling fills skipped" and "beyond-cap latitude
+    circle's fill intact" are superseded — straddling regions now fill in
+    both passes, and the latitude circle emits a back ring + the visible
+    cap as a front disk (the old single back fill wrongly dimmed the whole
+    region). The demo globe gets backDash + tile hover. Addendum
+    2026-07-06 (user): `demos/sphereview` upgraded to the full instrument —
+    drag rotation, wheel zoom, SVG export of the current view, dashed
+    hidden lines (its single-chamber scene is where the hidden-line look
+    actually reads; the group demo's full tessellation hides its own far
+    side behind ~opaque front tiles — expected, not a bug).
+  **SPRINT CLOSED — approved 2026-07-06** ("this is excellent"; the smooth
+  silhouette-crossing tiles and the upgraded sphereview instrument both
+  seen). Increments P1 → P2 → P3, each `typecheck`+`test` green, closing
+  on the user's eyes. **P1 DONE 2026-07-05** (dashRanges + strokeContours; the
+  wall sampler refactored to expose its unit-speed parameter range;
+  resolveRegion carries dash — a passthrough the pipeline tests caught;
+  pinned: hand-checked ranges/phase/fallbacks, a Poincaré geodesic whose
+  equal intrinsic dashes shrink monotonically ~3× toward the boundary,
+  circle-edge dash counts from sin_κ(r)·2π, per-edge polygon patterns,
+  undashed output unchanged). **P2 DONE 2026-07-05** (join disks =
+  markEllipse(w/2) per vertex, one extra same-id path per stroked
+  polygon; exact w/2 circles pinned in E²; fill-only polygons emit no
+  join path).
 
 **Tests pin the math**: outline half-width at a sample ≈ (w/2)·|J·n̂|
 against numerical differentiation; mark-ellipse axes = jacobian singular
@@ -784,6 +944,78 @@ math/geometry/polytope/coxeter.
   frame) — the view is tipped off-axis and that one tile's fill is omitted,
   noted in the panel title.
 
+### 5.5 Milestone 3 in detail — 2D computations & word-list features (decided 2026-07-06)
+
+**User rulings, all four in**: (1) word lists are input **in the abstract
+group** and converted to ELEMENTS for all semantics (membership by matrix
+key, never literal word syntax); (2) `subgroup` enumeration returns (its
+deferred phase is here); (3) the demo gets **interactive word entry** (type
+words, matching tiles/nodes light up live); (4) circle measures included
+for consistency (no consumer yet — noted).
+
+**Modules**: `polytope/measure.ts` (Gauss–Bonnet / shoelace polygon area,
+perimeter, κ-trig circle measures — spec at the polytope README);
+`group/` grows `elements` / `tilesFor` / `subgroup` methods +
+`wordlists.ts` (`cosetIndex` by minimal-key left-coset orbits,
+`hullOfWords` = hull of base-point images via `fromVertices2`, hemisphere
+refusal propagating) — spec at the group README's "Word lists" section,
+honoring the design doc's rule that every word-list op states what a word
+maps to.
+
+**Tests pin the mathematics**: chamber areas exactly π/42 (2,3,7) and
+4π/120 (2,3,5); the 120 spherical tile areas sum to 4π (Gauss–Bonnet
+audits the group order); E square area = shoelace; perimeter = edge sums;
+circle rows against closed forms; |⟨R_i,R_j⟩| = 2m_ij; spherical coset
+counts = |G|/|H|; two spellings of one element are one member; the
+dihedral-orbit hull is a regular 2m-gon of the right area.
+
+**Increments**: **M3.0** this plan + README amendments — DONE with this
+entry · **M3.1** `measure.ts` + tests — **DONE 2026-07-06** (π/42 and
+4π/120 exact; the 120 spherical tiles sum to 4π and every transported
+tile's area is invariant to 1e-9, H to 1e-8 at depth 8; unit square by
+shoelace; circle circumference cross-checked against a 4096-chord sum
+— chords undershoot by the expected O(1/n²); S/H disk areas match πr²
+to fourth order and bracket it at finite radius) · **M3.2** the group word-list
+methods + `cosetIndex` + tests — **DONE 2026-07-06** (`elements` /
+`tilesFor` / `subgroup` on the class, `cosetIndex` in wordlists.ts by
+minimal-key left-coset orbits; pinned: spelling dedup with the first
+spelling kept; parabolic orders 2m on all three (2,3,5) pairs; the full
+generator set regenerates 48; a rotation's cyclic ⟨R₂R₁⟩ = 3; the
+(2,3,7) Coxeter element hits the maxCount stop; 120/6 = 20 cosets of
+size 6 exactly; left-coset membership spot-checked incl. the commuting
+order-2 pair being coset-mates both ways) ·
+**M3.3** `hullOfWords` + tests — **DONE 2026-07-06** (hull of base-point
+images via `fromVertices2`; the ⟨R₁,R₂⟩ orbit hulls to a regular 2m-gon
+in all three geometries — equal edges to 1e-9, vertices equidistant
+from the parabolic's fixed chamber corner; duplicate spellings collapse;
+the hemisphere refusal fires on a whole-sphere word list) · **M3.4**
+the demo: coset coloring (tiles + Cayley nodes), a drawn word-list hull,
+exact area readouts, and the interactive word-entry box — **BUILT
+2026-07-06, pending the user's eyes** (`demos/wordlists`, `npm run dev
+wordlists`): three interactive panels (Poincaré / Cartesian /
+stereographic) colored by left coset of ⟨R₁,R₂⟩ with matching Cayley-node
+colors over thin gray edges; the dihedral orbit's hull drawn bold; a
+stats line per panel (π/42 and 4π/120 called out exactly; the spherical
+ball totals 4π); one shared word-entry box parsing `e, 0, 0.1, 1.2.1`
+style input, highlighting elementwise across all three panels at once
+(any spelling hits its one tile + node); full V3 interaction + SVG
+export per panel. **APPROVED 2026-07-06 ("things look great!") — Milestone 3's 2D scope is
+CLOSED.** Note: the group→Scene conversion is now duplicated across demos
+— promotion to an adapter module is the foreseen follow-up, not done
+unilaterally. **M3.5 addendum (user-directed 2026-07-06)**: `demos/wordfile`
+— a tiling from a WORD-LIST FILE, the product shape in miniature: orders
+(p, q, r) typed with the geometry INFERRED by the exact classifier (the
+design doc's "model: auto", first exercised here), a file picker accepting
+the design doc's JSON form (`[[0,1],…]` or `{words: [...]}`) or plain dot
+text, `tilesFor` drawing exactly the listed tiles (parity-colored, walls
+overlaid), tile-count/area stats, full interaction + SVG, a built-in
+sample, and `demos/wordfile/example-words.json` (the (2,3,7) alternating
+subgroup patch to depth 7) as a real file to load. Amended same day
+(user): the example AUTO-LOADS on startup (imported `?raw` through the
+same parser a picked file uses), and a faint ambient tessellation
+(depth 12/12/20 per geometry) draws underneath so the word list reads as
+a HIGHLIGHTED PATCH within the tiling. Pending the user's eyes.
+
 ### Milestones cut vertically, not horizontally
 
 **Milestone 1 (the proof of the unification): 2D end-to-end, all three
@@ -828,9 +1060,14 @@ tile/Cayley coloring by word lists).
     decided here. Widened 2026-07-05 (user, during V2 planning): wanted for
     the flat charts too, not just the sphere view; evaluate as its own
     small increment after render2d V2.
-  - *Region clipping against the cap* (fills straddling the silhouette —
-    stage 1 skips them).
+  - *Region clipping against the cap* — **RESOLVED 2026-07-06** (P3,
+    `clippedFillLoops`; see §5.3.1's P entry).
   - *Hit-testing / unproject with a sheet choice* (it is not a `Model`).
+    Upgraded from open question to WANT 2026-07-05 (user, V3 planning);
+    **unproject + globe DRAGGING resolved 2026-07-05** (stage 2a, recorded
+    at §5.3.1's V3 entry): `SpherePerspective.unproject(u, sheet)` +
+    `sphereUnprojector` through the generalized controller. Sphere
+    HIT-TESTING (hover on the globe) remains parked.
   - Whether it generalizes to a 3D-objects → 2D vector renderer seamed at
     renderDim-3 models with chain-rule jacobians (a Claude suggestion,
     unvalidated — would serve H³/S³ ball paper figures in the 3D era;

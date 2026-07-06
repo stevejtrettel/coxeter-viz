@@ -2,7 +2,7 @@ import { addScaled, dot, scale, vec3, vec4, type Covec, type Vec } from '@/math/
 import { applyToCovector, applyToVector, identity, matInverse, matMul } from '@/math/mat';
 import type { Geometry, Isometry2, Isometry3, Point2, Point3 } from './types';
 import type { Hyperplane } from './Hyperplane';
-import { dual, form, reflectionMat } from './ambient';
+import { dual, form, reflectionMat, renormalizeIsometryMat } from './ambient';
 
 /**
  * Euclidean space Eⁿ (κ = 0): the affine slice p₀ = 1 in R^{n+1} with the
@@ -63,6 +63,9 @@ abstract class EuclideanBase<P extends Vec, I extends Vec> implements Geometry<P
   }
   reflection(wall: Hyperplane): I {
     return reflectionMat(0, wall.covector) as I;
+  }
+  renormalizeIsometry(g: I): I {
+    return renormalizeIsometryMat(0, g) as I;
   }
 }
 

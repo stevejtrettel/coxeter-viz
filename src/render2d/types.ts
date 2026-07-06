@@ -33,6 +33,13 @@ export interface StrokeStyle {
   readonly width: number;
   /** 0–1; default 1. */
   readonly opacity?: number;
+  /**
+   * Dashing, in INTRINSIC lengths (P1): dashes are content and size like
+   * every other stroke dimension — they shorten toward the Poincaré
+   * boundary. `phase` slides the pattern along the curve (default 0).
+   * Polygon edges dash per-edge, the phase restarting at each vertex.
+   */
+  readonly dash?: { readonly on: number; readonly off: number; readonly phase?: number };
 }
 
 /** A point mark of intrinsic radius, drawn as its jacobian-image ellipse. */

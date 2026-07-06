@@ -71,11 +71,33 @@ exception to intrinsic sizing.
 
 ## Fills
 
-A fill is drawn when its whole region lies on one sheet (back fills simply
-dim under the disk). A region straddling the silhouette gets its boundary
-drawn split as usual but its **fill skipped** — a documented refusal
-(region clipping against the cap is parked stage-2 work; PLAN.md §6). No
-per-frame logging: this builder runs in immediate mode.
+A single-sheet fill draws whole (back fills simply dim under the disk),
+with one caveat resolved in P3: a boundary entirely on one sheet may still
+**swallow the whole silhouette** (a large region around the view axis) —
+convexity makes a one-point test sufficient, and the region then emits a
+ring `[boundary, silhouette]` on its boundary's sheet plus the far cap as a
+full silhouette disk on the other.
+
+**Straddling fills split at the silhouette (P3, `clippedFillLoops`)**. The
+boundary's pure-sheet pieces (their endpoints are `splitArc`'s trig roots,
+exactly p₀ = 1/d) merge into cyclic runs alternating front/back; each
+same-sheet loop closes along arcs of the SILHOUETTE CIRCLE — which projects
+angle-preservingly to the render circle of silhouette radius — choosing,
+per gap, whichever arc lies inside the region (a containment test; both
+cannot be inside, else there would be no crossings). One loop per sheet for
+CONVEX regions — the standing convexity assumption shared with fill honesty
+and hitTest. Front loop fills in the front pass, back loop in the back
+pass.
+
+## Back-side dashing and hover (P3)
+
+`SphereBuildContext.backDash = { on, off }` dashes all BACK stroke pieces
+with an intrinsic pattern (the hidden-line convention) via render2d's P1
+dash machinery — sphere arcs are unit-speed (circles: sin r), so dashing is
+parameter arithmetic. An item's own `StrokeStyle.dash` applies to both
+sheets and wins. `sphereHitTest` (interact.ts) is front-sheet hover: the
+stage-2a unproject pulled back by the view, feeding render2d's chart-free
+`hitTestCanonical`; back content is not hoverable — it is behind the globe.
 
 ## Not a Model
 
@@ -84,13 +106,36 @@ this view does not implement `Model`. It consumes render2d's minimal chart
 interface (`Chart2`: project + jacobianAt), which `Model` also satisfies;
 hit-testing with a front-sheet preference is deferred with interaction.
 
+## Unproject with a sheet choice — globe rotation (stage 2a)
+
+The inverse IS available once the sheet is named. For u with r² = |u|²,
+substituting p₁,₂ = u₁,₂·(d − p₀)/d into ⟨p,p⟩ = 1 gives the quadratic
+(1 + k)p₀² − 2kd·p₀ + kd² − 1 = 0 with k = r²/d², whose discriminant
+1 + k(1 − d²) is nonnegative exactly inside the silhouette
+(r ≤ d/√(d² − 1)):
+
+```
+p₀ = (kd ± √(1 + k(1 − d²))) / (1 + k)      + : front (nearer the eye),  − : back
+```
+
+`SpherePerspective.unproject(u, sheet)` returns the normalized point, or
+null outside the silhouette. **Globe rotation** is then the flat charts'
+drag verbatim: grab the FRONT sheet under the cursor, build the S²
+double-bisector translation (a rotation), compose into `camera.view`,
+renormalize every RENORM_EVERY — all render2d V3 machinery. The controller
+takes a pluggable `ScreenUnprojector` capability, so one controller serves
+Models and this view; `SphereCamera.eyeDistance` survives the pure camera
+transforms because they spread the input camera. Sphere hit-testing stays
+deferred (§6).
+
 ## Files
 
 | file | responsibility |
 |---|---|
 | `types.ts` | `SphereCamera`, `SphereStyle` |
-| `projection.ts` | `SpherePerspective` (P_d, jacobian, sheet, silhouette), `trigRoots` |
-| `scene.ts` | `buildSpherePathList`: apply g, split at the silhouette, sample/stroke/mark via the V1 machinery, two-pass emission, cull, style overrides |
+| `projection.ts` | `SpherePerspective` (P_d, jacobian, sheet, silhouette, stage-2a `unproject`), `trigRoots`, `sphereUnprojector` |
+| `scene.ts` | `buildSpherePathList`: apply g, split at the silhouette, sample/stroke/mark via the V1 machinery, two-pass emission, cull, style overrides, P3 clipped fills + back dashing |
+| `interact.ts` | `sphereHitTest`: front-sheet hover over render2d's canonical hit test |
 
 Depends on math → geometry → render2d. Demo: `demos/sphereview` — the V1
 (2,3,5) chamber scene UNCHANGED, viewed from an angle that wraps the

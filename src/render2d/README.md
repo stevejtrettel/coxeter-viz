@@ -100,6 +100,18 @@ u(t) ± (w/2) · J·n̂(t)
 the stroke has intrinsic width `w` at every sample: width varies along the
 stroke and is anisotropic where the chart is (thinner radially in Klein).
 
+**Dashes are intrinsic (P1).** `StrokeStyle.dash = { on, off, phase? }` in
+intrinsic lengths — dashes are content and size like every other stroke
+dimension, shortening toward the Poincaré boundary (a screen-px dash would
+be a diagram-mode exception with no customer). All three curve generators
+are constant-speed in their parameter (segments: d(a,b) · walls: 1 ·
+circles: sin_κ(r)), so the ON ranges are exact parameter arithmetic
+(`dashRanges`); each ON range samples adaptively as its own open curve
+(butt-capped dash ends), and every dash outline is a contour of ONE
+RenderPath — the SVG export inherits dashing by construction. Polygon
+edges dash per-edge, the phase restarting at each vertex; patterns denser
+than 1024 dashes per curve fall back to solid.
+
 **Points are jacobian-image ellipses.** A point of intrinsic radius `r` at
 `p` renders as the ellipse `project(p) + r·J·(unit circle)` — the image of
 the infinitesimal intrinsic disk, valid because point radii are small. Its
@@ -123,6 +135,15 @@ concatenation of the sampled geodesic edges between consecutive vertices
 additionally be stroked on top. Chamber polygons come straight from
 `Polytope.vertices` (cyclically ordered in 2D).
 
+**Corner joins (P2).** Edge strokes are one butt-capped outline per edge
+(overlapping outlines in a single even-odd path would cancel), which leaves
+notches at corners; each vertex therefore gets a JOIN DISK — the jacobian
+ellipse of intrinsic radius w/2, the same shape as a point mark — emitted
+as one extra same-id path per polygon (contours pairwise disjoint in the
+small-width regime; the path overlaps the edges, so it cannot share theirs).
+Tradeoff, documented: translucent edges darken slightly where the join
+overlaps them — formerly, those corners were notched.
+
 ## Sampling, clipping, culling
 
 - **Adaptive sampling everywhere**, tolerances in px (so the camera scale
@@ -145,16 +166,81 @@ additionally be stroked on top. Chamber polygons come straight from
   construction). **Safety property**: the pre-cull may only drop items the
   post-sampling cull would also drop — pinned by test against the full
   Milestone-1 scenes.
-- **Fill honesty (V2)**: a polygon or circle whose image wraps through the
+- **Fill honesty (V2)**: a polygon or circle whose region contains the
   chart's puncture (the stereographic antipode) bounds the COMPLEMENT of
-  its projected loop, so an even-odd fill would paint the wrong region. A
-  wrapped fill is detected — at full subdivision depth, an adjacent-sample
-  jump exceeding the expanded-frame diagonal — and dropped. Strokes need no
-  new handling: wrapped edges give finite off-frame outlines, and
-  non-finite samples are already dropped.
+  its projected loop, so an even-odd fill would paint the wrong region.
+  Only spherical flat charts can wrap: S² is compact, so every flat chart
+  of it is punctured or branched, while the H/E charts are embeddings and
+  always honest. Detection is an **interior-point winding test**: a
+  canonical interior point (a circle's center exactly; a polygon's
+  normalized vertex mean, interior for the geodesically convex loops the
+  polytope layer emits) must project inside the sampled loop — a wrapped
+  region puts it outside, or at the puncture itself (non-finite). Fails →
+  the fill is dropped. (The originally planned adjacent-sample-jump
+  criterion failed its verification gate: the far tile's boundary stays
+  away from the puncture, so its loop is bounded and well-sampled — the
+  dishonesty is containment, not proximity.) Strokes need no new handling:
+  wrapped edges give finite off-frame outlines, and non-finite samples are
+  already dropped.
 
 Defaults: `flatnessPx = 0.25`, `widthPx = 0.25`, `cullPx = 0.5`,
 `maxDepth = 12` (per curve, so ≤ 2¹² segments).
+
+## Interaction (V3)
+
+Interaction only ever produces **new cameras and per-frame overrides**;
+canonical content never moves, and every camera update is a **pure
+function** — the DOM controller in `interact.ts` is a thin adapter that owns
+pointer/wheel events and invokes `onCamera` / `onPointer` callbacks, while
+the demo owns the rebuild-and-repaint loop (rAF-throttled; V2.1's pre-cull
+is what makes a full rebuild per frame affordable). The drag machinery's
+screen→canonical step is a pluggable **`ScreenUnprojector`** capability —
+`modelUnprojector(model)` for the flat charts, sphereview's front-sheet
+unprojector for the globe (its perspective is not a `Model`) — so one
+controller serves both; the camera transforms spread their input, so camera
+subtypes (`SphereCamera.eyeDistance`) pass through intact.
+
+Gestures:
+
+- **wheel — zoom about the cursor**: `scalePx` scales multiplicatively,
+  `centerPx` shifts so the point under the cursor is fixed. Pure affine.
+- **drag — isometry drag**: unproject the previous and current cursor
+  positions to view-space canonical points a₀, a₁; the translation taking
+  a₀ → a₁ is the double bisector reflection
+
+  ```
+  T = R_bis(m, a₁) · R_bis(a₀, m),      m = geodesic midpoint(a₀, a₁)
+  ```
+
+  (both walls ⊥ the geodesic a₀a₁, so T is the pure translation along it,
+  and T·a₀ = a₁ exactly); compose `view ← T·view`. Dragging therefore does
+  the *geometrically right* thing per model: content slides along
+  geodesics, the disk boundary stays fixed. Guards: cursor outside the
+  chart's domain, or a₀ ≈ a₁ (and, on S, near-antipodal pairs) — skip the
+  move.
+- **shift/middle drag — screen pan**: `centerPx` only, for moving the
+  picture rather than the geometry.
+
+**Drift**: composing T into `view` at 60 Hz walks the matrix off the
+isometry group (hyperbolically fast in H), so the drag transform counts
+compositions and applies `geometry.renormalizeIsometry` every 64 (the
+constant is provisional).
+
+**Hit-testing is mathematical** (the V0 promise): `unproject` the pointer,
+pull back by `view⁻¹`, test canonical data — never pixels. `hitTest(scene,
+ctx, screenPx, slopPx)` returns the topmost hit (reverse paint order):
+polygons by convex containment (edge covectors `cross(vᵢ, vᵢ₊₁)` sign-matched
+against the vertex mean — the same convexity assumption, and the same mean,
+as V2.3 fill honesty); circles and point marks by intrinsic distance with
+the px slop mapped through `scaleAt`; geodesics by `Hyperplane.distanceTo`
+under the same slop; `domain` items are never hit. Hover highlighting is
+then the existing machinery — a `StyleOverrides` entry and a repaint,
+no scene mutation.
+
+**The globe stays static in V3**: sphereview has no `unproject` (the sheet
+choice is parked in §6), and a screen-space trackball would cut against the
+house style. Sphere-view interactivity equal to the flat charts is a
+recorded WANT (§6), unlocked by that parked work.
 
 ## Scope decision: fixed to 2D
 
@@ -174,7 +260,7 @@ instantiation for these types to serve.
 | `scene.ts` | scene → path list: apply `g`, project, clip walls to frame/domain, cull, resolve style overrides | V1 |
 | `canvas.ts` | the Canvas2D painter (immediate mode) | V1 |
 | `svg.ts` | one-file path-list → SVG string builder (no DOM): the painter's viewport formula verbatim, one `<path>` per RenderPath, `fill-rule="evenodd"`, `fill-opacity`, item id as `data-id` (one item emits several paths, so not `id`), 2-decimal px coordinates | V2 |
-| `interact.ts` | screen zoom/pan, isometry dragging, hover highlight (composing into `camera.view`) | V3 |
+| `interact.ts` | pure camera transforms (zoom / pan / double-bisector drag with drift renormalization), `hitTest`, and the thin DOM controller | V3 |
 
 Increments (PLAN.md §5.3.1): **V0** this README + `types.ts`, approved before
 further code · **V1** sample/stroke/marks/scene + Canvas painter + the
@@ -183,7 +269,12 @@ with walls and incircles through straight AND conformal charts, static
 camera · **V2** (plan at §5.3.1's V2 entry) **V2.1** pre-sampling cull ·
 **V2.2** the `domain` item, demos shed hand-drawn chrome · **V2.3**
 wrap-around fill honesty · **V2.4** `svg.ts` + the export button on
-`demos/group` · **V3** interaction.
+`demos/group` · **V3** (plan at §5.3.1's V3 entry) **V3.0** the plan +
+README amendments here and in `geometry/` · **V3.1** the geometry
+primitives (`bisector`, `distanceTo`, `renormalizeIsometry`) + tests ·
+**V3.2** pure camera transforms + `hitTest` + tests · **V3.3** the DOM
+controller, `demos/group` live (drag/zoom/pan) · **V3.4** hover highlight
+in the demo.
 
 ## Tests pin the math
 
@@ -202,3 +293,13 @@ wrap-around fill honesty · **V2.4** `svg.ts` + the export button on
   dropped, its neighbors' kept;
 - (V2) SVG: parsed path coordinates identical to the painter's screen
   points; `data-id`, `fill-rule`, `fill-opacity` present.
+- (V3) drag: `T·a₀ = a₁` exactly, T is J-orthogonal, and the dragged
+  camera holds the grabbed content point under the cursor
+  (`project(view'·x₀) = u₁`) in all three geometries and both chart
+  families;
+- (V3) zoom: the cursor point is fixed, scales compose multiplicatively;
+- (V3) a long simulated drag (hundreds of moves) keeps `view` on the
+  isometry group (J-orthogonality residual bounded — the renormalization
+  pin);
+- (V3) hitTest: containment in/out per kind, topmost-wins ordering, slop
+  respected through `scaleAt`, domain never hit.

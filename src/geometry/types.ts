@@ -67,4 +67,10 @@ export interface Geometry<P extends Vec, I> {
   inverse(g: I): I;
   /** The reflection I − 2 (Jc)cᵀ in a wall (see README). */
   reflection(wall: Hyperplane): I;
+  /**
+   * Project a float-drifted matrix back onto the isometry group (README,
+   * "isometry renormalization") — long composition chains (interactive
+   * dragging) walk off the group, hyperbolically fast in H.
+   */
+  renormalizeIsometry(g: I): I;
 }

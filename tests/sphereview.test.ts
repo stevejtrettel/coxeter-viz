@@ -8,6 +8,7 @@ import { strokeOutline } from '@/render2d/stroke';
 import { markAxes } from '@/render2d/marks';
 import { SpherePerspective, trigRoots } from '@/sphereview/projection';
 import { buildSpherePathList, type SphereBuildContext } from '@/sphereview/scene';
+import { sphereHitTest } from '@/sphereview/interact';
 import type { SphereCamera } from '@/sphereview/types';
 import type { Scene } from '@/render2d/types';
 import { Hyperplane } from '@/geometry/Hyperplane';
@@ -184,7 +185,7 @@ describe('sphereview/scene: buildSpherePathList', () => {
     expect(ids.lastIndexOf('s')).toBeGreaterThan(ids.indexOf('sphere')); // one front piece
   });
 
-  it('single-sheet circles keep their fill; straddling circles lose it but keep the split edge', () => {
+  it('single-sheet circles keep their fill; cap-wrapping latitude circles split ring + cap (P3)', () => {
     const style = { fill: { color: 'F' }, edge: { color: 'E', width: 0.02 } };
     const small: Scene = [
       { id: 'c', kind: 'circle', center: S2.origin(), radius: 0.5, style },
@@ -195,26 +196,57 @@ describe('sphereview/scene: buildSpherePathList', () => {
     expect(smallPaths.find((p) => p.color === 'E')?.contours.length).toBe(2); // annulus
 
     // A circle CENTERED on the view axis is a latitude circle (constant p₀):
-    // it cannot straddle — beyond the cap it is entirely back, fill intact.
+    // it cannot straddle — beyond the cap its boundary is entirely back, but
+    // the region SWALLOWS the whole silhouette (P3 cap-wrap): a back ring
+    // [boundary, silhouette] plus the visible cap as a front disk.
     const latitude: Scene = [
       { id: 'c', kind: 'circle', center: S2.origin(), radius: capRadius + 0.3, style },
     ];
     const latPaths = buildSpherePathList(latitude, ctx());
     const latIds = latPaths.map((p) => p.id);
-    expect(latPaths.filter((p) => p.color === 'F').length).toBe(1);
-    expect(latIds.indexOf('c')).toBeLessThan(latIds.indexOf('sphere')); // back pass
+    const latFills = latPaths.filter((p) => p.color === 'F');
+    expect(latFills.length).toBe(2);
+    expect(latIds.indexOf('c')).toBeLessThan(latIds.indexOf('sphere')); // the ring, back pass
+    expect(latIds.lastIndexOf('c')).toBeGreaterThan(latIds.indexOf('sphere')); // the cap, front pass
+    expect(latFills[0].contours.length).toBe(2); // boundary + silhouette (even-odd ring)
+    expect(latFills[1].contours.length).toBe(1); // the full silhouette disk
+    const R = new SpherePerspective(D).silhouetteRadius();
+    const disk = latFills[1].contours[0];
+    for (let i = 0; i < disk.length; i += 2) {
+      expect(Math.hypot(disk[i], disk[i + 1])).toBeCloseTo(R, 9);
+    }
+  });
 
-    // Straddling requires an off-axis center.
+  it('straddling fills split at the silhouette: front and back loops (P3)', () => {
+    const style = { fill: { color: 'F' }, edge: { color: 'E', width: 0.02 } };
     const offAxis = S2.exp(S2.origin(), Float64Array.of(0, 1, 0), 1.0);
     const straddling: Scene = [
       { id: 'c', kind: 'circle', center: offAxis, radius: 0.8, style },
     ];
-    const bigPaths = buildSpherePathList(straddling, ctx());
-    expect(bigPaths.filter((p) => p.color === 'F').length).toBe(0); // fill skipped
-    expect(bigPaths.filter((p) => p.color === 'E').length).toBe(2); // front + back arcs
+    const paths = buildSpherePathList(straddling, ctx());
+    const ids = paths.map((p) => p.id);
+    const fills = paths.filter((p) => p.color === 'F');
+    expect(fills.length).toBe(2); // one loop per sheet
+    expect(paths.filter((p) => p.color === 'E').length).toBe(2); // front + back arcs
+    expect(ids.indexOf('c')).toBeLessThan(ids.indexOf('sphere'));
+    expect(ids.lastIndexOf('c')).toBeGreaterThan(ids.indexOf('sphere'));
+
+    // Both loops close along the silhouette: each contains points at exactly
+    // the silhouette radius, and no point beyond it.
+    const R = new SpherePerspective(D).silhouetteRadius();
+    for (const fill of fills) {
+      const c = fill.contours[0];
+      let onSil = 0;
+      for (let i = 0; i < c.length; i += 2) {
+        const r = Math.hypot(c[i], c[i + 1]);
+        expect(r).toBeLessThanOrEqual(R + 1e-9);
+        if (Math.abs(r - R) < 1e-9) onSil++;
+      }
+      expect(onSil).toBeGreaterThan(1);
+    }
   });
 
-  it('single-sheet polygons fill; straddling polygons keep only split edges', () => {
+  it('single-sheet polygons fill; straddling polygons split fill and edges (P3)', () => {
     const v = (dir: [number, number], dist: number) =>
       S2.exp(S2.origin(), Float64Array.of(0, dir[0], dir[1]), dist);
     const style = { fill: { color: 'F' }, edge: { color: 'E', width: 0.02 } };
@@ -239,8 +271,60 @@ describe('sphereview/scene: buildSpherePathList', () => {
       },
     ];
     const bigPaths = buildSpherePathList(big, ctx());
-    expect(bigPaths.filter((p) => p.color === 'F').length).toBe(0);
+    const ids = bigPaths.map((p) => p.id);
+    expect(bigPaths.filter((p) => p.color === 'F').length).toBe(2); // split fill (P3)
     expect(bigPaths.filter((p) => p.color === 'E').length).toBeGreaterThan(3); // edges split
+    expect(ids.indexOf('p')).toBeLessThan(ids.indexOf('sphere'));
+    expect(ids.lastIndexOf('p')).toBeGreaterThan(ids.indexOf('sphere'));
+  });
+
+  it('backDash dashes back pieces only; an item dash wins on both sheets (P3)', () => {
+    const wall = Hyperplane.fromCovector(S2, Float64Array.of(0, 0, 1));
+    const scene: Scene = [
+      { id: 'w', kind: 'geodesic', source: { type: 'line', wall }, style: { color: 'k', width: 0.03 } },
+    ];
+    const plain = buildSpherePathList(scene, ctx());
+    const dashed = buildSpherePathList(scene, ctx({ backDash: { on: 0.2, off: 0.15 } }));
+    const back = (paths: ReturnType<typeof buildSpherePathList>) => paths[paths.findIndex((p) => p.id === 'w')];
+    const front = (paths: ReturnType<typeof buildSpherePathList>) =>
+      paths[paths.map((p) => p.id).lastIndexOf('w')];
+    expect(back(plain).contours.length).toBe(1);
+    expect(back(dashed).contours.length).toBeGreaterThan(3); // dashes
+    expect(front(dashed).contours.length).toBe(1); // front stays solid
+
+    const itemDashed: Scene = [
+      {
+        id: 'w',
+        kind: 'geodesic',
+        source: { type: 'line', wall },
+        style: { color: 'k', width: 0.03, dash: { on: 0.2, off: 0.15 } },
+      },
+    ];
+    const both = buildSpherePathList(itemDashed, ctx());
+    expect(back(both).contours.length).toBeGreaterThan(3);
+    expect(front(both).contours.length).toBeGreaterThan(3);
+  });
+
+  it('sphereHitTest: front-sheet hover, null outside the silhouette (P3)', () => {
+    const tri: Scene = [
+      {
+        id: 'tri',
+        kind: 'polygon',
+        vertices: [
+          S2.exp(S2.origin(), Float64Array.of(0, 1, 0), 0.4),
+          S2.exp(S2.origin(), Float64Array.of(0, -0.5, 0.8), 0.4),
+          S2.exp(S2.origin(), Float64Array.of(0, -0.5, -0.8), 0.4),
+        ],
+        style: { fill: { color: 'F' } },
+      },
+    ];
+    // The origin (front pole under the identity view) projects to centerPx.
+    expect(sphereHitTest(tri, camera, [230, 230])).toBe('tri');
+    // Well off the triangle but on the globe: miss.
+    expect(sphereHitTest(tri, camera, [230 + 0.9 * SCALE_PX, 230])).toBeNull();
+    // Outside the silhouette: null.
+    const R = new SpherePerspective(D).silhouetteRadius();
+    expect(sphereHitTest(tri, camera, [230 + (R + 0.1) * SCALE_PX, 230])).toBeNull();
   });
 });
 

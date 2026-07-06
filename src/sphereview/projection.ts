@@ -3,6 +3,7 @@ import type { Mat3 } from '@/math/mat';
 import type { Point2 } from '@/geometry/types';
 import { Spherical2 } from '@/geometry/Spherical';
 import { tangentFrame, type Chart2 } from '@/render2d/sample';
+import type { ScreenUnprojector } from '@/render2d/interact';
 
 /**
  * The perspective projection of S² and its ribbon jacobian (see README).
@@ -82,11 +83,45 @@ export class SpherePerspective implements Chart2 {
     return p[0] - 1 / this.eyeDistance;
   }
 
+  /**
+   * The inverse of P_d once a sheet is named (README, stage 2a): with
+   * k = |u|²/d², p₀ solves (1+k)p₀² − 2kd·p₀ + kd² − 1 = 0; the front sheet
+   * is the root nearer the eye (+), the back the farther (−). Null outside
+   * the silhouette (negative discriminant). Normalized against float drift.
+   */
+  unproject(u: Vec3, sheet: 'front' | 'back'): Point2 | null {
+    const d = this.eyeDistance;
+    const k = (u[0] * u[0] + u[1] * u[1]) / (d * d);
+    const disc = 1 + k * (1 - d * d);
+    if (disc < 0) return null;
+    const sign = sheet === 'front' ? 1 : -1;
+    const p0 = (k * d + sign * Math.sqrt(disc)) / (1 + k);
+    const s = (d - p0) / d;
+    return this.geom.normalize(vec3(p0, s * u[0], s * u[1]));
+  }
+
   /** Render radius of the silhouette circle p₀ = 1/d: d/√(d² − 1). */
   silhouetteRadius(): number {
     const d = this.eyeDistance;
     return d / Math.sqrt(d * d - 1);
   }
+}
+
+/**
+ * The globe's drag capability (README, stage 2a): grab the FRONT sheet —
+ * what the cursor visually touches. Null outside the silhouette, which is
+ * exactly the drag guard render2d's controller expects.
+ */
+export function sphereUnprojector(persp: SpherePerspective): ScreenUnprojector {
+  return (camera, px) =>
+    persp.unproject(
+      vec3(
+        (px[0] - camera.centerPx[0]) / camera.scalePx,
+        (camera.centerPx[1] - px[1]) / camera.scalePx, // screen y is down
+        0,
+      ),
+      'front',
+    );
 }
 
 /** Roots below this amplitude ratio are treated as tangency (no crossing). */

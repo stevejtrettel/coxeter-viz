@@ -81,6 +81,40 @@ callers must stay inside distance < π. `geodesic(p,q)` is the unit-domain
 curve t ↦ exp_p(t·log_p q). `normalize` projects a drifted vector back onto
 the locus (H: also onto the upper sheet; E: rescale to p₀ = 1).
 
+## Bisectors, wall distance, isometry renormalization (V3 additions)
+
+**Perpendicular bisector** — `Hyperplane.bisector(geom, p, q)`, p ≠ q: the
+locus { x : d(x,p) = d(x,q) }, a wall. In S/H equidistance is ⟨x,p⟩ = ⟨x,q⟩
+(cos / −cosh of distance, both monotone on the ranges we use), so the
+covector is
+
+```
+c ∝ J(q − p)         side(p) = ⟨p,q⟩ − ⟨p,p⟩ < 0   (p's half-space is negative)
+```
+
+with q − p automatically spacelike (⟨q−p, q−p⟩ = 2(cosh d − 1) in H,
+2(1 − cos d) in S). In E the same J kills the offset (as always), and the
+covector is written directly: (−(|q_s|² − |p_s|²)/2, q_s − p_s), giving
+side(p) = −|p_s − q_s|²/2 < 0. Normalized via `fromCovector`. The bisector
+passes through the geodesic midpoint of p, q and is orthogonal to the
+geodesic — pinned by tests, and the fact the drag machinery relies on
+(render2d V3): reflecting in two bisectors along a geodesic composes to the
+pure translation along it. S degeneracies: antipodal p, q give the polar
+equator (correct); p = q has no bisector (fromCovector throws on the zero
+covector — callers guard).
+
+**Wall distance** — `Hyperplane.distanceTo(geom, p)`: the side value of a
+unit covector is the κ-sine of the signed distance, so distance is one
+κ-trig row: arcsin |side| (S) · |side| (E) · arcsinh |side| (H).
+
+**Isometry renormalization** — `Geometry.renormalizeIsometry(g)`: project a
+float-drifted matrix back onto the isometry group (composing a drag isometry
+into the camera 60×/s walks off O(n,1) hyperbolically). S/H: Gram–Schmidt on
+columns with respect to J (H: column 0 normalized timelike onto the upper
+sheet, the rest spacelike). E: row 0 reset to e₀ᵀ, the spatial block
+Gram–Schmidt'd in the Euclidean dot, the translation column kept. Idempotent;
+exactly J-orthogonal after; moves an O(ε)-drifted matrix by O(ε).
+
 ## Files
 
 - `types.ts` — `Geometry<P,I>` (point ops + isometry ops in one interface),
@@ -91,4 +125,4 @@ the locus (H: also onto the upper sheet; E: rescale to p₀ = 1).
 - `Spherical.ts`, `Euclidean.ts`, `Hyperbolic.ts` — `Spherical2/3`,
   `Euclidean2/3`, `Hyperbolic2/3`.
 - `Hyperplane.ts` — wall = covector (+ cached pole); `fromCovector`,
-  `fromPole` (S/H only), `side`.
+  `fromPole` (S/H only), `side`; V3 adds `bisector`, `distanceTo`.

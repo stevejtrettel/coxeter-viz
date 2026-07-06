@@ -10,7 +10,7 @@ import { Poincare2 } from '@/models/poincare';
 import { Cartesian2 } from '@/models/cartesian';
 import { Gnomonic2 } from '@/models/gnomonic';
 import { Stereographic2 } from '@/models/stereographic';
-import { identity } from '@/math/mat';
+import { identity, mat3, matMul } from '@/math/mat';
 import { Hyperplane } from '@/geometry/Hyperplane';
 import {
   DEFAULT_TOLERANCES,
@@ -21,7 +21,13 @@ import {
   type StyleOverrides,
   type ViewSize,
 } from '@/render2d/types';
-import { buildPathList, frameOf, preCulled, type BuildContext, type Frame } from '@/render2d/scene';
+import { buildPathList, dashRanges, frameOf, preCulled, type BuildContext, type Frame } from '@/render2d/scene';
+import { toSvg } from '@/render2d/svg';
+import type { PathList } from '@/render2d/types';
+import { draggedCamera, hitTest, modelUnprojector, pannedCamera, unprojectScreen, zoomedCamera, RENORM_EVERY } from '@/render2d/interact';
+import { SpherePerspective, sphereUnprojector } from '@/sphereview/projection';
+import type { SphereCamera } from '@/sphereview/types';
+import { isometryResidual } from './helpers';
 import type { GeometryKind } from '@/geometry/types';
 import type { RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
@@ -641,10 +647,11 @@ describe('render2d/scene', () => {
       },
     ];
     const pp = buildPathList(polyScene, ctx(E2, new Cartesian2()));
-    expect(pp.length).toBe(1 + 3); // fill + one path per edge
+    expect(pp.length).toBe(1 + 3 + 1); // fill + one path per edge + the P2 join disks
     expect(pp[0].color).toBe('f');
     expect(pp.slice(1).every((p) => p.color === 'e')).toBe(true);
     expect(pp.every((p) => p.id === 'poly')).toBe(true);
+    expect(pp[4].contours).toHaveLength(3); // one join disk per vertex
   });
 
   it('style overrides replace fields per id without touching the scene', () => {
@@ -789,6 +796,551 @@ describe('render2d/scene: the domain item (V2.2)', () => {
     const plain = buildPathList(domainScene, { geom: H2, model, camera: cam, size });
     const overridden = buildPathList(domainScene, { geom: H2, model, camera: cam, size, overrides });
     expect(overridden).toEqual(plain);
+  });
+});
+
+// ── V3.2: pure camera transforms and the hit test ───────────────────────────
+
+describe('render2d/interact: camera transforms (V3.2)', () => {
+  const cam: Camera = { view: identity(3), scalePx: 100, centerPx: [200, 220] };
+
+  it('zoom fixes the render point under the cursor and composes multiplicatively', () => {
+    const cursor: [number, number] = [260, 180];
+    const before = [(cursor[0] - cam.centerPx[0]) / cam.scalePx, (cam.centerPx[1] - cursor[1]) / cam.scalePx];
+    const z = zoomedCamera(cam, cursor, 1.7);
+    expect((cursor[0] - z.centerPx[0]) / z.scalePx).toBeCloseTo(before[0], 12);
+    expect((z.centerPx[1] - cursor[1]) / z.scalePx).toBeCloseTo(before[1], 12);
+    const zz = zoomedCamera(z, cursor, 2);
+    const direct = zoomedCamera(cam, cursor, 3.4);
+    expect(zz.scalePx).toBeCloseTo(direct.scalePx, 12);
+    expect(zz.centerPx[0]).toBeCloseTo(direct.centerPx[0], 10);
+    expect(zz.centerPx[1]).toBeCloseTo(direct.centerPx[1], 10);
+  });
+
+  it('pan shifts the center only', () => {
+    const p = pannedCamera(cam, 15, -8);
+    expect(p.centerPx).toEqual([215, 212]);
+    expect(p.scalePx).toBe(cam.scalePx);
+    expect(p.view).toBe(cam.view);
+  });
+
+  const dragCharts: { name: string; geom: Geom2; model: Model<Point2> }[] = [
+    { name: 'H2/klein', geom: H2, model: new Klein2() },
+    { name: 'H2/poincare', geom: H2, model: new Poincare2() },
+    { name: 'E2/cartesian', geom: E2, model: new Cartesian2() },
+    { name: 'S2/stereographic', geom: S2, model: new Stereographic2() },
+  ];
+
+  it.each(dragCharts.map((c) => [c.name, c] as const))(
+    '%s: the grabbed content point lands under the cursor, view stays an isometry',
+    (_name, { geom, model }) => {
+      const scalePx = model.domain.kind === 'disk' ? 180 : 60;
+      let camera: Camera = { view: identity(3), scalePx, centerPx: [200, 200] };
+      const fromPx: [number, number] = [230, 190];
+      const toPx: [number, number] = [180, 240];
+
+      // The canonical content point grabbed at fromPx.
+      const x0 = geom.apply(geom.inverse(camera.view), unprojectScreen(model, camera, fromPx)!);
+      const dragged = draggedCamera(geom, modelUnprojector(model), camera, fromPx, toPx);
+      expect(dragged).not.toBeNull();
+      camera = dragged!;
+
+      const u = model.project(geom.apply(camera.view, x0));
+      expect(camera.centerPx[0] + camera.scalePx * u[0]).toBeCloseTo(toPx[0], 8);
+      expect(camera.centerPx[1] - camera.scalePx * u[1]).toBeCloseTo(toPx[1], 8);
+      expect(isometryResidual(geom, camera.view)).toBeLessThan(1e-12);
+    },
+  );
+
+  it('drag guards: outside the disk domain, vanishing steps', () => {
+    const camera: Camera = { view: identity(3), scalePx: 100, centerPx: [200, 200] };
+    const model = new Klein2();
+    expect(draggedCamera(H2, modelUnprojector(model), camera, [350, 200], [340, 200])).toBeNull(); // |u| > 1
+    expect(draggedCamera(H2, modelUnprojector(model), camera, [230, 190], [230, 190])).toBeNull(); // no move
+    expect(unprojectScreen(model, camera, [301, 200])).toBeNull();
+  });
+
+  it('a simulated drag session stays on the isometry group (RENORM_EVERY)', () => {
+    const model = new Poincare2();
+    let camera: Camera = { view: identity(3), scalePx: 180, centerPx: [200, 200] };
+    const rand = rng(36);
+    let steps = 0;
+    for (let k = 0; k < 600; k++) {
+      const from: [number, number] = [150 + 100 * rand(), 150 + 100 * rand()];
+      const to: [number, number] = [from[0] + 8 * (rand() - 0.5), from[1] + 8 * (rand() - 0.5)];
+      const next = draggedCamera(H2, modelUnprojector(model), camera, from, to);
+      if (!next) continue;
+      camera = next;
+      if (++steps % RENORM_EVERY === 0) {
+        camera = { ...camera, view: H2.renormalizeIsometry(camera.view) };
+      }
+    }
+    camera = { ...camera, view: H2.renormalizeIsometry(camera.view) };
+    expect(steps).toBeGreaterThan(500); // the session really dragged
+    expect(isometryResidual(H2, camera.view)).toBeLessThan(1e-12);
+  });
+});
+
+describe('sphereview: front-sheet unproject and globe rotation (stage 2a)', () => {
+  const D = 5;
+  const persp = new SpherePerspective(D);
+
+  it('unproject ∘ project = id on each sheet; null outside the silhouette', () => {
+    const rand = rng(37);
+    for (let k = 0; k < 20; k++) {
+      // A random point, pushed onto a definite sheet by its p₀ sign.
+      const theta = 2 * Math.PI * rand();
+      const z = 2 * rand() - 1;
+      const p = Float64Array.of(z, Math.sqrt(1 - z * z) * Math.cos(theta), Math.sqrt(1 - z * z) * Math.sin(theta));
+      if (Math.abs(persp.sheet(p)) < 1e-3) continue; // skip near-silhouette
+      const sheet = persp.sheet(p) > 0 ? 'front' : 'back';
+      const back = persp.unproject(persp.project(p), sheet)!;
+      for (let i = 0; i < 3; i++) expect(back[i]).toBeCloseTo(p[i], 10);
+    }
+    const R = persp.silhouetteRadius();
+    expect(persp.unproject(Float64Array.of(R * 1.01, 0, 0), 'front')).toBeNull();
+    // project ∘ unproject = id inside.
+    const u = Float64Array.of(0.4, -0.7, 0);
+    for (const sheet of ['front', 'back'] as const) {
+      const p = persp.unproject(u, sheet)!;
+      expect(persp.project(p)[0]).toBeCloseTo(u[0], 10);
+      expect(persp.project(p)[1]).toBeCloseTo(u[1], 10);
+      expect(persp.sheet(p) > 0).toBe(sheet === 'front');
+    }
+  });
+
+  it('globe drag: the grabbed front-sheet point lands under the cursor, eyeDistance survives', () => {
+    const unproject = sphereUnprojector(persp);
+    let camera: SphereCamera = { view: identity(3), scalePx: 150, centerPx: [200, 200], eyeDistance: D };
+    const fromPx: [number, number] = [230, 190];
+    const toPx: [number, number] = [190, 230];
+
+    const x0 = S2.apply(S2.inverse(camera.view), unproject(camera, fromPx)!);
+    const next = draggedCamera(S2, unproject, camera, fromPx, toPx);
+    expect(next).not.toBeNull();
+    camera = next!;
+
+    expect(camera.eyeDistance).toBe(D); // the spread preserves the subtype
+    const u = persp.project(S2.apply(camera.view, x0));
+    expect(camera.centerPx[0] + camera.scalePx * u[0]).toBeCloseTo(toPx[0], 8);
+    expect(camera.centerPx[1] - camera.scalePx * u[1]).toBeCloseTo(toPx[1], 8);
+    expect(isometryResidual(S2, camera.view)).toBeLessThan(1e-12);
+
+    // Outside the silhouette: the guard.
+    expect(draggedCamera(S2, unproject, camera, [395, 200], [390, 200])).toBeNull();
+  });
+
+  it('zoom and pan preserve camera subtypes', () => {
+    const camera: SphereCamera = { view: identity(3), scalePx: 150, centerPx: [200, 200], eyeDistance: D };
+    expect(zoomedCamera(camera, [220, 210], 1.5).eyeDistance).toBe(D);
+    expect(pannedCamera(camera, 5, 5).eyeDistance).toBe(D);
+  });
+});
+
+describe('render2d/interact: hitTest (V3.2)', () => {
+  // E²/Cartesian: screen ↔ canonical arithmetic is exact and hand-checkable.
+  const camera: Camera = { view: identity(3), scalePx: 50, centerPx: [200, 200] };
+  const size: ViewSize = { widthPx: 400, heightPx: 400 };
+  const ctx: BuildContext = { geom: E2, model: new Cartesian2(), camera, size };
+  const px = (x: number, y: number): [number, number] => [200 + 50 * x, 200 - 50 * y];
+  const P = (x: number, y: number) => Float64Array.of(1, x, y);
+
+  const scene: Scene = [
+    { id: 'domain', kind: 'domain', style: { fill: { color: '#eee' } } },
+    {
+      id: 'tile',
+      kind: 'polygon',
+      vertices: [P(-1, -1), P(1, -1), P(1, 1), P(-1, 1)],
+      style: { fill: { color: '#fda' } },
+    },
+    { id: 'node', kind: 'point', at: P(0, 0), style: { color: '#111', radius: 0.1 } },
+    { id: 'ring', kind: 'circle', center: P(3, 0), radius: 0.5, style: { edge: { color: '#28c', width: 0.05 } } },
+    { id: 'wall', kind: 'geodesic', source: { type: 'line', wall: Hyperplane.fromCovector(E2, Float64Array.of(-3, 0, 1)) }, style: { color: '#c33', width: 0.1 } },
+    { id: 'edge', kind: 'geodesic', source: { type: 'segment', a: P(-3, -2), b: P(-1, -2) }, style: { color: '#2a2', width: 0.1 } },
+  ];
+
+  it('topmost wins: the point over the tile, the tile elsewhere', () => {
+    expect(hitTest(scene, ctx, px(0, 0))).toBe('node');
+    expect(hitTest(scene, ctx, px(0.6, 0.6))).toBe('tile');
+  });
+
+  it('the domain is never hit; empty space misses', () => {
+    expect(hitTest(scene, ctx, px(2, 2))).toBeNull();
+  });
+
+  it('circle edge: hit on the ring, miss in the unfilled interior', () => {
+    expect(hitTest(scene, ctx, px(3.5, 0))).toBe('ring');
+    expect(hitTest(scene, ctx, px(3, 0))).toBeNull();
+  });
+
+  it('wall line { y = 3 } hits within half-width + slop', () => {
+    expect(hitTest(scene, ctx, px(1.7, 3.02))).toBe('wall');
+    expect(hitTest(scene, ctx, px(1.7, 3.5))).toBeNull();
+  });
+
+  it('segments respect their endpoints (slop-sized overhang only)', () => {
+    expect(hitTest(scene, ctx, px(-2, -2.03))).toBe('edge');
+    expect(hitTest(scene, ctx, px(-4, -2))).toBeNull(); // on the line, beyond the cap
+  });
+
+  it('the px slop maps through the chart scale', () => {
+    // radius 0.1 + slop 4px/50 = 0.08 ⇒ hits to 0.18, misses at 0.2.
+    expect(hitTest(scene, ctx, px(0.17, 0))).toBe('node');
+    expect(hitTest(scene, ctx, px(0.2, 0))).toBe('tile'); // past the mark, still on the tile
+  });
+
+  it('convex containment works on the sphere too', () => {
+    const sctx: BuildContext = { geom: S2, model: new Stereographic2(), camera, size };
+    const tri: Scene = [
+      {
+        id: 'tri',
+        kind: 'polygon',
+        vertices: [
+          S2.exp(S2.origin(), Float64Array.of(0, 1, 0), 0.4),
+          S2.exp(S2.origin(), Float64Array.of(0, -0.5, 0.8), 0.4),
+          S2.exp(S2.origin(), Float64Array.of(0, -0.5, -0.8), 0.4),
+        ],
+        style: { fill: { color: '#fda' } },
+      },
+    ];
+    expect(hitTest(tri, sctx, [200, 200])).toBe('tri'); // the origin projects to the center
+    expect(hitTest(tri, sctx, px(1, 1))).toBeNull();
+  });
+});
+
+// ── P1: intrinsic dashed strokes ────────────────────────────────────────────
+
+describe('render2d/scene: dashRanges (P1)', () => {
+  it('chops a length-10 curve with on=2, off=1 into the hand-checked ranges', () => {
+    // Parameter [0, 5] at speed 2 ⇒ intrinsic length 10.
+    const r = dashRanges(0, 5, 2, { on: 2, off: 1 });
+    expect(r).toEqual([
+      [0, 1],
+      [1.5, 2.5],
+      [3, 4],
+      [4.5, 5],
+    ]);
+  });
+
+  it('phase slides the pattern; degenerate patterns fall back to solid', () => {
+    const r = dashRanges(0, 1, 6, { on: 2, off: 1, phase: 1 });
+    expect(r[0]).toEqual([0, 1 / 6]); // the first dash arrives already half-spent
+    expect(dashRanges(0, 1, 6, { on: 0, off: 1 })).toEqual([[0, 1]]);
+    expect(dashRanges(0, 1, 6, { on: 1, off: 0 })).toEqual([[0, 1]]);
+    expect(dashRanges(0, 1, 0, { on: 1, off: 1 })).toEqual([[0, 1]]);
+  });
+
+  it('denser than MAX_DASHES falls back to solid', () => {
+    expect(dashRanges(0, 1, 1e6, { on: 0.1, off: 0.1 })).toEqual([[0, 1]]);
+  });
+});
+
+describe('render2d/scene: dashed strokes through the pipeline (P1)', () => {
+  const size: ViewSize = { widthPx: 400, heightPx: 400 };
+  const camera: Camera = { view: identity(3), scalePx: 50, centerPx: [200, 200] };
+
+  it('a Euclidean segment of length 4 with on=off=0.5 yields 4 dash contours in one path', () => {
+    const scene: Scene = [
+      {
+        id: 'seg',
+        kind: 'geodesic',
+        source: { type: 'segment', a: Float64Array.of(1, -2, 0), b: Float64Array.of(1, 2, 0) },
+        style: { color: '#c33', width: 0.05, dash: { on: 0.5, off: 0.5 } },
+      },
+    ];
+    const paths = buildPathList(scene, { geom: E2, model: new Cartesian2(), camera, size });
+    expect(paths).toHaveLength(1);
+    expect(paths[0].contours).toHaveLength(4); // ON at [0,.5],[1,1.5],[2,2.5],[3,3.5]
+    // Each dash's spine spans 0.5 render units: bbox width ≈ 0.5 + stroke ends.
+    for (const c of paths[0].contours) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      for (let i = 0; i < c.length; i += 2) {
+        minX = Math.min(minX, c[i]);
+        maxX = Math.max(maxX, c[i]);
+      }
+      expect(maxX - minX).toBeCloseTo(0.5, 6);
+    }
+  });
+
+  it('dashes are intrinsic: equal-length dashes shrink toward the Poincaré boundary', () => {
+    const a = H2.origin();
+    const b = H2.exp(a, Float64Array.of(0, 1, 0), 4); // far toward the boundary
+    const scene: Scene = [
+      {
+        id: 'seg',
+        kind: 'geodesic',
+        source: { type: 'segment', a, b },
+        style: { color: '#c33', width: 0.05, dash: { on: 0.5, off: 0.5 } },
+      },
+    ];
+    const paths = buildPathList(scene, { geom: H2, model: new Poincare2(), camera: { ...camera, scalePx: 180 }, size });
+    const spans = paths[0].contours.map((c) => {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      for (let i = 0; i < c.length; i += 2) {
+        minX = Math.min(minX, c[i]);
+        maxX = Math.max(maxX, c[i]);
+      }
+      return maxX - minX;
+    });
+    expect(spans).toHaveLength(4); // intrinsic length 4, on = off = 0.5
+    for (let i = 1; i < spans.length; i++) expect(spans[i]).toBeLessThan(spans[i - 1]); // shrinking
+    expect(spans[3]).toBeLessThan(spans[0] / 3); // and dramatically so
+  });
+
+  it('a dashed circle edge closes its pattern around the circumference', () => {
+    const r = 0.6;
+    const circumference = 2 * Math.PI * r; // E²
+    const on = 0.3;
+    const off = 0.2;
+    const scene: Scene = [
+      {
+        id: 'ring',
+        kind: 'circle',
+        center: E2.origin(),
+        radius: r,
+        style: { edge: { color: '#28c', width: 0.04, dash: { on, off } } },
+      },
+    ];
+    const paths = buildPathList(scene, { geom: E2, model: new Cartesian2(), camera, size });
+    expect(paths).toHaveLength(1);
+    expect(paths[0].contours.length).toBe(Math.ceil(circumference / (on + off)));
+  });
+
+  it('dashed polygon edges: per-edge patterns, one path per edge', () => {
+    const scene: Scene = [
+      {
+        id: 'poly',
+        kind: 'polygon',
+        vertices: [Float64Array.of(1, 0, 0), Float64Array.of(1, 2, 0), Float64Array.of(1, 0, 2)],
+        style: { edge: { color: '#a52', width: 0.04, dash: { on: 0.4, off: 0.2 } } },
+      },
+    ];
+    const paths = buildPathList(scene, { geom: E2, model: new Cartesian2(), camera, size });
+    expect(paths).toHaveLength(4); // one per edge + the P2 join disks
+    // Edge lengths 2, 2√2, 2 ⇒ dash counts ⌈len/0.6⌉ = 4, 5, 4; then 3 joins.
+    expect(paths.map((p) => p.contours.length)).toEqual([4, 5, 4, 3]);
+  });
+
+  it('undashed output is unchanged by the refactor (spot check: a wall stroke)', () => {
+    const wall = Hyperplane.fromCovector(E2, Float64Array.of(0, 0, 1));
+    const scene: Scene = [
+      { id: 'w', kind: 'geodesic', source: { type: 'line', wall }, style: { color: '#c33', width: 0.1 } },
+    ];
+    const paths = buildPathList(scene, { geom: E2, model: new Cartesian2(), camera, size });
+    expect(paths).toHaveLength(1);
+    expect(paths[0].contours).toHaveLength(1); // one solid outline
+  });
+});
+
+// ── P2: corner joins ────────────────────────────────────────────────────────
+
+describe('render2d/scene: polygon corner joins (P2)', () => {
+  const size: ViewSize = { widthPx: 400, heightPx: 400 };
+  const camera: Camera = { view: identity(3), scalePx: 50, centerPx: [200, 200] };
+
+  it('a stroked square emits 4 edge paths + 1 join path of 4 disks at the vertices', () => {
+    const w = 0.1;
+    const verts = [Float64Array.of(1, -1, -1), Float64Array.of(1, 1, -1), Float64Array.of(1, 1, 1), Float64Array.of(1, -1, 1)];
+    const scene: Scene = [
+      { id: 'sq', kind: 'polygon', vertices: verts, style: { edge: { color: '#a52', width: w } } },
+    ];
+    const paths = buildPathList(scene, { geom: E2, model: new Cartesian2(), camera, size });
+    expect(paths).toHaveLength(5);
+    const joins = paths[4];
+    expect(joins.contours).toHaveLength(4);
+    // Each join is the w/2 disk at its vertex (E²/Cartesian: an exact circle).
+    joins.contours.forEach((c, k) => {
+      const vx = verts[k][1];
+      const vy = verts[k][2];
+      for (let i = 0; i < c.length; i += 2) {
+        expect(Math.hypot(c[i] - vx, c[i + 1] - vy)).toBeCloseTo(w / 2, 9);
+      }
+    });
+  });
+
+  it('fill-only polygons emit no join path', () => {
+    const scene: Scene = [
+      {
+        id: 'p',
+        kind: 'polygon',
+        vertices: [Float64Array.of(1, 0, 0), Float64Array.of(1, 1, 0), Float64Array.of(1, 0, 1)],
+        style: { fill: { color: '#fda' } },
+      },
+    ];
+    const paths = buildPathList(scene, { geom: E2, model: new Cartesian2(), camera, size });
+    expect(paths).toHaveLength(1); // the fill alone
+  });
+});
+
+// ── V2.4: the SVG serializer ────────────────────────────────────────────────
+
+describe('render2d/svg: the serializer (V2.4)', () => {
+  const camera: Camera = { view: identity(3), scalePx: 150, centerPx: [200, 220] };
+  const size: ViewSize = { widthPx: 400, heightPx: 440 };
+
+  it('applies the painter’s viewport exactly (synthetic list, hand-checked)', () => {
+    const paths: PathList = [
+      { id: 'a', contours: [Float64Array.of(0, 0, 1, 0, 0, 1)], color: '#123456', opacity: 1 },
+      {
+        id: 'b',
+        contours: [Float64Array.of(0, 0, 1, 0, 1, 1, 0, 1), Float64Array.of(0.2, 0.2, 0.8, 0.2, 0.5, 0.8)],
+        color: 'red',
+        opacity: 0.5,
+      },
+      { id: 'skip', contours: [Float64Array.of(0, 0)], color: 'blue', opacity: 1 }, // degenerate: omitted
+    ];
+    const svg = toSvg(paths, camera, size);
+
+    expect(svg).toContain('width="400" height="440" viewBox="0 0 400 440"');
+    // (0,0) → (200,220); (1,0) → (350,220); (0,1) → (200,70): the y-flip.
+    expect(svg).toContain('data-id="a" fill="#123456" fill-rule="evenodd" d="M200 220L350 220L200 70Z"');
+    expect(svg).toContain('fill-opacity="0.5"');
+    expect((svg.match(/<path /g) ?? []).length).toBe(2); // 'skip' emitted nothing
+    // b's two contours live in ONE d (filled together, even-odd — the annulus rule).
+    const b = svg.match(/data-id="b"[^>]*d="([^"]*)"/)![1];
+    expect((b.match(/M/g) ?? []).length).toBe(2);
+    expect((b.match(/Z/g) ?? []).length).toBe(2);
+  });
+
+  it('a real scene round-trips: parsed coordinates = viewport(contours) to 2 decimals', () => {
+    const scene: Scene = [
+      { id: 'domain', kind: 'domain', style: { fill: { color: '#eee' }, rim: { color: '#999', widthPx: 2 } } },
+      {
+        id: 'circle',
+        kind: 'circle',
+        center: H2.origin(),
+        radius: 0.4,
+        style: { fill: { color: '#8cf', opacity: 0.3 }, edge: { color: '#28c', width: 0.05 } },
+      },
+      {
+        id: 'poly',
+        kind: 'polygon',
+        vertices: [0, 1, 2].map((k) =>
+          H2.exp(H2.origin(), Float64Array.of(0, Math.cos((2 * k * Math.PI) / 3), Math.sin((2 * k * Math.PI) / 3)), 0.8),
+        ),
+        style: { fill: { color: '#fda' }, edge: { color: '#a52', width: 0.04 } },
+      },
+    ];
+    const paths = buildPathList(scene, { geom: H2, model: new Poincare2(), camera, size });
+    const svg = toSvg(paths, camera, size);
+
+    const els = [...svg.matchAll(/<path data-id="([^"]*)"[^>]*d="([^"]*)"/g)];
+    expect(els.length).toBe(paths.length);
+    const [cx, cy] = camera.centerPx;
+    els.forEach((el, k) => {
+      expect(el[1]).toBe(paths[k].id);
+      const nums = [...el[2].matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      let i = 0;
+      for (const contour of paths[k].contours) {
+        for (let j = 0; j < contour.length; j += 2, i++) {
+          expect(Math.abs(nums[i][0] - (cx + camera.scalePx * contour[j]))).toBeLessThanOrEqual(0.005 + 1e-9);
+          expect(Math.abs(nums[i][1] - (cy - camera.scalePx * contour[j + 1]))).toBeLessThanOrEqual(0.005 + 1e-9);
+        }
+      }
+      expect(nums.length).toBe(i);
+    });
+  });
+
+  it('escapes attribute text', () => {
+    const paths: PathList = [
+      { id: 'a"<&b', contours: [Float64Array.of(0, 0, 1, 0, 0, 1)], color: '#000', opacity: 1 },
+    ];
+    const svg = toSvg(paths, camera, size);
+    expect(svg).toContain('data-id="a&quot;&lt;&amp;b"');
+  });
+});
+
+// ── V2.3: fill honesty ──────────────────────────────────────────────────────
+
+describe('render2d/scene: fill honesty (V2.3)', () => {
+  const model = new Stereographic2();
+  const size: ViewSize = { widthPx: 400, heightPx: 400 };
+  const cam = (view: Isometry2): Camera => ({ view, scalePx: 60, centerPx: [200, 200] });
+
+  /** Rotation by angle a in the (i, j) coordinate plane of ambient R³. */
+  function rot(i: number, j: number, a: number): Isometry2 {
+    const rows = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ];
+    rows[i][i] = Math.cos(a);
+    rows[j][j] = Math.cos(a);
+    rows[i][j] = -Math.sin(a);
+    rows[j][i] = Math.sin(a);
+    return mat3(rows);
+  }
+
+  it('the real (2,3,5) far tile: exactly its fill is dropped, its neighbors kept', () => {
+    const spec: RealizationSpec = {
+      geometry: 'spherical',
+      dim: 2,
+      combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
+      decorations: [
+        { walls: [0, 1], order: 2 },
+        { walls: [1, 2], order: 3 },
+        { walls: [2, 0], order: 5 },
+      ],
+    };
+    const group = groupFromPolygon(solvePolygon(spec));
+    const tiles = group.tessellate(20);
+    expect(tiles).toHaveLength(120);
+
+    // Tip the view generically; the puncture preimage then sits in one tile.
+    const tip = matMul(rot(0, 1, 0.55), rot(0, 2, 0.35));
+    const anti = S2.apply(S2.inverse(tip), Float64Array.of(-1, 0, 0));
+    const farIds = tiles
+      .filter((t) => t.polytope.facets.every((f) => f.side(anti) <= 1e-9))
+      .map((t) => `tile:${wordId(t.word)}`);
+    expect(farIds).toHaveLength(1);
+
+    const scene: Scene = tiles.map((t) => ({
+      id: `tile:${wordId(t.word)}`,
+      kind: 'polygon' as const,
+      vertices: t.polytope.vertices,
+      style: { fill: { color: '#eee', opacity: 0.9 } },
+    }));
+    const paths = buildPathList(scene, { geom: S2, model, camera: cam(tip), size });
+    const emitted = new Set(paths.map((p) => p.id));
+
+    expect(emitted.has(farIds[0])).toBe(false); // the wrap, dropped
+    expect(emitted.has('tile:e')).toBe(true); // the identity chamber, kept
+    expect(emitted.size).toBeGreaterThan(100); // only far-cap tiles fall off-frame
+  });
+
+  it('drops a circle fill that wraps the puncture, keeps honest ones', () => {
+    const near = 0.1;
+    const scene: Scene = [
+      // Honest: a small circle at the chart center.
+      { id: 'honest', kind: 'circle', center: Float64Array.of(1, 0, 0), radius: 0.3, style: { fill: { color: '#8cf' } } },
+      // Wrapped: centered near the puncture, radius covering it — the loop
+      // is bounded and finite, only the ray cast can catch it.
+      {
+        id: 'wrapped',
+        kind: 'circle',
+        center: Float64Array.of(-Math.cos(near), Math.sin(near), 0),
+        radius: 0.3,
+        style: { fill: { color: '#8cf' } },
+      },
+      // Degenerate: centered exactly at the puncture — non-finite center.
+      { id: 'at-pole', kind: 'circle', center: Float64Array.of(-1, 0, 0), radius: 0.3, style: { fill: { color: '#8cf' } } },
+    ];
+    const emitted = new Set(buildPathList(scene, { geom: S2, model, camera: cam(identity(3)), size }).map((p) => p.id));
+    expect(emitted.has('honest')).toBe(true);
+    expect(emitted.has('wrapped')).toBe(false);
+    expect(emitted.has('at-pole')).toBe(false);
+  });
+
+  it('never drops in H or E — embeddings cannot wrap', () => {
+    // A near-boundary Poincaré polygon: kept without even computing the test.
+    const verts = [0, 1, 2, 3].map((k) =>
+      H2.exp(H2.origin(), Float64Array.of(0, Math.cos((k * Math.PI) / 2), Math.sin((k * Math.PI) / 2)), 3),
+    );
+    const scene: Scene = [{ id: 'poly', kind: 'polygon', vertices: verts, style: { fill: { color: '#eee' } } }];
+    const paths = buildPathList(scene, { geom: H2, model: new Poincare2(), camera: cam(identity(3)), size });
+    expect(paths.map((p) => p.id)).toEqual(['poly']);
   });
 });
 

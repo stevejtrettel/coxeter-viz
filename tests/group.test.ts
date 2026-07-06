@@ -5,6 +5,7 @@ import type { RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
 import { matrixKey, orbit, type GroupOps } from '@/group/orbit';
 import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
+import { cosetIndex, hullOfWords } from '@/group/wordlists';
 
 /**
  * G1 — the generic orbit engine. The Coxeter-specific pins (relations,
@@ -274,6 +275,147 @@ describe('CoxeterGroup: the Cayley graph', () => {
     // Dropping a word's first letter is a g·R_i step down in length, so the
     // ball is connected in the RIGHT-edge graph too (not just the BFS tree).
     expect(connected(graph.nodes.length, graph.edges)).toBe(true);
+  });
+});
+
+// ── M3.2: word lists, subgroups, cosets ─────────────────────────────────────
+
+describe('CoxeterGroup: word lists denote element sets (M3.2)', () => {
+  it('two spellings of one element are one member; the first spelling is kept', () => {
+    const g = triangleGroup('hyperbolic', [2, 3, 7]);
+    // Walls 0,1 carry order 2: R₀R₁ = R₁R₀, so [0,1] and [1,0] spell one element.
+    const set = g.elements([
+      [0, 1],
+      [1, 0],
+      [0, 0], // = identity
+      [], // also the identity
+    ]);
+    expect(set.size).toBe(2);
+    const words = [...set.values()].map((v) => v.word);
+    expect(words).toContainEqual([0, 1]); // first spelling won
+    expect(words).toContainEqual([0, 0]);
+  });
+
+  it('tilesFor: one tile per distinct element, the transported chamber', () => {
+    const g = triangleGroup('euclidean', [2, 4, 4]);
+    const tiles = g.tilesFor([
+      [1, 2],
+      [1, 2],
+      [2, 1],
+    ]);
+    expect(tiles.length).toBe(2); // [1,2] ≠ [2,1] (order 4), duplicates collapse
+    const expected = g.geom.apply(g.word([1, 2]), g.chamber.vertices[0]);
+    const got = tiles[0].polytope.vertices[0];
+    for (let i = 0; i < 3; i++) expect(got[i]).toBeCloseTo(expected[i], 12);
+  });
+});
+
+describe('CoxeterGroup: subgroup enumeration (M3.2)', () => {
+  it('parabolic ⟨R_i, R_j⟩ is dihedral of order 2m on every decorated pair', () => {
+    const g = triangleGroup('spherical', [2, 3, 5]);
+    const orders: [number, number, number][] = [
+      [0, 1, 2],
+      [1, 2, 3],
+      [2, 0, 5],
+    ];
+    for (const [i, j, m] of orders) {
+      expect(g.subgroup([g.reflections[i], g.reflections[j]]).size).toBe(2 * m);
+    }
+  });
+
+  it('the full generator set regenerates the whole group', () => {
+    const g = triangleGroup('spherical', [2, 3, 4]);
+    expect(g.subgroup(g.reflections).size).toBe(48);
+  });
+
+  it('cyclic subgroups of rotations; maxCount is a hard stop on infinite ones', () => {
+    const g = triangleGroup('spherical', [2, 3, 5]);
+    expect(g.subgroup([g.word([1, 2])]).size).toBe(3); // order-3 rotation
+
+    const h = triangleGroup('hyperbolic', [2, 3, 7]);
+    // The Coxeter element R₂R₁R₀ has infinite order in the (2,3,7) group.
+    expect(h.subgroup([h.word([0, 1, 2])], 50).size).toBe(50);
+  });
+});
+
+describe('wordlists: cosetIndex (M3.2)', () => {
+  it('(2,3,5) mod ⟨R₁,R₂⟩: 120/6 = 20 left cosets, each of size 6', () => {
+    const g = triangleGroup('spherical', [2, 3, 5]);
+    const H = g.subgroup([g.reflections[1], g.reflections[2]]);
+    expect(H.size).toBe(6);
+    const ball = g.orbit(20);
+    const index = cosetIndex(g, H, ball);
+
+    const sizes = new Map<number, number>();
+    for (const id of index.values()) sizes.set(id, (sizes.get(id) ?? 0) + 1);
+    expect(sizes.size).toBe(20);
+    for (const s of sizes.values()) expect(s).toBe(6);
+  });
+
+  it('g₁, g₂ share a coset iff g₁⁻¹g₂ ∈ H (spot checks)', () => {
+    const g = triangleGroup('spherical', [2, 3, 5]);
+    const H = g.subgroup([g.reflections[1], g.reflections[2]]);
+    const ball = g.orbit(20);
+    const index = cosetIndex(g, H, ball);
+    const idOf = (w: number[]) => index.get(matrixKey(g.word(w)));
+
+    expect(idOf([1])).toBe(idOf([])); // R₁ ∈ H: same coset as e
+    expect(idOf([1, 2])).toBe(idOf([])); // the matrix R₂R₁ ∈ H
+    expect(idOf([0])).not.toBe(idOf([])); // R₀ ∉ H
+    // The coset-mates of R₀ are R₀·h: the matrix R₀R₁ is word [1,0]
+    // (R₁ applied first), and R₀⁻¹·(R₀R₁) = R₁ ∈ H. (Here [0,1] = R₁R₀ is
+    // ALSO a mate — walls 0,1 carry order 2, so R₀ and R₁ commute.)
+    expect(idOf([1, 0])).toBe(idOf([0]));
+    expect(idOf([0, 1])).toBe(idOf([0]));
+    // Word [0,2] = R₂R₀ is NOT: (R₂R₀)⁻¹R₀ = R₀R₂R₀, a reflection in a
+    // conjugated wall outside ⟨R₁,R₂⟩ (the order-5 pair does not commute).
+    expect(idOf([0, 2])).not.toBe(idOf([0]));
+  });
+});
+
+describe('wordlists: hullOfWords (M3.3)', () => {
+  // The dihedral parabolic's base-point orbit hulls to a regular 2m-gon
+  // centered on the parabolic's fixed vertex.
+  const DIHEDRAL_12: number[][] = [[], [1], [2], [1, 2], [2, 1], [1, 2, 1]];
+
+  it.each([
+    ['spherical', [2, 3, 5], 3],
+    ['euclidean', [2, 4, 4], 4],
+    ['hyperbolic', [2, 3, 7], 3],
+  ] as [GeometryKind, [number, number, number], number][])(
+    '%s: the ⟨R₁,R₂⟩ orbit hull is a regular 2m-gon',
+    (kind, orders, m) => {
+      const g = triangleGroup(kind, orders);
+      const words: number[][] =
+        m === 3 ? DIHEDRAL_12 : [[], [1], [2], [1, 2], [2, 1], [1, 2, 1], [2, 1, 2], [1, 2, 1, 2]];
+      const hull = hullOfWords(g, words);
+      expect(hull.vertices).toHaveLength(2 * m);
+
+      // All edges equal (regularity)...
+      const edgeLengths = hull.vertices.map((v, k) =>
+        g.geom.distance(v, hull.vertices[(k + 1) % hull.vertices.length]),
+      );
+      for (const L of edgeLengths) expect(L).toBeCloseTo(edgeLengths[0], 9);
+      // ...and all vertices equidistant from the parabolic's fixed vertex
+      // (the chamber corner where walls 1 and 2 meet).
+      const fixed = g.chamber.vertices.find(
+        (v) => Math.abs(g.walls[1].side(v)) < 1e-7 && Math.abs(g.walls[2].side(v)) < 1e-7,
+      )!;
+      const radii = hull.vertices.map((v) => g.geom.distance(fixed, v));
+      for (const r of radii) expect(r).toBeCloseTo(radii[0], 9);
+    },
+  );
+
+  it('duplicate spellings collapse before hulling', () => {
+    const g = triangleGroup('euclidean', [2, 4, 4]);
+    const hull = hullOfWords(g, [[], [0, 0], [1], [1, 0, 0], [2], [1, 2], [2, 1], [1, 2, 1], [2, 1, 2], [1, 2, 1, 2]]);
+    expect(hull.vertices).toHaveLength(8); // still the octagon
+  });
+
+  it('the spherical hemisphere refusal propagates for a whole-sphere word list', () => {
+    const g = triangleGroup('spherical', [2, 3, 5]);
+    const all = g.orbit(20).map((e) => e.word);
+    expect(() => hullOfWords(g, all)).toThrow();
   });
 });
 

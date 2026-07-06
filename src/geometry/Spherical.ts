@@ -2,7 +2,7 @@ import { addScaled, clone, dot, scale, vec3, vec4, type Covec, type Vec } from '
 import { applyToCovector, applyToVector, identity, matInverse, matMul } from '@/math/mat';
 import type { Geometry, Isometry2, Isometry3, Point2, Point3 } from './types';
 import type { Hyperplane } from './Hyperplane';
-import { clamp, dual, form, reflectionMat } from './ambient';
+import { clamp, dual, form, reflectionMat, renormalizeIsometryMat } from './ambient';
 
 /**
  * The round sphere Sⁿ (κ = +1): points ⟨p,p⟩ = 1 in ambient R^{n+1} with the
@@ -66,6 +66,9 @@ abstract class SphericalBase<P extends Vec, I extends Vec> implements Geometry<P
   }
   reflection(wall: Hyperplane): I {
     return reflectionMat(1, wall.covector) as I;
+  }
+  renormalizeIsometry(g: I): I {
+    return renormalizeIsometryMat(1, g) as I;
   }
 }
 

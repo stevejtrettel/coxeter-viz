@@ -59,6 +59,22 @@ v ↦ g·v and wall covectors **contravariantly** by c ↦ (g⁻¹)ᵀc
 hyperbolic-only parent this distinction was invisible (O(n,1) preserves the
 form); with Euclidean homogeneous matrices it is real and tested.
 
+## Measures (M3.1)
+
+2D measures, exact through the geometry — no numerical integration:
+
+- **Polygon area** (geodesically convex vertex loops): S/H by **Gauss–Bonnet**
+  — the area IS the angle excess/defect, |Σθᵢ − (n−2)π|, with interior angles
+  from `log` at each vertex (cos θ = ⟨u,w⟩/(|u||w|) on the tangent pair); E by
+  the **shoelace** in the affine slice (Gauss–Bonnet degenerates to 0 = 0
+  there). The classical pins are the tests: the (2,3,7) chamber is exactly
+  π/42, the (2,3,5) chamber 4π/120, and the 120 spherical tiles sum to 4π —
+  the tessellation audits its own group order.
+- **Polygon perimeter**: the edge-distance sum.
+- **Circle measures**, the κ-trig closed forms: circumference 2π·sin_κ(r)
+  (sin r · r · sinh r) and area 2π(1 − cos r) · πr² · 2π(cosh r − 1) — one
+  row, consistent with the rest (adopted 2026-07-06; no consumer yet).
+
 ## Contents
 
 | file | contents |
@@ -66,6 +82,7 @@ form); with Euclidean homogeneous matrices it is real and tested.
 | `Polytope.ts` | the `Polytope<P>` value: canonical vertices + `VertexKind`s, edges, 2-face loops, wall `Hyperplane`s |
 | `build.ts` | `fromHalfspaces2/3`, `fromVertices2/3`; the cross-product vertex solve; the hemisphere-checked planar ordering |
 | `transform.ts` | `transformPolytope`: the isometry image (O(V+F), exact) |
+| `measure.ts` | M3.1: `polygonArea`, `polygonPerimeter`, `circleCircumference`, `circleArea` |
 
 ## Used by
 

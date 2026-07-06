@@ -8,22 +8,25 @@
  * demos repeat themselves).
  */
 
-import type { GeometryKind, Point2 } from '@/geometry/types';
+import type { Geometry, GeometryKind, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
 import { Klein2 } from '@/models/klein';
 import { Poincare2 } from '@/models/poincare';
 import { Cartesian2 } from '@/models/cartesian';
 import { Stereographic2 } from '@/models/stereographic';
 import { mat3, matMul } from '@/math/mat';
-import { scale as vecScale } from '@/math/vec';
 import { solvePolygon } from '@/coxeter/solve';
 import type { RealizationSpec } from '@/coxeter/spec';
 import { groupFromPolygon, wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
 import type { CayleyGraph } from '@/group/cayley';
 import type { Isometry2 } from '@/geometry/types';
-import type { Camera, Scene, SceneItem } from '@/render2d/types';
+import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/render2d/types';
 import { buildPathList } from '@/render2d/scene';
 import { paint } from '@/render2d/canvas';
+import { toSvg } from '@/render2d/svg';
+import { attachInteraction, hitTest, modelUnprojector, type ScreenUnprojector } from '@/render2d/interact';
+import { SpherePerspective, sphereUnprojector } from '@/sphereview/projection';
+import { sphereHitTest } from '@/sphereview/interact';
 import { buildSpherePathList } from '@/sphereview/scene';
 import type { SphereCamera } from '@/sphereview/types';
 
@@ -71,12 +74,10 @@ function generate(geometry: GeometryKind, orders: [number, number, number], maxW
  * The group layer's structures as render2d scene items, ids per the README
  * scheme (tile:<word>, cay:<word>, cayedge:<word>:<i>): tiles filled by word
  * parity (the identity tile emphasized), Cayley nodes at g·basePoint, edges
- * colored by their generator. `skipTileAt` drops the tiles containing a given
- * canonical point — demo chrome for the stereographic chart, where the tile
- * covering the projection antipode has an unbounded image whose fill would
- * paint the whole frame.
+ * colored by their generator. The far tile needs no special casing: render2d
+ * V2.3 fill honesty drops a fill that wraps the chart's puncture.
  */
-function groupScene(data: GroupData, skipTileAt?: Point2): Scene {
+function groupScene(data: GroupData): Scene {
   const { group, tiles, graph, r0 } = data;
   const items: SceneItem[] = [
     {
@@ -89,7 +90,6 @@ function groupScene(data: GroupData, skipTileAt?: Point2): Scene {
   ];
 
   for (const tile of tiles) {
-    if (skipTileAt && tile.polytope.facets.every((f) => f.side(skipTileAt) <= 1e-9)) continue;
     const fill = tile.word.length === 0 ? TILE_IDENTITY : tile.word.length % 2 === 0 ? TILE_EVEN : TILE_ODD;
     items.push({
       id: `tile:${wordId(tile.word)}`,
@@ -143,16 +143,13 @@ const h237 = generate('hyperbolic', [2, 3, 7], 16);
 const e244 = generate('euclidean', [2, 4, 4], 12);
 const s235 = generate('spherical', [2, 3, 5], 20); // exhausts: all 120 elements
 
-// Tip the sphere off-axis: generic view direction for the globe, and it moves
-// the stereographic antipode into a tile interior (whose fill we then skip).
+// Tip the sphere off-axis: a generic view direction for the globe and the
+// stereographic chart alike.
 const sphereTip = matMul(planeRotation(0, 1, 0.55), planeRotation(0, 2, 0.35));
-const geomS = s235.group.geom;
-const antipodePreimage = geomS.apply(geomS.inverse(sphereTip), vecScale(geomS.origin(), -1) as Point2);
 
 const sceneH = groupScene(h237);
 const sceneE = groupScene(e244);
 const sceneS = groupScene(s235);
-const sceneSStereo = groupScene(s235, antipodePreimage);
 
 /** Fit: pixels per render unit so every Cayley node lands inside the frame. */
 function fitToNodes(data: GroupData, model: Model<Point2>, view: Isometry2, sizePx: number, margin: number): number {
@@ -166,22 +163,47 @@ function fitToNodes(data: GroupData, model: Model<Point2>, view: Isometry2, size
 
 // ── Panels ──────────────────────────────────────────────────────────────────
 
+/**
+ * A panel builds one path list per (camera, size); the Canvas painter and the
+ * SVG exporter both consume it, so the downloaded figure IS the screen —
+ * including whatever view you dragged yourself into (V3.3). `interact`
+ * marks a panel live; the globe stays static (V3 ruling: sphereview has no
+ * unproject yet — §6).
+ */
 interface Panel {
   title: string;
-  scene: Scene;
-  paint(g: CanvasRenderingContext2D, sizePx: number): void;
+  initialCamera(sizePx: number): Camera;
+  paths(camera: Camera, sizePx: number, overrides?: StyleOverrides): PathList;
+  interact?: { geom: Geometry<Point2, Isometry2>; unproject: ScreenUnprojector };
+  /** V3.4: the id under a pointer (hover), via the mathematical hitTest. */
+  hit?(camera: Camera, sizePx: number, px: readonly [number, number]): ItemId | null;
 }
 
 function flatPanel(title: string, scene: Scene, data: GroupData, model: Model<Point2>, makeCamera: (sizePx: number) => Camera): Panel {
+  const geom = data.group.geom;
+  const ctx = (camera: Camera, sizePx: number, overrides?: StyleOverrides) => ({
+    geom,
+    model,
+    camera,
+    size: { widthPx: sizePx, heightPx: sizePx },
+    overrides,
+  });
   return {
     title,
-    scene,
-    paint(g, sizePx) {
-      const camera = makeCamera(sizePx);
-      const ctx = { geom: data.group.geom, model, camera, size: { widthPx: sizePx, heightPx: sizePx } };
-      paint(g, buildPathList(scene, ctx), camera);
-    },
+    initialCamera: makeCamera,
+    paths: (camera, sizePx, overrides) => buildPathList(scene, ctx(camera, sizePx, overrides)),
+    interact: { geom, unproject: modelUnprojector(model) },
+    hit: (camera, sizePx, px) => hitTest(scene, ctx(camera, sizePx), px),
   };
+}
+
+function downloadSvg(panel: Panel, camera: Camera, sizePx: number): void {
+  const svg = toSvg(panel.paths(camera, sizePx), camera, { widthPx: sizePx, heightPx: sizePx });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  a.download = `${panel.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.svg`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 const identityView: Isometry2 = mat3([
@@ -206,7 +228,7 @@ const panels: Panel[] = [
     scalePx: fitToNodes(e244, cartesian, identityView, s, 1.1),
     centerPx: [s / 2, s / 2],
   })),
-  flatPanel('(2,3,5) S² — stereographic (conformal; far tile omitted)', sceneSStereo, s235, stereographic, (s) => ({
+  flatPanel('(2,3,5) S² — stereographic (conformal)', sceneS, s235, stereographic, (s) => ({
     view: sphereTip,
     scalePx: s / 2 / 3.2,
     centerPx: [s / 2, s / 2],
@@ -223,8 +245,7 @@ const panels: Panel[] = [
   })),
   {
     title: `(2,3,5) S² — perspective globe, d = ${EYE_DISTANCE}`,
-    scene: sceneS,
-    paint(g, sizePx) {
+    initialCamera(sizePx) {
       const silhouette = EYE_DISTANCE / Math.sqrt(EYE_DISTANCE * EYE_DISTANCE - 1);
       const camera: SphereCamera = {
         view: sphereTip,
@@ -232,8 +253,21 @@ const panels: Panel[] = [
         centerPx: [sizePx / 2, sizePx / 2],
         eyeDistance: EYE_DISTANCE,
       };
-      paint(g, buildSpherePathList(sceneS, { camera, size: { widthPx: sizePx, heightPx: sizePx } }), camera);
+      return camera;
     },
+    paths: (camera, sizePx, overrides) =>
+      buildSpherePathList(sceneS, {
+        camera: camera as SphereCamera,
+        size: { widthPx: sizePx, heightPx: sizePx },
+        overrides,
+        // P3: hidden-line convention — back arcs dash (intrinsic pattern).
+        backDash: { on: 0.5 * s235.r0, off: 0.35 * s235.r0 },
+      }),
+    // Globe rotation (sphereview stage 2a): drag the front sheet; the same
+    // double-bisector machinery — an S² translation IS a rotation.
+    interact: { geom: s235.group.geom, unproject: sphereUnprojector(new SpherePerspective(EYE_DISTANCE)) },
+    // P3: front-sheet hover.
+    hit: (camera, _sizePx, px) => sphereHitTest(sceneS, camera as SphereCamera, px),
   },
 ];
 
@@ -246,9 +280,13 @@ const TITLE_H = 24;
 document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
 const heading = document.createElement('h2');
 heading.textContent =
-  'group G4 / Milestone 1 — tessellations and Cayley graphs in S, E, H through two models each';
+  'group G4 / Milestone 1 — tessellations and Cayley graphs in S, E, H · drag to slide, shift-drag to pan, wheel to zoom';
 heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 12px';
 document.body.appendChild(heading);
+
+// The view isometry each panel has been dragged into — survives resize
+// (the affine part is re-derived from the new panel size).
+const savedViews: (Isometry2 | null)[] = panels.map(() => null);
 
 const grid = document.createElement('div');
 document.body.appendChild(grid);
@@ -267,23 +305,78 @@ function renderAll(): void {
   grid.replaceChildren();
   const dpr = window.devicePixelRatio || 1;
 
-  for (const panel of panels) {
+  panels.forEach((panel, i) => {
     const cell = document.createElement('div');
+    const bar = document.createElement('div');
+    bar.style.cssText = `display:flex;align-items:baseline;gap:8px;height:${TITLE_H - 6}px;margin-bottom:6px`;
     const title = document.createElement('div');
     title.textContent = panel.title;
-    title.style.cssText = `font-size:12px;height:${TITLE_H - 6}px;margin-bottom:6px;color:#555;white-space:nowrap;overflow:hidden`;
+    title.style.cssText = 'font-size:12px;color:#555;white-space:nowrap;overflow:hidden;flex:1';
+    const save = document.createElement('button');
+    save.textContent = 'SVG';
+    save.title = 'Download this panel as SVG — identical to the canvas, current view included';
+    save.style.cssText =
+      'font-size:10px;padding:1px 7px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer';
+    bar.append(title, save);
     const canvas = document.createElement('canvas');
     canvas.width = size * dpr;
     canvas.height = size * dpr;
     canvas.style.cssText = `width:${size}px;height:${size}px;background:#fff;border-radius:4px`;
-    cell.append(title, canvas);
+    cell.append(bar, canvas);
     grid.appendChild(cell);
 
     const g = canvas.getContext('2d');
-    if (!g) continue;
+    if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    panel.paint(g, size);
-  }
+
+    let camera = panel.initialCamera(size);
+    const saved = savedViews[i];
+    if (saved) camera = { ...camera, view: saved };
+
+    // V3.4: hover highlight — a per-frame style override, never a scene
+    // mutation. Tiles only; the SVG export deliberately omits it (transient
+    // UI state, not the figure).
+    let hovered: ItemId | null = null;
+    const draw = (): void => {
+      const overrides = hovered
+        ? new Map([[hovered, { fill: { color: '#ffb454', opacity: 0.95 } }]])
+        : undefined;
+      g.clearRect(0, 0, size, size);
+      paint(g, panel.paths(camera, size, overrides), camera);
+    };
+    let pending = false;
+    const schedule = (): void => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        draw();
+      });
+    };
+
+    draw();
+    save.addEventListener('click', () => downloadSvg(panel, camera, size));
+    if (panel.interact) {
+      attachInteraction(canvas, {
+        geom: panel.interact.geom,
+        unproject: panel.interact.unproject,
+        camera,
+        onCamera: (c) => {
+          camera = c;
+          savedViews[i] = c.view;
+          schedule();
+        },
+        onPointer: (px) => {
+          const id = px && panel.hit ? panel.hit(camera, size, px) : null;
+          const tile = id?.startsWith('tile:') ? id : null;
+          if (tile !== hovered) {
+            hovered = tile;
+            schedule();
+          }
+        },
+      });
+    }
+  });
 }
 
 renderAll();

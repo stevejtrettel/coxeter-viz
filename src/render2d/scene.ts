@@ -17,7 +17,7 @@ import {
   type StyleOverrides,
   type ViewSize,
 } from './types';
-import { sampleCircle, sampleCurve, sampleSegment, type SampledCurve } from './sample';
+import { circleGamma, sampleCircle, sampleCurve, sampleSegment, type SampledCurve } from './sample';
 import { strokeOutline } from './stroke';
 import { markEllipse } from './marks';
 
@@ -228,6 +228,7 @@ export function resolveStroke(sty: StrokeStyle, ov?: StyleOverride): StrokeStyle
     color: ov?.color ?? sty.color,
     width: ov?.width ?? sty.width,
     opacity: resolvedOpacity(sty.opacity, ov),
+    dash: sty.dash,
   };
 }
 
@@ -264,9 +265,80 @@ export function resolveRegion(sty: RegionStyle, ov?: StyleOverride): ResolvedReg
       color: ov?.color ?? edgeBase.color,
       width: ov?.width ?? edgeBase.width,
       opacity: resolvedOpacity(edgeBase.opacity, ov),
+      dash: edgeBase.dash,
     };
   }
   return out;
+}
+
+// ── Dashing (P1) ────────────────────────────────────────────────────────────
+
+/** Above this many dashes on one curve, fall back to a solid stroke. */
+const MAX_DASHES = 1024;
+
+/**
+ * The ON parameter ranges of an intrinsic dash pattern along a
+ * CONSTANT-SPEED curve (all three generators are: segments at d(a,b), walls
+ * at 1, circles at sin_κ(r)), so dashing is exact parameter arithmetic — no
+ * arclength integration. Degenerate patterns (or > MAX_DASHES) return the
+ * whole range: solid is the safe fallback.
+ */
+export function dashRanges(
+  t0: number,
+  t1: number,
+  speed: number,
+  dash: { on: number; off: number; phase?: number },
+): [number, number][] {
+  const period = dash.on + dash.off;
+  const L = (t1 - t0) * speed;
+  if (!(speed > 0) || !(dash.on > 0) || !(dash.off > 0) || L / period > MAX_DASHES) {
+    return [[t0, t1]];
+  }
+  const phase = ((dash.phase ?? 0) % period + period) % period;
+  const ranges: [number, number][] = [];
+  for (let s = -phase; s < L; s += period) {
+    const a = Math.max(0, s);
+    const b = Math.min(L, s + dash.on);
+    if (b - a > 1e-12) ranges.push([t0 + a / speed, t0 + b / speed]);
+  }
+  return ranges;
+}
+
+/**
+ * Outline contours for a (possibly dashed) stroke along a constant-speed
+ * curve: each ON range is adaptively sampled as its own open curve (dash
+ * ends are butt caps), and all dash outlines become contours of ONE
+ * RenderPath — the SVG export inherits dashing by construction.
+ */
+function strokeContours(
+  gamma: (t: number) => Point2,
+  t0: number,
+  t1: number,
+  speed: number,
+  sty: StrokeStyle,
+  model: Model<Point2>,
+  scalePx: number,
+  tol: RenderTolerances,
+): Float64Array[] {
+  const ranges = sty.dash ? dashRanges(t0, t1, speed, sty.dash) : [[t0, t1] as [number, number]];
+  const out: Float64Array[] = [];
+  for (const [a, b] of ranges) {
+    const curve = sampleCurve(gamma, a, b, model, scalePx, tol, sty.width / 2);
+    out.push(...strokeOutline(curve, model, sty.width));
+  }
+  return out;
+}
+
+/** sin_κ(r): the constant speed of the circle parametrization θ ↦ exp_c(r·v(θ)). */
+function circleSpeed(geom: Geometry<Point2, Isometry2>, r: number): number {
+  switch (geom.kind) {
+    case 'spherical':
+      return Math.sin(r);
+    case 'euclidean':
+      return r;
+    case 'hyperbolic':
+      return Math.sinh(r);
+  }
 }
 
 // ── Culling ─────────────────────────────────────────────────────────────────
@@ -391,7 +463,7 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
       case 'geodesic': {
         const sty = resolveStroke(item.style, ov);
         if (sty.width <= 0) break;
-        let curve: SampledCurve | null = null;
+        let contours: Float64Array[] = [];
         if (item.source.type === 'segment') {
           const a = geom.apply(g, item.source.a);
           const b = geom.apply(g, item.source.b);
@@ -410,11 +482,12 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
           ) {
             break;
           }
-          curve = sampleSegment(geom, model, a, b, scalePx, tol, sty.width / 2);
+          contours = strokeContours(geom.geodesic(a, b), 0, 1, d, sty, model, scalePx, tol);
         } else {
-          curve = sampleWall(geom, model, item.source.wall, g, frameM, marginRender, scalePx, tol, sty.width / 2);
+          const line = wallParamRange(geom, model, item.source.wall, g, frameM, marginRender, scalePx);
+          if (line) contours = strokeContours(line.gamma, line.sMin, line.sMax, 1, sty, model, scalePx, tol);
         }
-        if (curve) emit(item.id, strokeOutline(curve, model, sty.width), sty.color, sty.opacity);
+        if (contours.length > 0) emit(item.id, contours, sty.color, sty.opacity);
         break;
       }
 
@@ -438,12 +511,30 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
         ) {
           break;
         }
-        const curve = sampleCircle(geom, model, center, item.radius, scalePx, tol, halfWidth);
-        if (sty.fill) {
-          emit(item.id, [contourOf(curve)], sty.fill.color, sty.fill.opacity);
+        if (sty.fill || (sty.edge && !sty.edge.dash)) {
+          const curve = sampleCircle(geom, model, center, item.radius, scalePx, tol, halfWidth);
+          if (sty.fill) {
+            const contour = contourOf(curve);
+            if (honestFill(geom, model, center, contour)) {
+              emit(item.id, [contour], sty.fill.color, sty.fill.opacity);
+            }
+          }
+          if (sty.edge && !sty.edge.dash) {
+            emit(item.id, strokeOutline(curve, model, sty.edge.width), sty.edge.color, sty.edge.opacity);
+          }
         }
-        if (sty.edge) {
-          emit(item.id, strokeOutline(curve, model, sty.edge.width), sty.edge.color, sty.edge.opacity);
+        if (sty.edge?.dash) {
+          const contours = strokeContours(
+            circleGamma(geom, center, item.radius),
+            0,
+            2 * Math.PI,
+            circleSpeed(geom, item.radius),
+            sty.edge,
+            model,
+            scalePx,
+            tol,
+          );
+          if (contours.length > 0) emit(item.id, contours, sty.edge.color, sty.edge.opacity);
         }
         break;
       }
@@ -520,20 +611,96 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
               contour[k++] = e.samples[i].u[1];
             }
           }
-          emit(item.id, [contour], sty.fill.color, sty.fill.opacity);
+          if (honestFill(geom, model, polygonInterior(geom, verts), contour)) {
+            emit(item.id, [contour], sty.fill.color, sty.fill.opacity);
+          }
         }
         if (sty.edge) {
           // One path per edge: overlapping butt-capped outlines in a single
-          // even-odd path would cancel at the corners.
-          for (const e of edges) {
-            emit(item.id, strokeOutline(e, model, sty.edge.width), sty.edge.color, sty.edge.opacity);
+          // even-odd path would cancel at the corners. Dashed edges resample
+          // per ON range, the phase restarting at each vertex.
+          if (sty.edge.dash) {
+            for (let i = 0; i < verts.length; i++) {
+              const a = verts[i];
+              const b = verts[(i + 1) % verts.length];
+              const dEdge = geom.distance(a, b);
+              if (dEdge < 1e-12) continue;
+              const contours = strokeContours(geom.geodesic(a, b), 0, 1, dEdge, sty.edge, model, scalePx, tol);
+              if (contours.length > 0) emit(item.id, contours, sty.edge.color, sty.edge.opacity);
+            }
+          } else {
+            for (const e of edges) {
+              emit(item.id, strokeOutline(e, model, sty.edge.width), sty.edge.color, sty.edge.opacity);
+            }
           }
+          // P2: corner joins — the jacobian ellipse of radius w/2 at each
+          // vertex fills the butt-cap notch. One extra path (its contours
+          // are pairwise disjoint; it OVERLAPS the edges, so it cannot share
+          // their even-odd path). Translucent edges darken slightly at
+          // corners — the documented tradeoff (formerly: notches).
+          const joins = verts.map((v) => markEllipse(model, v, sty.edge!.width / 2, scalePx, tol));
+          emit(item.id, joins, sty.edge.color, sty.edge.opacity);
         }
         break;
       }
     }
   }
   return paths;
+}
+
+/**
+ * A canonical interior point of a geodesically convex vertex loop: the
+ * normalized vertex mean (chordal mean, inside the convex hull in all three
+ * geometries). Null when undecidable (spherical mean ≈ 0).
+ */
+function polygonInterior(geom: Geometry<Point2, Isometry2>, verts: readonly Point2[]): Point2 | null {
+  const s = vec3(0, 0, 0);
+  for (const v of verts) {
+    s[0] += v[0];
+    s[1] += v[1];
+    s[2] += v[2];
+  }
+  if (Math.abs(geom.form(s, s)) < 1e-12) return null;
+  return geom.normalize(s);
+}
+
+/** Even-odd ray cast: is (x, y) inside the closed contour? */
+function insideContour(c: Float64Array, x: number, y: number): boolean {
+  let inside = false;
+  for (let i = 0, j = c.length - 2; i < c.length; j = i, i += 2) {
+    const yi = c[i + 1];
+    const yj = c[j + 1];
+    if (yi > y !== yj > y && x < c[i] + ((y - yi) / (yj - yi)) * (c[j] - c[i])) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * V2.3 fill honesty (README): a region containing the chart's puncture
+ * projects to the COMPLEMENT of its boundary loop, so an even-odd fill would
+ * paint the wrong side. Only spherical flat charts can wrap — S² is compact,
+ * so every flat chart of it is punctured or branched, while the H/E charts
+ * are embeddings and always honest. The test: a canonical interior point
+ * must project INSIDE the sampled loop; a wrapped region puts it outside
+ * (or at the puncture itself, non-finite). Callers supply the interior
+ * point: a circle's center exactly; a polygon's normalized vertex mean —
+ * interior for the geodesically convex loops the polytope layer emits
+ * (non-convex regions would need an explicit interior point; none exist
+ * yet). An undecidable mean (≈ 0, a hemisphere-spanning loop) keeps the
+ * fill: dropping is the exceptional act and needs evidence.
+ */
+function honestFill(
+  geom: Geometry<Point2, Isometry2>,
+  model: Model<Point2>,
+  interior: Point2 | null,
+  contour: Float64Array,
+): boolean {
+  if (geom.kind !== 'spherical') return true;
+  if (interior === null) return true;
+  const u = model.project(interior);
+  return finite2(u) && insideContour(contour, u[0], u[1]);
 }
 
 /**
@@ -564,8 +731,12 @@ function contourOf(curve: SampledCurve): Float64Array {
   return contour;
 }
 
-/** Transform a wall by g, clip its line to the frame, and sample it. */
-function sampleWall(
+/**
+ * Transform a wall by g and clip its line to the frame, returning the
+ * unit-speed parametrization and its visible range (P1 refactor: dashing
+ * needs the range, not a pre-sampled curve).
+ */
+function wallParamRange(
   geom: Geometry<Point2, Isometry2>,
   model: Model<Point2>,
   wall: Hyperplane,
@@ -573,9 +744,7 @@ function sampleWall(
   frameM: Frame,
   marginRender: number,
   scalePx: number,
-  tol: RenderTolerances,
-  halfWidth: number,
-): SampledCurve | null {
+): { gamma: (s: number) => Point2; sMin: number; sMax: number } | null {
   const moved = Hyperplane.fromCovector(geom, geom.applyDual(g, wall.covector));
   let line = wallLine(geom, moved, frameAnchor(model, frameM));
   if (!line) {
@@ -608,5 +777,5 @@ function sampleWall(
     sMin = extendWallRange(gamma, model, -1, s0, frameM, marginRender, scalePx, spherical);
   }
   if (sMax - sMin < 1e-12) return null;
-  return sampleCurve(gamma, sMin, sMax, model, scalePx, tol, halfWidth);
+  return { gamma, sMin, sMax };
 }

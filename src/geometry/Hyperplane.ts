@@ -51,6 +51,35 @@ export class Hyperplane {
   }
 
   /**
+   * The perpendicular bisector of p ≠ q (README): the wall
+   * { x : d(x,p) = d(x,q) }, oriented so side(p) < 0. In S/H equidistance is
+   * ⟨x,p⟩ = ⟨x,q⟩, giving the covector J(q − p) (with q − p automatically
+   * spacelike); in E the degenerate J would kill the affine offset (as
+   * always), so the covector (−(|q_s|²−|p_s|²)/2, q_s − p_s) is written
+   * directly. Passes through the geodesic midpoint, orthogonal to the
+   * geodesic — so reflecting in it SWAPS p and q, the fact the drag
+   * machinery composes into translations (render2d V3). Throws (via
+   * fromCovector, zero covector) when p = q; antipodal spherical p, q give
+   * the polar equator, which is correct.
+   */
+  static bisector<P extends Vec, I>(geom: Geometry<P, I>, p: P, q: P): Hyperplane {
+    const c = new Float64Array(p.length);
+    if (geom.kind === 'euclidean') {
+      let offset = 0;
+      for (let i = 1; i < p.length; i++) {
+        c[i] = q[i] - p[i];
+        offset += q[i] * q[i] - p[i] * p[i];
+      }
+      c[0] = -offset / 2;
+    } else {
+      const kappa = geom.kind === 'spherical' ? 1 : -1;
+      c[0] = kappa * (q[0] - p[0]);
+      for (let i = 1; i < p.length; i++) c[i] = q[i] - p[i];
+    }
+    return Hyperplane.fromCovector(geom, c);
+  }
+
+  /**
    * The signed side of p: the plain pairing c·p. Zero on the wall, negative
    * in the wall's half-space { c·p ≤ 0 }.
    */
@@ -58,5 +87,21 @@ export class Hyperplane {
     let s = 0;
     for (let i = 0; i < this.covector.length; i++) s += this.covector[i] * p[i];
     return s;
+  }
+
+  /**
+   * Distance from p to the wall: the side value of a unit covector is the
+   * κ-sine of the signed distance (README), inverted by one κ-trig row.
+   */
+  distanceTo<P extends Vec, I>(geom: Geometry<P, I>, p: P): number {
+    const s = Math.abs(this.side(p));
+    switch (geom.kind) {
+      case 'spherical':
+        return Math.asin(Math.min(1, s));
+      case 'euclidean':
+        return s;
+      case 'hyperbolic':
+        return Math.asinh(s);
+    }
   }
 }

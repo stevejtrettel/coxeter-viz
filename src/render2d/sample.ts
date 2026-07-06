@@ -120,9 +120,22 @@ const CIRCLE_SEEDS = 8;
 const CIRCLE_SEED_DEPTH = 3;
 
 /**
+ * The metric circle's parametrization θ ↦ exp(c, r·(cos θ·E₁ + sin θ·E₂)) —
+ * constant speed sin_κ(r) in θ (P1 dashing relies on this).
+ */
+export function circleGamma(
+  geom: Geometry<Point2, Isometry2>,
+  center: Point2,
+  radius: number,
+): (theta: number) => Point2 {
+  const [e1, e2] = tangentFrame(geom, center);
+  return (theta) => geom.exp(center, addScaled(scale(e1, Math.cos(theta)), e2, Math.sin(theta)), radius);
+}
+
+/**
  * Sample the metric circle of intrinsic radius r at center c — honestly, via
- * θ ↦ exp(c, r·(cos θ·E₁ + sin θ·E₂)) (README: a jacobian ellipse would be
- * wrong at finite radius). Closed: the θ = 2π sample is dropped.
+ * `circleGamma` (README: a jacobian ellipse would be wrong at finite
+ * radius). Closed: the θ = 2π sample is dropped.
  */
 export function sampleCircle(
   geom: Geometry<Point2, Isometry2>,
@@ -133,9 +146,7 @@ export function sampleCircle(
   tol: RenderTolerances,
   halfWidth = 0,
 ): SampledCurve {
-  const [e1, e2] = tangentFrame(geom, center);
-  const gamma = (theta: number): Point2 =>
-    geom.exp(center, addScaled(scale(e1, Math.cos(theta)), e2, Math.sin(theta)), radius);
+  const gamma = circleGamma(geom, center, radius);
   const samples: CurveSample[] = [];
   let prev = sampleAt(gamma, model, 0);
   samples.push(prev);

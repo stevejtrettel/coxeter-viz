@@ -1,4 +1,4 @@
-import { norm } from '@/math/vec';
+import { cross, norm } from '@/math/vec';
 import type { Isometry2, Point2 } from '@/geometry/types';
 import { Hyperplane } from '@/geometry/Hyperplane';
 import { Spherical2 } from '@/geometry/Spherical';
@@ -14,7 +14,9 @@ import {
 import { sampleCircle, sampleCurve, tangentFrame, type SampledCurve } from '@/render2d/sample';
 import { strokeOutline } from '@/render2d/stroke';
 import { markEllipse } from '@/render2d/marks';
+import type { StrokeStyle } from '@/render2d/types';
 import {
+  dashRanges,
   frameOf,
   keepContours,
   resolvePoint,
@@ -31,9 +33,11 @@ import { DEFAULT_SPHERE_STYLE, type SphereCamera, type SphereStyle } from './typ
  * stage-1 curve is a circle in R³, so the sheet function along it is
  * A·cos t + B·sin t + C), sample/stroke/mark each pure-sheet piece with the
  * V1 machinery against the perspective chart, and emit in two passes: back
- * pieces, the translucent globe, front pieces. Fills are drawn only for
- * single-sheet regions; a straddling region keeps its boundary but its fill
- * is skipped (README, "Fills" — region clipping is parked stage-2 work).
+ * pieces, the translucent globe, front pieces. Straddling fills split at the
+ * silhouette (P3, `clippedFillLoops`): the front part fills in the front
+ * pass, the back part in the back pass; a single-sheet region that swallows
+ * the whole silhouette (the cap-wrap case) emits a ring + the far cap. Back
+ * strokes optionally dash (`backDash`, the hidden-line convention).
  */
 
 export interface SphereBuildContext {
@@ -43,6 +47,12 @@ export interface SphereBuildContext {
   readonly overrides?: StyleOverrides;
   /** The globe between the passes; omit for the default, null to suppress. */
   readonly sphere?: SphereStyle | null;
+  /**
+   * P3: dash BACK-side stroke pieces with this intrinsic pattern (the
+   * hidden-line convention), unless an item carries its own StrokeStyle
+   * dash — item dashes apply to both sheets and win.
+   */
+  readonly backDash?: { readonly on: number; readonly off: number; readonly phase?: number };
 }
 
 /** Sub-interval of a curve's angle parameter lying on one sheet. */
@@ -98,6 +108,102 @@ function splitArc(
   return pieces;
 }
 
+/**
+ * P3 cap-clipped fills (README, "Fills"): a region straddling the silhouette
+ * splits into a front part and a back part, each a single loop for CONVEX
+ * regions (the only fills the pipeline emits — tiles and metric circles; the
+ * same convexity assumption as fill honesty and hitTest). The boundary's
+ * pure-sheet pieces alternate with arcs OF THE SILHOUETTE CIRCLE: crossings
+ * are exact (they are splitArc's trig roots, p₀ = 1/d), the silhouette
+ * projects to the render circle of silhouette radius angle-preservingly, and
+ * each gap closes along whichever silhouette arc lies INSIDE the region
+ * (`contains` decides; both cannot, else there would be no crossings).
+ */
+function clippedFillLoops(
+  arcs: readonly { gamma: (t: number) => Point2; pieces: readonly ArcPiece[] }[],
+  contains: (q: Point2) => boolean,
+  persp: SpherePerspective,
+  invD: number,
+  scalePx: number,
+  tol: RenderTolerances,
+): { front: Float64Array | null; back: Float64Array | null } {
+  interface Piece {
+    gamma: (t: number) => Point2;
+    lo: number;
+    hi: number;
+    front: boolean;
+  }
+  const pieces: Piece[] = [];
+  for (const a of arcs) {
+    for (const p of a.pieces) pieces.push({ gamma: a.gamma, lo: p.lo, hi: p.hi, front: p.front });
+  }
+  const n = pieces.length;
+
+  // Start at a sheet change, then merge cyclically-adjacent same-sheet
+  // pieces (runs continue across arc joints — vertices are not crossings).
+  let start = 0;
+  while (start < n && pieces[(start + n - 1) % n].front === pieces[start].front) start++;
+  if (start === n) return { front: null, back: null }; // single-sheet: caller's case
+
+  interface Run {
+    front: boolean;
+    pieces: Piece[];
+  }
+  const runs: Run[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = pieces[(start + i) % n];
+    const last = runs[runs.length - 1];
+    if (last && last.front === p.front) last.pieces.push(p);
+    else runs.push({ front: p.front, pieces: [p] });
+  }
+
+  const rho = Math.sqrt(1 - invD * invD);
+  const R = persp.silhouetteRadius();
+  const silPoint = (phi: number): Point2 => Float64Array.of(invD, rho * Math.cos(phi), rho * Math.sin(phi));
+
+  // Render points of the silhouette arc from pFrom to pTo through the
+  // region's interior — including the start point, excluding the end (the
+  // next run's first sample provides it).
+  const silArc = (pFrom: Point2, pTo: Point2): number[] => {
+    const a = Math.atan2(pFrom[2], pFrom[1]);
+    const b = Math.atan2(pTo[2], pTo[1]);
+    const tau = 2 * Math.PI;
+    const ccw = (((b - a) % tau) + tau) % tau;
+    const delta = contains(silPoint(a + ccw / 2)) ? ccw : ccw - tau;
+    const stepMax = 2 * Math.acos(Math.max(-1, 1 - tol.flatnessPx / Math.max(R * scalePx, tol.flatnessPx)));
+    const steps = Math.max(1, Math.ceil(Math.abs(delta) / stepMax));
+    const out: number[] = [];
+    for (let k = 0; k < steps; k++) {
+      const phi = a + (delta * k) / steps;
+      out.push(R * Math.cos(phi), R * Math.sin(phi));
+    }
+    return out;
+  };
+
+  const buildLoop = (wantFront: boolean): Float64Array | null => {
+    const sel = runs.filter((r) => r.front === wantFront);
+    if (sel.length === 0) return null;
+    const out: number[] = [];
+    for (let i = 0; i < sel.length; i++) {
+      const run = sel[i];
+      for (const p of run.pieces) {
+        const curve = sampleCurve(p.gamma, p.lo, p.hi, persp, scalePx, tol);
+        // Drop each piece's last sample: the next piece starts there, or the
+        // silhouette arc starts at the exit crossing.
+        for (let s = 0; s + 1 < curve.samples.length; s++) {
+          out.push(curve.samples[s].u[0], curve.samples[s].u[1]);
+        }
+      }
+      const lastPiece = run.pieces[run.pieces.length - 1];
+      const next = sel[(i + 1) % sel.length];
+      out.push(...silArc(lastPiece.gamma(lastPiece.hi), next.pieces[0].gamma(next.pieces[0].lo)));
+    }
+    return Float64Array.from(out);
+  };
+
+  return { front: buildLoop(true), back: buildLoop(false) };
+}
+
 /** A regular closed circle contour of the given render radius about 0. */
 function circleContour(radius: number, scalePx: number, tol: RenderTolerances): Float64Array {
   const rPx = radius * scalePx;
@@ -139,18 +245,57 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
     }
   };
 
-  /** Sample the pieces of γ (angle-parametrized) and stroke each into its pass. */
+  /**
+   * Sample the pieces of γ and stroke each into its pass. `speed` is the
+   * curve's constant intrinsic speed in its parameter (segments/walls: 1,
+   * circles: sin r), so dashing is exact parameter arithmetic (P1). Back
+   * pieces fall back to ctx.backDash when the item has no dash of its own.
+   */
   const strokePieces = (
     id: string,
     gamma: (t: number) => Point2,
     pieces: readonly ArcPiece[],
-    width: number,
+    sty: StrokeStyle & { opacity: number },
+    speed: number,
+  ) => {
+    for (const piece of pieces) {
+      const dash = sty.dash ?? (piece.front ? undefined : ctx.backDash);
+      const ranges = dash
+        ? dashRanges(piece.lo, piece.hi, speed, dash)
+        : [[piece.lo, piece.hi] as [number, number]];
+      const contours: Float64Array[] = [];
+      for (const [a, b] of ranges) {
+        const curve = sampleCurve(gamma, a, b, persp, scalePx, tol, sty.width / 2);
+        contours.push(...strokeOutline(curve, persp, sty.width));
+      }
+      if (contours.length > 0) emit(piece.front, id, contours, sty.color, sty.opacity);
+    }
+  };
+
+  /**
+   * A single-sheet region's fill, with the cap-wrap check (P3): a boundary
+   * entirely on one sheet may still contain the whole silhouette circle (a
+   * large region around the view axis) — the region's other-sheet part is
+   * then exactly the far cap. Emit [boundary, silhouette] on the boundary's
+   * sheet (an even-odd ring) and the full silhouette disk on the other.
+   * Convexity makes the one-point test sufficient: with no crossings the
+   * silhouette is entirely inside or entirely outside.
+   */
+  const emitSingleSheetFill = (
+    id: string,
+    front: boolean,
+    boundary: Float64Array,
+    contains: (q: Point2) => boolean,
     color: string,
     opacity: number,
   ) => {
-    for (const piece of pieces) {
-      const curve = sampleCurve(gamma, piece.lo, piece.hi, persp, scalePx, tol, width / 2);
-      emit(piece.front, id, strokeOutline(curve, persp, width), color, opacity);
+    const rho = Math.sqrt(1 - invD * invD);
+    if (contains(Float64Array.of(invD, rho, 0))) {
+      const silC = circleContour(persp.silhouetteRadius(), scalePx, tol);
+      emit(front, id, [boundary, silC], color, opacity);
+      emit(!front, id, [silC], color, opacity);
+    } else {
+      emit(front, id, [boundary], color, opacity);
     }
   };
 
@@ -188,7 +333,7 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
         if (sty.width <= 0) break;
         if (item.source.type === 'segment') {
           const arc = segmentArc(geom.apply(g, item.source.a), geom.apply(g, item.source.b));
-          if (arc) strokePieces(item.id, arc.gamma, arc.pieces, sty.width, sty.color, sty.opacity);
+          if (arc) strokePieces(item.id, arc.gamma, arc.pieces, sty, 1);
         } else {
           const moved = Hyperplane.fromCovector(geom, geom.applyDual(g, item.source.wall.covector));
           // Any anchor off the wall's pole works; retry like render2d's sampleWall.
@@ -200,7 +345,7 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
           const { p0, tangent } = line;
           const gamma = (s: number) => geom.exp(p0, tangent, s);
           const pieces = splitArc(p0[0], tangent[0], -invD, 0, 2 * Math.PI, true);
-          strokePieces(item.id, gamma, pieces, sty.width, sty.color, sty.opacity);
+          strokePieces(item.id, gamma, pieces, sty, 1);
         }
         break;
       }
@@ -215,27 +360,38 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
         const B = sinR * e2[0];
         const C = Math.cos(item.radius) * center[0] - invD;
         const pieces = splitArc(A, B, C, 0, 2 * Math.PI, true);
-        if (pieces.length === 1) {
-          const front = pieces[0].front;
-          const halfWidth = sty.edge ? sty.edge.width / 2 : 0;
-          const curve = sampleCircle(geom, persp, center, item.radius, scalePx, tol, halfWidth);
-          if (sty.fill) emit(front, item.id, [spineContour(curve)], sty.fill.color, sty.fill.opacity);
-          if (sty.edge) {
-            emit(front, item.id, strokeOutline(curve, persp, sty.edge.width), sty.edge.color, sty.edge.opacity);
+        const gamma = (t: number) =>
+          geom.exp(
+            center,
+            Float64Array.of(
+              Math.cos(t) * e1[0] + Math.sin(t) * e2[0],
+              Math.cos(t) * e1[1] + Math.sin(t) * e2[1],
+              Math.cos(t) * e1[2] + Math.sin(t) * e2[2],
+            ),
+            item.radius,
+          );
+        const contains = (q: Point2) => geom.distance(center, q) <= item.radius;
+
+        if (sty.fill) {
+          if (pieces.length === 1) {
+            const front = pieces[0].front;
+            const boundary = spineContour(sampleCircle(geom, persp, center, item.radius, scalePx, tol));
+            emitSingleSheetFill(item.id, front, boundary, contains, sty.fill.color, sty.fill.opacity);
+          } else {
+            const loops = clippedFillLoops([{ gamma, pieces }], contains, persp, invD, scalePx, tol);
+            if (loops.front) emit(true, item.id, [loops.front], sty.fill.color, sty.fill.opacity);
+            if (loops.back) emit(false, item.id, [loops.back], sty.fill.color, sty.fill.opacity);
           }
-        } else if (sty.edge) {
-          // Straddles the silhouette: boundary split as usual, fill skipped.
-          const gamma = (t: number) =>
-            geom.exp(
-              center,
-              Float64Array.of(
-                Math.cos(t) * e1[0] + Math.sin(t) * e2[0],
-                Math.cos(t) * e1[1] + Math.sin(t) * e2[1],
-                Math.cos(t) * e1[2] + Math.sin(t) * e2[2],
-              ),
-              item.radius,
-            );
-          strokePieces(item.id, gamma, pieces, sty.edge.width, sty.edge.color, sty.edge.opacity);
+        }
+        if (sty.edge) {
+          const backDashed = ctx.backDash && !(pieces.length === 1 && pieces[0].front);
+          if (pieces.length === 1 && !sty.edge.dash && !backDashed) {
+            // Pure-sheet undashed ring: the closed annulus (no butt seam).
+            const curve = sampleCircle(geom, persp, center, item.radius, scalePx, tol, sty.edge.width / 2);
+            emit(pieces[0].front, item.id, strokeOutline(curve, persp, sty.edge.width), sty.edge.color, sty.edge.opacity);
+          } else {
+            strokePieces(item.id, gamma, pieces, sty.edge, sinR);
+          }
         }
         break;
       }
@@ -253,24 +409,43 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
         const singleSheet =
           arcs.every((a) => a.pieces.length === 1) &&
           arcs.every((a) => a.pieces[0].front === arcs[0].pieces[0].front);
-        if (sty.fill && singleSheet) {
-          const front = arcs[0].pieces[0].front;
-          const parts = arcs.map((a) => sampleCurve(a.gamma, 0, a.L, persp, scalePx, tol));
-          let count = 0;
-          for (const part of parts) count += part.samples.length - 1;
-          const contour = new Float64Array(2 * count);
-          let k = 0;
-          for (const part of parts) {
-            for (let i = 0; i + 1 < part.samples.length; i++) {
-              contour[k++] = part.samples[i].u[0];
-              contour[k++] = part.samples[i].u[1];
-            }
+        if (sty.fill) {
+          // Convex containment (the standing assumption): edge covectors
+          // sign-matched against the vertex mean.
+          const mean = Float64Array.of(0, 0, 0);
+          for (const v of verts) {
+            mean[0] += v[0];
+            mean[1] += v[1];
+            mean[2] += v[2];
           }
-          emit(front, item.id, [contour], sty.fill.color, sty.fill.opacity);
+          const covs = verts.map((v, i) => cross(v, verts[(i + 1) % verts.length]));
+          const signs = covs.map((c) => c[0] * mean[0] + c[1] * mean[1] + c[2] * mean[2]);
+          const contains = (q: Point2) =>
+            covs.every((c, i) => (c[0] * q[0] + c[1] * q[1] + c[2] * q[2]) * signs[i] >= -1e-12);
+
+          if (singleSheet) {
+            const front = arcs[0].pieces[0].front;
+            const parts = arcs.map((a) => sampleCurve(a.gamma, 0, a.L, persp, scalePx, tol));
+            let count = 0;
+            for (const part of parts) count += part.samples.length - 1;
+            const contour = new Float64Array(2 * count);
+            let k = 0;
+            for (const part of parts) {
+              for (let i = 0; i + 1 < part.samples.length; i++) {
+                contour[k++] = part.samples[i].u[0];
+                contour[k++] = part.samples[i].u[1];
+              }
+            }
+            emitSingleSheetFill(item.id, front, contour, contains, sty.fill.color, sty.fill.opacity);
+          } else {
+            const loops = clippedFillLoops(arcs, contains, persp, invD, scalePx, tol);
+            if (loops.front) emit(true, item.id, [loops.front], sty.fill.color, sty.fill.opacity);
+            if (loops.back) emit(false, item.id, [loops.back], sty.fill.color, sty.fill.opacity);
+          }
         }
         if (sty.edge) {
           for (const arc of arcs) {
-            strokePieces(item.id, arc.gamma, arc.pieces, sty.edge.width, sty.edge.color, sty.edge.opacity);
+            strokePieces(item.id, arc.gamma, arc.pieces, sty.edge, 1);
           }
         }
         break;
