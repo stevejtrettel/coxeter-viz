@@ -266,6 +266,7 @@ instantiation for these types to serve.
 | `wallclip.ts` | `wallLine` (a wall as a unit-speed curve, shared with `sphere/`) + `wallParamRange` (clip its line to the frame) | R2 |
 | `dash.ts` | intrinsic dash arithmetic: `dashRanges` / `strokeContours` / `circleSpeed`; shared with `sphere/` | R2 |
 | `honesty.ts` | V2.3 fill honesty: the interior-point winding test (`honestFill`, `polygonInterior`) | R2 |
+| `item.ts` | per-item contour primitives shared with `sphere/`: `spineContour`, `fillContourFromEdges`, `vertexMean` / `convexContainment` (one predicate, `tol`-parameterized: 1e-12 for fills, 0 for the exact hit test), `transportWall` | R3 |
 | `scene.ts` | scene → path list: the per-kind dispatch, composing the modules above (apply `g`, project, clip walls to frame/domain, cull, resolve style overrides) | V1 / R2 |
 | `canvas.ts` | the Canvas2D painter (immediate mode) | V1 |
 | `svg.ts` | one-file path-list → SVG string builder (no DOM): the painter's viewport formula verbatim, one `<path>` per RenderPath, `fill-rule="evenodd"`, `fill-opacity`, item id as `data-id` (one item emits several paths, so not `id`), 2-decimal px coordinates | V2 |

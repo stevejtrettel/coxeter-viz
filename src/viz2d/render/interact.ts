@@ -4,6 +4,7 @@ import { Hyperplane } from '@/geometry/Hyperplane';
 import type { Model } from '@/models/types';
 import type { Camera, ItemId, Scene } from './types';
 import type { BuildContext } from './scene';
+import { convexContainment } from './item';
 
 /**
  * Interaction (README, "Interaction (V3)"): pure camera transforms and the
@@ -275,24 +276,11 @@ export function hitTestCanonical(
         break;
       }
 
-      case 'polygon': {
-        const verts = item.vertices;
-        const mean = vec3(0, 0, 0);
-        for (const v of verts) {
-          mean[0] += v[0];
-          mean[1] += v[1];
-          mean[2] += v[2];
-        }
-        let inside = verts.length >= 3;
-        for (let k = 0; inside && k < verts.length; k++) {
-          const c = cross(verts[k], verts[(k + 1) % verts.length]);
-          const sq = c[0] * q[0] + c[1] * q[1] + c[2] * q[2];
-          const sm = c[0] * mean[0] + c[1] * mean[1] + c[2] * mean[2];
-          if (sq * sm < 0) inside = false;
-        }
-        if (inside) return item.id;
+      case 'polygon':
+        // Convex containment (the standing convexity assumption, shared with
+        // fill honesty and the sphere fills); exact hit test ⇒ zero slop.
+        if (convexContainment(item.vertices)(q)) return item.id;
         break;
-      }
 
       case 'domain':
         break; // view dressing, never hit

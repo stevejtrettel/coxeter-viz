@@ -13,6 +13,7 @@ import {
 import { circleGamma, sampleCircle, sampleSegment, type SampledCurve } from './sample';
 import { strokeOutline } from './stroke';
 import { markEllipse } from './marks';
+import { fillContourFromEdges, spineContour } from './item';
 import { resolvePoint, resolveRegion, resolveStroke } from './style';
 import { expandFrame, frameOf, keepContours, preCulled } from './cull';
 import { wallParamRange } from './wallclip';
@@ -135,7 +136,7 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
         if (sty.fill || (sty.edge && !sty.edge.dash)) {
           const curve = sampleCircle(geom, model, center, item.radius, scalePx, tol, halfWidth);
           if (sty.fill) {
-            const contour = contourOf(curve);
+            const contour = spineContour(curve);
             if (honestFill(geom, model, center, contour)) {
               emit(item.id, [contour], sty.fill.color, sty.fill.opacity);
             }
@@ -220,18 +221,7 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
         }
         if (edges.length < 2) break;
         if (sty.fill) {
-          // Boundary loop: each edge's samples minus its endpoint (the next
-          // edge's start), so every vertex appears once.
-          let count = 0;
-          for (const e of edges) count += e.samples.length - 1;
-          const contour = new Float64Array(2 * count);
-          let k = 0;
-          for (const e of edges) {
-            for (let i = 0; i + 1 < e.samples.length; i++) {
-              contour[k++] = e.samples[i].u[0];
-              contour[k++] = e.samples[i].u[1];
-            }
-          }
+          const contour = fillContourFromEdges(edges);
           if (honestFill(geom, model, polygonInterior(geom, verts), contour)) {
             emit(item.id, [contour], sty.fill.color, sty.fill.opacity);
           }
@@ -282,17 +272,6 @@ function renderCircleContour(radius: number, flatnessRender: number): Float64Arr
     const a = (2 * Math.PI * i) / n;
     contour[2 * i] = radius * Math.cos(a);
     contour[2 * i + 1] = radius * Math.sin(a);
-  }
-  return contour;
-}
-
-/** The closed spine contour of a sampled closed curve. */
-function contourOf(curve: SampledCurve): Float64Array {
-  const n = curve.samples.length;
-  const contour = new Float64Array(2 * n);
-  for (let i = 0; i < n; i++) {
-    contour[2 * i] = curve.samples[i].u[0];
-    contour[2 * i + 1] = curve.samples[i].u[1];
   }
   return contour;
 }

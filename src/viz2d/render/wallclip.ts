@@ -3,6 +3,7 @@ import type { Geometry, Isometry2, Point2 } from '@/geometry/types';
 import { Hyperplane } from '@/geometry/Hyperplane';
 import type { Model } from '@/models/types';
 import { distToFrame, finite2, type Frame } from './cull';
+import { transportWall } from './item';
 
 /**
  * Wall-line geometry and its clipping to the frame (see README, "Full-line
@@ -160,7 +161,7 @@ export function wallParamRange(
   marginRender: number,
   scalePx: number,
 ): { gamma: (s: number) => Point2; sMin: number; sMax: number } | null {
-  const moved = Hyperplane.fromCovector(geom, geom.applyDual(g, wall.covector));
+  const moved = transportWall(geom, g, wall);
   let line = wallLine(geom, moved, frameAnchor(model, frameM));
   if (!line) {
     // Spherical anchor at the pole: any other point works.

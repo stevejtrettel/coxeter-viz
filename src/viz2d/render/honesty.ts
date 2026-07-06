@@ -1,7 +1,7 @@
-import { vec3 } from '@/math/vec';
 import type { Geometry, Isometry2, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
 import { finite2 } from './cull';
+import { vertexMean } from './item';
 
 /**
  * V2.3 fill honesty (see README): a region containing the chart's puncture
@@ -16,12 +16,7 @@ import { finite2 } from './cull';
  * geometries). Null when undecidable (spherical mean ≈ 0).
  */
 export function polygonInterior(geom: Geometry<Point2, Isometry2>, verts: readonly Point2[]): Point2 | null {
-  const s = vec3(0, 0, 0);
-  for (const v of verts) {
-    s[0] += v[0];
-    s[1] += v[1];
-    s[2] += v[2];
-  }
+  const s = vertexMean(verts);
   if (Math.abs(geom.form(s, s)) < 1e-12) return null;
   return geom.normalize(s);
 }

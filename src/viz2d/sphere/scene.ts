@@ -1,6 +1,5 @@
-import { cross, norm } from '@/math/vec';
+import { norm } from '@/math/vec';
 import type { Isometry2, Point2 } from '@/geometry/types';
-import { Hyperplane } from '@/geometry/Hyperplane';
 import { Spherical2 } from '@/geometry/Spherical';
 import {
   DEFAULT_TOLERANCES,
@@ -11,9 +10,10 @@ import {
   type StyleOverrides,
   type ViewSize,
 } from '@/viz2d/render/types';
-import { sampleCircle, sampleCurve, tangentFrame, type SampledCurve } from '@/viz2d/render/sample';
+import { sampleCircle, sampleCurve, tangentFrame } from '@/viz2d/render/sample';
 import { strokeOutline } from '@/viz2d/render/stroke';
 import { markEllipse } from '@/viz2d/render/marks';
+import { convexContainment, fillContourFromEdges, spineContour, transportWall } from '@/viz2d/render/item';
 import type { StrokeStyle } from '@/viz2d/render/types';
 import { dashRanges } from '@/viz2d/render/dash';
 import { frameOf, keepContours } from '@/viz2d/render/cull';
@@ -330,7 +330,7 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
           const arc = segmentArc(geom.apply(g, item.source.a), geom.apply(g, item.source.b));
           if (arc) strokePieces(item.id, arc.gamma, arc.pieces, sty, 1);
         } else {
-          const moved = Hyperplane.fromCovector(geom, geom.applyDual(g, item.source.wall.covector));
+          const moved = transportWall(geom, g, item.source.wall);
           // Any anchor off the wall's pole works; retry like render2d's sampleWall.
           const line =
             wallLine(geom, moved, geom.origin()) ??
@@ -407,30 +407,12 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
         if (sty.fill) {
           // Convex containment (the standing assumption): edge covectors
           // sign-matched against the vertex mean.
-          const mean = Float64Array.of(0, 0, 0);
-          for (const v of verts) {
-            mean[0] += v[0];
-            mean[1] += v[1];
-            mean[2] += v[2];
-          }
-          const covs = verts.map((v, i) => cross(v, verts[(i + 1) % verts.length]));
-          const signs = covs.map((c) => c[0] * mean[0] + c[1] * mean[1] + c[2] * mean[2]);
-          const contains = (q: Point2) =>
-            covs.every((c, i) => (c[0] * q[0] + c[1] * q[1] + c[2] * q[2]) * signs[i] >= -1e-12);
+          const contains = convexContainment(verts, 1e-12);
 
           if (singleSheet) {
             const front = arcs[0].pieces[0].front;
             const parts = arcs.map((a) => sampleCurve(a.gamma, 0, a.L, persp, scalePx, tol));
-            let count = 0;
-            for (const part of parts) count += part.samples.length - 1;
-            const contour = new Float64Array(2 * count);
-            let k = 0;
-            for (const part of parts) {
-              for (let i = 0; i + 1 < part.samples.length; i++) {
-                contour[k++] = part.samples[i].u[0];
-                contour[k++] = part.samples[i].u[1];
-              }
-            }
+            const contour = fillContourFromEdges(parts);
             emitSingleSheetFill(item.id, front, contour, contains, sty.fill.color, sty.fill.opacity);
           } else {
             const loops = clippedFillLoops(arcs, contains, persp, invD, scalePx, tol);
@@ -473,15 +455,4 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
   }
 
   return [...backPaths, ...spherePaths, ...frontPaths];
-}
-
-/** The closed spine contour of a sampled closed curve. */
-function spineContour(curve: SampledCurve): Float64Array {
-  const n = curve.samples.length;
-  const contour = new Float64Array(2 * n);
-  for (let i = 0; i < n; i++) {
-    contour[2 * i] = curve.samples[i].u[0];
-    contour[2 * i + 1] = curve.samples[i].u[1];
-  }
-  return contour;
 }
