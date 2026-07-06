@@ -20,7 +20,8 @@ scene (canonical data, identity-carrying)
   ▼
 PathList: styled FILLED paths in render coords     (scene.ts)
   ├─ Canvas painter — immediate mode, every frame   (canvas.ts)
-  └─ SVG serializer — paper figures                 (svg.ts)
+  ├─ SVG serializer — paper figures                 (svg.ts)
+  └─ PNG compositor — k× raster of painter stacks   (png.ts)
 ```
 
 Both backends consume the same path list through the same affine viewport,
@@ -261,6 +262,7 @@ instantiation for these types to serve.
 | `canvas.ts` | the Canvas2D painter (immediate mode) | V1 |
 | `svg.ts` | one-file path-list → SVG string builder (no DOM): the painter's viewport formula verbatim, one `<path>` per RenderPath, `fill-rule="evenodd"`, `fill-opacity`, item id as `data-id` (one item emits several paths, so not `id`), 2-decimal px coordinates | V2 |
 | `interact.ts` | pure camera transforms (zoom / pan / double-bisector drag with drift renormalization), `hitTest`, and the thin DOM controller | V3 |
+| `png.ts` | PNG export of PAINTER STACKS at k× resolution: `RasterLayer` (the camera contract as an interface — paint this camera into this many device pixels), the pure `scaleCamera` (k·scalePx, k·centerPx — layers never see k, so a GPU field re-evaluates per pixel and vector layers re-sample through their px tolerances: sharper, not upsampled), `renderPng` (one 2D assembly canvas, layers `drawImage`'d back to front, transparent unless `background`; throws past the ~16384 px canvas cap, tiled rendering deferred), `sceneLayer` (the vector painter as a layer). GPU layers implement `RasterLayer` in their own module (`tilingshader/layer.ts`); SVG stays vector-only. | §5.6 T3 |
 
 Increments (PLAN.md §5.3.1): **V0** this README + `types.ts`, approved before
 further code · **V1** sample/stroke/marks/scene + Canvas painter + the

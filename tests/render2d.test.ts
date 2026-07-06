@@ -33,6 +33,7 @@ import type { RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
 import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
 import { paint } from '@/render2d/canvas';
+import { scaleCamera } from '@/render2d/png';
 import { sampleCircle, sampleCurve, sampleSegment, tangentFrame } from '@/render2d/sample';
 import { strokeOutline } from '@/render2d/stroke';
 import { markAxes, markEllipse } from '@/render2d/marks';
@@ -1488,4 +1489,22 @@ describe('pre-cull safety on the Milestone-1 scenes (V2.1)', () => {
       }
     },
   );
+});
+
+describe('render2d/png: scaleCamera (§5.6 T3)', () => {
+  it('scales the viewport, never the view', () => {
+    const view = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    const camera = { view, scalePx: 120, centerPx: [300, 250] as const };
+    const scaled = scaleCamera(camera, 4);
+    expect(scaled.scalePx).toBe(480);
+    expect(scaled.centerPx).toEqual([1200, 1000]);
+    expect(scaled.view).toBe(view); // same reference: content coordinates untouched
+  });
+
+  it('k = 1 is the identity on the numbers', () => {
+    const camera = { view: new Float64Array(9), scalePx: 77.5, centerPx: [13, 17] as const };
+    const scaled = scaleCamera(camera, 1);
+    expect(scaled.scalePx).toBe(77.5);
+    expect(scaled.centerPx).toEqual([13, 17]);
+  });
 });

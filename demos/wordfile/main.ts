@@ -15,14 +15,19 @@ import { Cartesian2 } from '@/models/cartesian';
 import { Stereographic2 } from '@/models/stereographic';
 import { identity } from '@/math/mat';
 import { classifyPolygon, type RealizationSpec } from '@/coxeter/spec';
-import { solvePolygon } from '@/coxeter/solve';
+import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
 import { groupFromPolygon, wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
+import { hullOfTiles, hullOfWords } from '@/group/wordlists';
 import { polygonArea } from '@/polytope/measure';
-import type { Camera, ItemId, PathList, Scene, StyleOverrides } from '@/render2d/types';
+import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/render2d/types';
 import { buildPathList } from '@/render2d/scene';
 import { paint } from '@/render2d/canvas';
 import { toSvg } from '@/render2d/svg';
 import { attachInteraction, hitTest, modelUnprojector } from '@/render2d/interact';
+import { renderPng, sceneLayer, type RasterLayer } from '@/render2d/png';
+import { TilingShader } from '@/tilingshader/TilingShader';
+import { tilingLayer } from '@/tilingshader/layer';
+import type { TilingStyle } from '@/tilingshader/types';
 // The example ships with the demo and auto-loads through the SAME parser a
 // picked file goes through.
 import exampleRaw from './example-words.json?raw';
@@ -31,8 +36,24 @@ const TILE_IDENTITY = '#f6d9a0';
 const TILE_EVEN = '#f2e3c4';
 const TILE_ODD = '#ffffff';
 const HOVER_COLOR = '#ffb454';
-/** Ambient background tessellation depth per geometry. */
+/** CPU ambient background tessellation depth per geometry (GPU field off). */
 const BG_DEPTH: Record<GeometryKind, number> = { hyperbolic: 12, euclidean: 12, spherical: 20 };
+
+/**
+ * The GPU field's ambience (§5.6 T4): quiet parity in the house cream/white,
+ * faint intrinsic edges matching the CPU ambient strokes, no vertex disks —
+ * the anonymous group as BACKGROUND; every named element paints on top.
+ */
+function fieldStyle(r0: number): TilingStyle {
+  return {
+    even: [1, 1, 1, 1],
+    odd: [0.98, 0.955, 0.905, 1],
+    edge: [0.604, 0.553, 0.459, 0.45], // #9a8d75, the ambient edge color
+    edgeHalfWidth: 0.0075 * r0,
+    vertex: [0, 0, 0, 0],
+    vertexRadius: 0,
+  };
+}
 
 // ── Parsing ─────────────────────────────────────────────────────────────────
 
@@ -68,14 +89,27 @@ function parseFile(text: string): { words: number[][]; errors: string[] } {
 interface State {
   kind: GeometryKind;
   group: CoxeterGroup<Point2, Isometry2>;
+  poly: RealizedPolygon;
   model: Model<Point2>;
   tiles: Tile<Point2, Isometry2>[];
   scene: Scene;
   chamberArea: number;
   r0: number;
+  /** Hull-of-base-points stats line fragment ('' when no hull). */
+  hullNote: string;
 }
 
-function realize(orders: [number, number, number], words: number[][]): State {
+interface HullOptions {
+  centers: boolean;
+  tiles: boolean;
+}
+
+function realize(
+  orders: [number, number, number],
+  words: number[][],
+  hulls: HullOptions,
+  gpuField: boolean,
+): State {
   const kind = classifyPolygon(orders); // the geometry is INFERRED (model: auto)
   const spec: RealizationSpec = {
     geometry: kind,
@@ -132,7 +166,41 @@ function realize(orders: [number, number, number], words: number[][]): State {
       style: { color: ['#c0392b', '#27ae60', '#2f6fb7'][i], width: 0.05 * r0, opacity: 0.8 },
     })),
   ];
-  return { kind, group, model, tiles, scene, chamberArea: polygonArea(group.geom, realized.chamber.vertices), r0 };
+
+  // The hulls, per the toggles: of the base-point CENTERS (M3.3) and/or of
+  // the TILES themselves (hull of the union = hull of the tile vertices).
+  // Degenerate lists and the spherical hemisphere refusal degrade to a note.
+  let hullNote = '';
+  const drawHull = (which: 'centers' | 'tiles', color: string): void => {
+    if (tiles.length < 3) return;
+    try {
+      const hull = which === 'centers' ? hullOfWords(group, words) : hullOfTiles(group, words);
+      (scene as SceneItem[]).push({
+        id: `hull:${which}`,
+        kind: 'polygon',
+        vertices: hull.vertices,
+        style: {
+          fill: { color, opacity: 0.09 },
+          edge: { color, width: 0.07 * r0, opacity: 0.9 },
+        },
+      });
+      hullNote += ` · ${which} hull: area ${polygonArea(group.geom, hull.vertices).toPrecision(4)}`;
+    } catch {
+      hullNote += ` · ${which} hull: — (spans > a hemisphere)`;
+    }
+  };
+  if (hulls.tiles) drawHull('tiles', '#8e44ad');
+  if (hulls.centers) drawHull('centers', '#2f6fb7');
+  return {
+    kind,
+    group,
+    model,
+    tiles,
+    scene,
+    chamberArea: polygonArea(group.geom, realized.chamber.vertices),
+    r0,
+    hullNote,
+  };
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
@@ -163,7 +231,20 @@ saveBtn.textContent = 'SVG';
 saveBtn.style.cssText = sampleBtn.style.cssText;
 const status = document.createElement('span');
 status.style.cssText = 'font-size:12px;color:#777';
-controls.append(ordersInput, fileInput, sampleBtn, saveBtn, status);
+const hullToggle = (label: string, checked: boolean): HTMLInputElement => {
+  const wrap = document.createElement('label');
+  wrap.style.cssText = 'font-size:12px;color:#555;display:inline-flex;gap:4px;align-items:center';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = checked;
+  wrap.append(box, document.createTextNode(label));
+  controls.appendChild(wrap);
+  return box;
+};
+controls.append(ordersInput, fileInput, sampleBtn, saveBtn);
+const hullCentersBox = hullToggle('hull of centers', true);
+const hullTilesBox = hullToggle('hull of tiles', true);
+controls.appendChild(status);
 document.body.appendChild(controls);
 
 const canvas = document.createElement('canvas');
@@ -171,7 +252,7 @@ document.body.appendChild(canvas);
 
 // The ball of (2,3,7) words to depth 6 — an alternative built-in list.
 function sampleWords(): number[][] {
-  const g = realize([2, 3, 7], []).group;
+  const g = realize([2, 3, 7], [], { centers: false, tiles: false }).group;
   return g.orbit(6).map((e) => e.word);
 }
 
@@ -185,7 +266,10 @@ function rebuild(): void {
     if (nums.length !== 3 || nums.some((n) => !Number.isInteger(n) || n < 2)) {
       throw new Error('orders must be three integers ≥ 2');
     }
-    state = realize(nums as [number, number, number], currentWords);
+    state = realize(nums as [number, number, number], currentWords, {
+      centers: hullCentersBox.checked,
+      tiles: hullTilesBox.checked,
+    });
   } catch (err) {
     status.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
     return;
@@ -193,7 +277,8 @@ function rebuild(): void {
   const distinct = state.tiles.length;
   status.textContent =
     `${state.kind} · ${currentWords.length} words → ${distinct} tiles · ` +
-    `chamber area ${state.chamberArea.toPrecision(5)} · total ${(distinct * state.chamberArea).toPrecision(5)}`;
+    `chamber area ${state.chamberArea.toPrecision(5)} · total ${(distinct * state.chamberArea).toPrecision(5)}` +
+    state.hullNote;
 
   const headH = heading.offsetHeight + controls.offsetHeight + 24;
   const size = Math.max(
@@ -298,6 +383,8 @@ sampleBtn.addEventListener('click', () => {
   rebuild();
 });
 ordersInput.addEventListener('change', rebuild);
+hullCentersBox.addEventListener('change', rebuild);
+hullTilesBox.addEventListener('change', rebuild);
 window.addEventListener('resize', rebuild);
 
 // Auto-load the shipped example (the (2,3,7) alternating-subgroup patch).

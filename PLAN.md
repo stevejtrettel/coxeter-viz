@@ -1014,7 +1014,117 @@ subgroup patch to depth 7) as a real file to load. Amended same day
 (user): the example AUTO-LOADS on startup (imported `?raw` through the
 same parser a picked file uses), and a faint ambient tessellation
 (depth 12/12/20 per geometry) draws underneath so the word list reads as
-a HIGHLIGHTED PATCH within the tiling. Pending the user's eyes.
+a HIGHLIGHTED PATCH within the tiling. **APPROVED 2026-07-06 — M3.5
+closed.** Same-day addenda (user): the CENTERS hull (`hullOfWords`) drawn
+in the wordfile demo with area in the stats line; then **`hullOfTiles`**
+(`wordlists.ts`) — the hull of the TILE IMAGES (= hull of their vertices,
+tiles being convex; deduplicated across shared edges; same hemisphere
+refusal), pinned by the dihedral-flower identity area(tile hull) = 2m ×
+chamber area exactly, in all three geometries — with both hulls as demo
+CHECKBOXES (purple tiles hull, blue centers hull). Next: further 2D
+development, direction to be specified by the user (explicitly ahead of
+Milestone 2 / 3D).
+
+### 5.6 — the GPU tiling shader (finalized 2026-07-06 with user rulings; spec = this entry + src/tilingshader/README.md)
+
+**Status: T0 APPROVED, T1 + T2 DONE and APPROVED HANDS-ON 2026-07-06
+("the cpu overlay matches"). Next: T3.** T1 = `src/tilingshader/` (types/shader/uniforms/
+TilingShader; 15 tests incl. the parity pin: fold count parity = word-length
+parity, word images fold back to the incenter, all three geometries). T2 =
+`demos/tilingshader`, verified headless (Chrome + software GL) against the
+pixel-coincidence criterion in ALL FIVE charts — the CPU overlay's strokes
+sit exactly on the GPU edge bands (screenshots: poincare/klein (2,3,7),
+cartesian (2,4,4), stereographic/gnomonic (2,3,5)). One finding, not a
+shader defect: in GNOMONIC the CPU overlay itself adds hairline artifacts
+for tiles crossing the equator (forward projection through infinity — the
+known chart limitation); the GPU field, mapping backward per pixel, is
+clean there. Remaining: user hands-on (drag/pan/zoom, style sliders), then
+T3. Direction set by
+the user; the reference shader arrived as `shader.glsl` (repo root,
+untracked): Shadertoy-dialect, upper-half-plane, hardcoded (2,3,7) —
+fold-into-chamber loop, parity fill, edge bands, vertex disks. Nothing
+survives verbatim (UHP structs, disk→UHP Möbius, per-wall-type reflections
+all dissolve); what carries is the *idea*: per-pixel folding + the three
+coloring layers. The re-derivation folds in CANONICAL ambient coordinates
+with covector walls — `p ← p − 2⟨p,c⟩·Jc`, J = diag(κ,1,1) — one
+geometry-branch-free loop for S/E/H, with edge/vertex tests reduced to
+pairings against CPU-precomputed κ-trig thresholds (no per-pixel inverse
+trig). Details in the README.
+
+**User rulings (2026-07-06):** (1) STANDALONE demo first
+(`demos/tilingshader`), host integration later; (2) tiles + edges +
+vertices all built in from the start and shown in the test; (3) the shader
+implements EVERY flat 2D chart the system has (poincare-disk, klein-disk,
+cartesian, stereographic, gnomonic — Globe2 is renderDim 3, rejected).
+
+**Increments:**
+- **T0** — this entry + `src/tilingshader/README.md` (backward view
+  formula, folding + convergence, coloring layers, chart table, uniforms
+  contract, limits, provisional API).
+- **T1** — the module: WebGL2 harness + the fragment shader (n-gon folding,
+  MAX_WALLS 16; parity/edges/vertices; all five charts), `TilingShader`
+  class + pure helpers (uniform packing, thresholds, chart ids) with
+  vitest coverage of the pure side.
+- **T2** — `demos/tilingshader`: (p,q,r) input with geometry inferred
+  (classifyPolygon, as wordfile), chart selector, style controls, full
+  interaction via the existing controller. **Success criterion**: optional
+  CPU-tessellation overlay (render2d, same camera) — edges coincide to the
+  pixel in every geometry × chart cell under drag/pan/zoom. Hands-on gate.
+- **T3** — PNG k× export button (offscreen re-render of both layers,
+  composite). **DONE 2026-07-06**, designed collaboratively as a MODULAR
+  COMPONENT (user direction): `render2d/png.ts` — `RasterLayer` (the camera
+  contract as an interface: paint this camera into this many device
+  pixels), pure `scaleCamera` (the exporter scales the CAMERA, never tells
+  layers about k ⇒ per-pixel re-evaluation, not upsampling), `renderPng`
+  (2D assembly canvas, layers drawImage'd back to front, transparent
+  default background, throws past the ~16384 px canvas cap — tiled
+  rendering deferred), `sceneLayer` (the vector painter as a layer); plus
+  `tilingshader/layer.ts` — `tilingLayer` (fresh disposed TilingShader on
+  a scratch canvas per export; export-only seam, the screen path stays
+  immediate-mode). Demo: PNG button + k selector (1/2/4/8×) with a LIVE
+  PIXEL READOUT (user amendment: exact dimensions + MP, e.g. "3040 × 3040
+  px (9.2 MP)"); k is exact against the CSS frame, no implicit dpr.
+  Verified headless: 4× export decodes to exactly 3040×3040 with both
+  layers composited and coincident at 1:1 crop. +2 tests (scaleCamera).
+- **T4 (parked until user directs)** — host integration (wordfile or
+  successor): WebGL canvas under the transparent Canvas2D, one controller;
+  shader-on drops the CPU domain fill + ambient background tiles.
+
+Strategy agreed in the original discussion (unchanged):
+
+- **One camera, two painters.** Both layers render the SAME view formula —
+  the vector layer forward, the shader backward per pixel
+  (V⁻¹ → chart unproject → apply(view⁻¹) → canonical point → fold →
+  color). Shader inputs are uniforms only: viewport (scalePx, centerPx),
+  view⁻¹ as mat3, the chart inverse (per-chart GLSL; Poincaré first), the
+  three wall covectors from `RealizedPolygon` + κ — the engine feeds the
+  shader, no group theory duplicated in TS. Interaction is UNCHANGED: the
+  existing controller owns the one camera; onCamera repaints two canvases.
+- **Layer stack**: WebGL canvas under the Canvas2D overlay (transparent
+  background), one controller on the top canvas. Shader on ⇒ the CPU scene
+  drops its `domain` fill + ambient background tiles.
+- **Identity is the knife**: the GPU draws the GROUP (reflection-folding:
+  parity, fold depth, wall distance — unlimited depth, antialiased,
+  anonymous); the CPU draws NAMED elements (ids, words, highlights, hulls,
+  Cayley, hover, coset colors for selected lists) — the existing machinery,
+  unmodified, on top.
+- **Exports**: SVG stays vector-only (documented — a shader field has no
+  vector form). PNG at arbitrary resolution: re-render both layers
+  offscreen at k× (the vector layer is already resolution-independent via
+  the camera), composite; tiled rendering later if outputs exceed canvas
+  caps.
+- **Module**: a new sibling `src/` module (working name `tilingshader/`),
+  raw WebGL2, zero dependencies, README written first. render2d untouched.
+- **Recorded limits**: GPU float32 (hyperbolic folding softens near the
+  boundary; iteration cap; overlays stay float64-exact), charts arrive
+  incrementally.
+- **Formerly open, now resolved (2026-07-06)**: shader conventions — the
+  reference's UHP machinery is replaced by canonical-coordinate folding
+  (README); first demo — STANDALONE, not wordfile (user ruling; host
+  integration = T4, parked); coloring vocabulary — parity + edge bands +
+  vertex disks from the start (user ruling), palette a demo style control
+  (defaults at T2); charts — ALL five flat 2D charts (user ruling); PNG
+  export — simple k× button (T3).
 
 ### Milestones cut vertically, not horizontally
 

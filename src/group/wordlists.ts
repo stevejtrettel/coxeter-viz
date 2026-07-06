@@ -60,3 +60,28 @@ export function hullOfWords(
   );
   return fromVertices2(group.geom, points);
 }
+
+/**
+ * The convex hull of the TILE IMAGES a word list denotes (its semantics,
+ * stated): tiles are convex, so the hull of their union is the hull of
+ * their vertices. Vertices shared between adjacent tiles are deduplicated
+ * by a fine quantization before hulling. Same 2D machinery and the same
+ * hemisphere refusal as `hullOfWords`.
+ */
+export function hullOfTiles(
+  group: CoxeterGroup<Point2, Isometry2>,
+  words: readonly (readonly number[])[],
+): Polytope<Point2> {
+  const points: Point2[] = [];
+  const seen = new Set<string>();
+  for (const tile of group.tilesFor(words)) {
+    for (const v of tile.polytope.vertices) {
+      const k = `${Math.round(v[0] / 1e-9)},${Math.round(v[1] / 1e-9)},${Math.round(v[2] / 1e-9)}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        points.push(v);
+      }
+    }
+  }
+  return fromVertices2(group.geom, points);
+}

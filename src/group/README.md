@@ -192,6 +192,11 @@ operation states what a word maps to:
   the base-point images** of the word list's elements, via the polytope
   engine's `fromVertices2`. The spherical hemisphere refusal propagates
   (a hull spanning more than a hemisphere throws, by design).
+- `hullOfTiles(group, words)` (`wordlists.ts`, 2D) — **the convex hull of
+  the tile images** the list denotes: tiles are convex, so hull(∪ tiles) =
+  hull(their vertices), deduplicated across shared edges before hulling.
+  Same machinery, same refusal. Pin: a dihedral flower's union is convex,
+  so its tile hull's Gauss–Bonnet area is exactly 2m × the chamber area.
 
 ## Type shapes
 

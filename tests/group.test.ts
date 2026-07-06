@@ -5,7 +5,8 @@ import type { RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
 import { matrixKey, orbit, type GroupOps } from '@/group/orbit';
 import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
-import { cosetIndex, hullOfWords } from '@/group/wordlists';
+import { cosetIndex, hullOfTiles, hullOfWords } from '@/group/wordlists';
+import { polygonArea } from '@/polytope/measure';
 
 /**
  * G1 — the generic orbit engine. The Coxeter-specific pins (relations,
@@ -416,7 +417,34 @@ describe('wordlists: hullOfWords (M3.3)', () => {
     const g = triangleGroup('spherical', [2, 3, 5]);
     const all = g.orbit(20).map((e) => e.word);
     expect(() => hullOfWords(g, all)).toThrow();
+    expect(() => hullOfTiles(g, all)).toThrow();
   });
+
+  it.each([
+    ['spherical', [2, 3, 5], 3],
+    ['euclidean', [2, 4, 4], 4],
+    ['hyperbolic', [2, 3, 7], 3],
+  ] as [GeometryKind, [number, number, number], number][])(
+    '%s: the dihedral flower’s TILE hull has area exactly 2m × chamber (convex union)',
+    (kind, orders, m) => {
+      const g = triangleGroup(kind, orders);
+      const words: number[][] =
+        m === 3 ? DIHEDRAL_12 : [[], [1], [2], [1, 2], [2, 1], [1, 2, 1], [2, 1, 2], [1, 2, 1, 2]];
+      const hull = hullOfTiles(g, words);
+      const chamber = polygonArea(g.geom, g.chamber.vertices);
+      expect(polygonArea(g.geom, hull.vertices)).toBeCloseTo(2 * m * chamber, 9);
+
+      // Every tile vertex lies inside (or on) the hull...
+      for (const t of g.tilesFor(words)) {
+        for (const v of t.polytope.vertices) {
+          for (const f of hull.facets) expect(f.side(v)).toBeLessThan(1e-7);
+        }
+      }
+      // ...and it strictly contains the base-point hull.
+      const inner = polygonArea(g.geom, hullOfWords(g, words).vertices);
+      expect(polygonArea(g.geom, hull.vertices)).toBeGreaterThan(inner);
+    },
+  );
 });
 
 describe('matrixKey', () => {
