@@ -46,6 +46,12 @@ export interface BuildContext {
   readonly size: ViewSize;
   readonly tolerances?: RenderTolerances;
   readonly overrides?: StyleOverrides;
+  /**
+   * Diagnostic escape hatch: `false` disables the V2 pre-sampling cull.
+   * The output must be IDENTICAL either way (the safety-property test pins
+   * it); the flag exists so tests can compare and consumers can diagnose.
+   */
+  readonly preCull?: boolean;
 }
 
 /** The visible rectangle in render coordinates: V⁻¹ of the screen rect. */
@@ -297,6 +303,59 @@ export function keepContours(
   return Math.max(maxX - minX, maxY - minY) * scalePx >= cullPx;
 }
 
+/**
+ * V2 pre-sampling cull (README): a conservative screen bound from the item's
+ * projected defining points, padded by intrinsicRadius × maxScale × 2, so
+ * sampling can be skipped outright. Only the SOUND cases decide:
+ *
+ * - sub-pixel, all charts — the small-item regime: the chart's scale is
+ *   near-constant across a screen-small item, and the factor 2 covers the
+ *   variation;
+ * - off-frame, only where the projected spine provably stays in the convex
+ *   hull of the projected defining points (straight non-spherical charts:
+ *   Klein, Cartesian — geodesics are chords there; conformal arcs bulge
+ *   outside the hull, and gnomonic segments can cross the horizon).
+ *
+ * Non-finite projections are unboundable — keep and sample. `keepContours`
+ * remains the post-sampling safety net either way, so the pre-cull can only
+ * ever save work, never change the output.
+ *
+ * `pad` (render units, = intrinsicRadius × maxScale × 2) is LAZY: it only
+ * ever expands the kept region, so an item whose bare bbox already
+ * intersects the frame at super-cull size is kept without evaluating it —
+ * the common full-view case pays for the projections and nothing else.
+ */
+export function preCulled(
+  pts: readonly Vec3[],
+  pad: () => number,
+  offFrameEligible: boolean,
+  frame: Frame,
+  scalePx: number,
+  cullPx: number,
+): boolean {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const u of pts) {
+    if (!finite2(u)) return false;
+    if (u[0] < minX) minX = u[0];
+    if (u[0] > maxX) maxX = u[0];
+    if (u[1] < minY) minY = u[1];
+    if (u[1] > maxY) maxY = u[1];
+  }
+  if (minX > maxX) return false;
+  const bigEnough = Math.max(maxX - minX, maxY - minY) * scalePx >= cullPx;
+  const onFrame = !(maxX < frame.minX || minX > frame.maxX || maxY < frame.minY || minY > frame.maxY);
+  if (bigEnough && (onFrame || !offFrameEligible)) return false; // keep: pad can't shrink either verdict
+  const m = pad();
+  if ((Math.max(maxX - minX, maxY - minY) + 2 * m) * scalePx < cullPx) return true;
+  return (
+    offFrameEligible &&
+    (maxX + m < frame.minX || minX - m > frame.maxX || maxY + m < frame.minY || minY - m > frame.maxY)
+  );
+}
+
 // ── The builder ─────────────────────────────────────────────────────────────
 
 export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
@@ -307,6 +366,9 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
   const marginRender = MARGIN_PX / scalePx;
   const frameM = expandFrame(frame, marginRender);
   const g = camera.view;
+  const preCullOn = ctx.preCull !== false;
+  // Off-frame pre-culling is sound only where projected geodesics are chords.
+  const offFrameEligible = model.straight && geom.kind !== 'spherical';
 
   const paths: RenderPath[] = [];
   const emit = (id: string, contours: readonly Float64Array[], color: string, opacity: number) => {
@@ -333,7 +395,21 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
         if (item.source.type === 'segment') {
           const a = geom.apply(g, item.source.a);
           const b = geom.apply(g, item.source.b);
-          if (geom.distance(a, b) < 1e-12) break;
+          const d = geom.distance(a, b);
+          if (d < 1e-12) break;
+          if (
+            preCullOn &&
+            preCulled(
+              [model.project(a), model.project(b)],
+              () => (d / 2 + sty.width / 2) * Math.max(model.scaleAt(a), model.scaleAt(b)) * 2,
+              offFrameEligible,
+              frame,
+              scalePx,
+              tol.cullPx,
+            )
+          ) {
+            break;
+          }
           curve = sampleSegment(geom, model, a, b, scalePx, tol, sty.width / 2);
         } else {
           curve = sampleWall(geom, model, item.source.wall, g, frameM, marginRender, scalePx, tol, sty.width / 2);
@@ -347,6 +423,21 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
         if ((!sty.fill && !sty.edge) || item.radius <= 0) break;
         const center = geom.apply(g, item.center);
         const halfWidth = sty.edge ? sty.edge.width / 2 : 0;
+        if (
+          preCullOn &&
+          // Sub-pixel only: a circle reaches intrinsic radius r from its one
+          // defining point, where the chord-hull argument gives nothing.
+          preCulled(
+            [model.project(center)],
+            () => (item.radius + halfWidth) * model.scaleAt(center) * 2,
+            false,
+            frame,
+            scalePx,
+            tol.cullPx,
+          )
+        ) {
+          break;
+        }
         const curve = sampleCircle(geom, model, center, item.radius, scalePx, tol, halfWidth);
         if (sty.fill) {
           emit(item.id, [contourOf(curve)], sty.fill.color, sty.fill.opacity);
@@ -357,11 +448,57 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
         break;
       }
 
+      case 'domain': {
+        // View dressing (README): the model's `domain` field supplies the
+        // geometry, StyleOverrides are deliberately ignored, and the camera's
+        // view isometry does not apply — the domain lives in render coords.
+        const sty = item.style;
+        const flatnessRender = tol.flatnessPx / scalePx;
+        if (model.domain.kind === 'disk') {
+          const R = model.domain.radius;
+          if (sty.fill) {
+            emit(item.id, [renderCircleContour(R, flatnessRender)], sty.fill.color, sty.fill.opacity ?? 1);
+          }
+          if (sty.rim && sty.rim.widthPx > 0) {
+            const w = sty.rim.widthPx / scalePx;
+            emit(
+              item.id,
+              [renderCircleContour(R + w / 2, flatnessRender), renderCircleContour(R - w / 2, flatnessRender)],
+              sty.rim.color,
+              sty.rim.opacity ?? 1,
+            );
+          }
+        } else if (model.domain.kind === 'plane' && sty.fill) {
+          // The chart's image is the whole plane: shade the visible frame.
+          const rect = Float64Array.of(
+            frame.minX, frame.minY,
+            frame.maxX, frame.minY,
+            frame.maxX, frame.maxY,
+            frame.minX, frame.maxY,
+          );
+          emit(item.id, [rect], sty.fill.color, sty.fill.opacity ?? 1);
+        }
+        break;
+      }
+
       case 'polygon': {
         const sty = resolveRegion(item.style, ov);
         if ((!sty.fill && !sty.edge) || item.vertices.length < 3) break;
         const verts = item.vertices.map((v) => geom.apply(g, v));
         const halfWidth = sty.edge ? sty.edge.width / 2 : 0;
+        if (preCullOn) {
+          const pad = () => {
+            let maxEdge = 0;
+            let maxScale = 0;
+            for (let i = 0; i < verts.length; i++) {
+              maxEdge = Math.max(maxEdge, geom.distance(verts[i], verts[(i + 1) % verts.length]));
+              maxScale = Math.max(maxScale, model.scaleAt(verts[i]));
+            }
+            return (maxEdge / 2 + halfWidth) * maxScale * 2;
+          };
+          const projected = verts.map((v) => model.project(v));
+          if (preCulled(projected, pad, offFrameEligible, frame, scalePx, tol.cullPx)) break;
+        }
         const edges: SampledCurve[] = [];
         for (let i = 0; i < verts.length; i++) {
           const a = verts[i];
@@ -397,6 +534,23 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
     }
   }
   return paths;
+}
+
+/**
+ * A render-space circle about the origin as a closed contour, segment count
+ * chosen so the sagitta stays under the flatness tolerance (the domain
+ * boundary is chart apparatus in render coords — no geodesic sampling).
+ */
+function renderCircleContour(radius: number, flatnessRender: number): Float64Array {
+  const t = Math.min(Math.max(flatnessRender / radius, 1e-6), 1);
+  const n = Math.min(4096, Math.max(16, Math.ceil(Math.PI / Math.acos(1 - t))));
+  const contour = new Float64Array(2 * n);
+  for (let i = 0; i < n; i++) {
+    const a = (2 * Math.PI * i) / n;
+    contour[2 * i] = radius * Math.cos(a);
+    contour[2 * i + 1] = radius * Math.sin(a);
+  }
+  return contour;
 }
 
 /** The closed spine contour of a sampled closed curve. */

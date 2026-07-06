@@ -114,7 +114,27 @@ export interface PolygonItem {
   readonly style: RegionStyle;
 }
 
-export type SceneItem = PointItem | GeodesicItem | CircleItem | PolygonItem;
+/**
+ * The chart's own image region — "the geometry itself" (V2). The model's
+ * `domain` field supplies all the geometry, so the item carries only style:
+ * disk domains shade the disk and rim its boundary circle; plane domains
+ * shade the whole frame (the chart's image is the plane), rim ignored.
+ *
+ * The rim width is in PX — the one exception to intrinsic styling, same
+ * exception and same reason as sphereview's globe rim: the disk boundary is
+ * at infinity (H) or is chart apparatus, so no intrinsic width exists. Like
+ * that rim, a domain item is view dressing and IGNORES StyleOverrides.
+ */
+export interface DomainItem {
+  readonly id: ItemId;
+  readonly kind: 'domain';
+  readonly style: {
+    readonly fill?: FillStyle;
+    readonly rim?: { readonly color: string; readonly widthPx: number; readonly opacity?: number };
+  };
+}
+
+export type SceneItem = PointItem | GeodesicItem | CircleItem | PolygonItem | DomainItem;
 
 /** Paint order = list order (immediate mode; there is no z). */
 export type Scene = readonly SceneItem[];

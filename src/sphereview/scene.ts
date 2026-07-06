@@ -169,6 +169,11 @@ export function buildSpherePathList(scene: Scene, ctx: SphereBuildContext): Path
   for (const item of scene) {
     const ov = ctx.overrides?.get(item.id);
     switch (item.kind) {
+      case 'domain':
+        // The globe draws its own dressing (disk + rim); a flat-chart domain
+        // item in a shared scene is meaningless here and skipped.
+        break;
+
       case 'point': {
         const sty = resolvePoint(item.style, ov);
         if (sty.radius <= 0) break;

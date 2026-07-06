@@ -78,7 +78,15 @@ function generate(geometry: GeometryKind, orders: [number, number, number], maxW
  */
 function groupScene(data: GroupData, skipTileAt?: Point2): Scene {
   const { group, tiles, graph, r0 } = data;
-  const items: SceneItem[] = [];
+  const items: SceneItem[] = [
+    {
+      // The geometry itself (render2d V2.2): shaded domain, rimmed disk
+      // boundary. The globe panel's builder skips it (draws its own globe).
+      id: 'domain',
+      kind: 'domain',
+      style: { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
+    },
+  ];
 
   for (const tile of tiles) {
     if (skipTileAt && tile.polytope.facets.every((f) => f.side(skipTileAt) <= 1e-9)) continue;
@@ -170,14 +178,6 @@ function flatPanel(title: string, scene: Scene, data: GroupData, model: Model<Po
     scene,
     paint(g, sizePx) {
       const camera = makeCamera(sizePx);
-      if (model.domain.kind === 'disk') {
-        // Demo chrome: the domain boundary.
-        g.beginPath();
-        g.arc(sizePx / 2, sizePx / 2, model.domain.radius * camera.scalePx, 0, 2 * Math.PI);
-        g.strokeStyle = '#ccc';
-        g.lineWidth = 1;
-        g.stroke();
-      }
       const ctx = { geom: data.group.geom, model, camera, size: { widthPx: sizePx, heightPx: sizePx } };
       paint(g, buildPathList(scene, ctx), camera);
     },

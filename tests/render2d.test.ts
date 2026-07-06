@@ -21,7 +21,11 @@ import {
   type StyleOverrides,
   type ViewSize,
 } from '@/render2d/types';
-import { buildPathList, frameOf, type BuildContext } from '@/render2d/scene';
+import { buildPathList, frameOf, preCulled, type BuildContext, type Frame } from '@/render2d/scene';
+import type { GeometryKind } from '@/geometry/types';
+import type { RealizationSpec } from '@/coxeter/spec';
+import { solvePolygon } from '@/coxeter/solve';
+import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
 import { paint } from '@/render2d/canvas';
 import { sampleCircle, sampleCurve, sampleSegment, tangentFrame } from '@/render2d/sample';
 import { strokeOutline } from '@/render2d/stroke';
@@ -714,4 +718,222 @@ describe('render2d/sample: sampleCurve core', () => {
     expect(samples.length).toBe(3);
     expect(samples[1].t).toBeCloseTo(0.5, 12);
   });
+});
+
+// ── V2.2: the domain item ───────────────────────────────────────────────────
+
+describe('render2d/scene: the domain item (V2.2)', () => {
+  const size: ViewSize = { widthPx: 400, heightPx: 400 };
+  const cam: Camera = { view: identity(3), scalePx: 150, centerPx: [200, 200] };
+  const domainScene: Scene = [
+    {
+      id: 'domain',
+      kind: 'domain',
+      style: { fill: { color: '#eee' }, rim: { color: '#999', widthPx: 2 } },
+    },
+  ];
+
+  function contourRadii(contour: Float64Array): number[] {
+    const radii: number[] = [];
+    for (let i = 0; i < contour.length; i += 2) radii.push(Math.hypot(contour[i], contour[i + 1]));
+    return radii;
+  }
+
+  it('disk charts: the fill circle at the domain radius, the rim annulus at px width', () => {
+    const model = new Poincare2();
+    const paths = buildPathList(domainScene, { geom: H2, model, camera: cam, size });
+    expect(paths).toHaveLength(2);
+
+    const [fill, rim] = paths;
+    expect(fill.contours).toHaveLength(1);
+    for (const r of contourRadii(fill.contours[0])) expect(r).toBeCloseTo(1, 12);
+
+    expect(rim.contours).toHaveLength(2);
+    const w = 2 / cam.scalePx;
+    const radiiA = contourRadii(rim.contours[0]);
+    const radiiB = contourRadii(rim.contours[1]);
+    for (const r of radiiA) expect(r).toBeCloseTo(1 + w / 2, 12);
+    for (const r of radiiB) expect(r).toBeCloseTo(1 - w / 2, 12);
+  });
+
+  it('the fill polygon is flat to tolerance (sagitta under flatnessPx)', () => {
+    const model = new Klein2();
+    const paths = buildPathList(domainScene, { geom: H2, model, camera: cam, size });
+    const c = paths[0].contours[0];
+    const n = c.length / 2;
+    // Sagitta of one segment of the inscribed n-gon, in px.
+    const sagittaPx = 1 * (1 - Math.cos(Math.PI / n)) * cam.scalePx;
+    expect(sagittaPx).toBeLessThanOrEqual(DEFAULT_TOLERANCES.flatnessPx + 1e-9);
+  });
+
+  it('plane charts: the fill is the visible frame; no rim emitted', () => {
+    const model = new Cartesian2();
+    const paths = buildPathList(domainScene, { geom: E2, model, camera: cam, size });
+    expect(paths).toHaveLength(1);
+    const rect = paths[0].contours[0];
+    expect(rect.length).toBe(8);
+    const f = frameOf(cam, size);
+    const xs = [rect[0], rect[2], rect[4], rect[6]];
+    const ys = [rect[1], rect[3], rect[5], rect[7]];
+    expect(Math.min(...xs)).toBeCloseTo(f.minX, 12);
+    expect(Math.max(...xs)).toBeCloseTo(f.maxX, 12);
+    expect(Math.min(...ys)).toBeCloseTo(f.minY, 12);
+    expect(Math.max(...ys)).toBeCloseTo(f.maxY, 12);
+  });
+
+  it('ignores style overrides (view dressing, not scene content)', () => {
+    const model = new Poincare2();
+    const overrides: StyleOverrides = new Map<string, StyleOverride>([
+      ['domain', { color: '#f00', opacity: 0.1, fill: null }],
+    ]);
+    const plain = buildPathList(domainScene, { geom: H2, model, camera: cam, size });
+    const overridden = buildPathList(domainScene, { geom: H2, model, camera: cam, size, overrides });
+    expect(overridden).toEqual(plain);
+  });
+});
+
+// ── V2.1: the pre-sampling cull ─────────────────────────────────────────────
+
+describe('render2d/scene: preCulled (V2.1)', () => {
+  const frame: Frame = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
+  const u = (x: number, y: number) => Float64Array.of(x, y, 0);
+  const pad = (m: number) => () => 2 * m; // intrinsicRadius × scale × 2, pre-multiplied
+
+  it('drops sub-pixel items in any chart', () => {
+    expect(preCulled([u(0.5, 0.5)], pad(1e-4), false, frame, 100, 0.5)).toBe(true);
+  });
+
+  it('keeps items whose padded extent clears cullPx', () => {
+    expect(preCulled([u(0.5, 0.5)], pad(0.1), false, frame, 100, 0.5)).toBe(false);
+  });
+
+  it('drops off-frame items only when the chart is eligible', () => {
+    const far = [u(5, 5), u(6, 5)];
+    expect(preCulled(far, pad(0.1), true, frame, 100, 0.5)).toBe(true);
+    expect(preCulled(far, pad(0.1), false, frame, 100, 0.5)).toBe(false);
+  });
+
+  it('the pad rescues an item hugging the frame from outside', () => {
+    expect(preCulled([u(1.05, 0)], pad(0.05), true, frame, 100, 0.5)).toBe(false);
+  });
+
+  it('keeps anything with a non-finite projection (unboundable)', () => {
+    expect(preCulled([u(Infinity, 0)], pad(1e-9), true, frame, 100, 0.5)).toBe(false);
+    expect(preCulled([], pad(1), true, frame, 100, 0.5)).toBe(false);
+  });
+
+  it('never evaluates the pad for an on-frame, super-cull item', () => {
+    let evaluated = false;
+    const spy = () => {
+      evaluated = true;
+      return 1;
+    };
+    expect(preCulled([u(-0.5, 0), u(0.5, 0)], spy, true, frame, 100, 0.5)).toBe(false);
+    expect(evaluated).toBe(false);
+  });
+});
+
+describe('pre-cull safety on the Milestone-1 scenes (V2.1)', () => {
+  /** A compact stand-in for the demo's group scene: tiles + incircles + Cayley. */
+  function groupScene(kind: GeometryKind, orders: [number, number, number], maxWord: number) {
+    const spec: RealizationSpec = {
+      geometry: kind,
+      dim: 2,
+      combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
+      decorations: [
+        { walls: [0, 1], order: orders[0] },
+        { walls: [1, 2], order: orders[1] },
+        { walls: [2, 0], order: orders[2] },
+      ],
+    };
+    const realized = solvePolygon(spec);
+    const group = groupFromPolygon(realized);
+    const r0 = realized.inradius;
+    const tiles = group.tessellate(maxWord);
+    const graph = group.cayleyGraph(maxWord);
+    const points = graph.nodes.map((n) => group.geom.apply(n.element, group.basePoint));
+    const scene: Scene = [
+      ...tiles.map((t) => ({
+        id: `tile:${wordId(t.word)}`,
+        kind: 'polygon' as const,
+        vertices: t.polytope.vertices,
+        style: {
+          fill: { color: '#eee', opacity: 0.9 },
+          edge: { color: '#333', width: 0.03 * r0 },
+        },
+      })),
+      ...tiles.map((t) => ({
+        id: `incircle:${wordId(t.word)}`,
+        kind: 'circle' as const,
+        center: group.geom.apply(t.element, group.basePoint),
+        radius: r0,
+        style: { fill: { color: '#8cf', opacity: 0.2 }, edge: { color: '#28c', width: 0.05 * r0 } },
+      })),
+      ...graph.edges.map((e) => ({
+        id: `cayedge:${wordId(graph.nodes[e.a].word)}:${e.generator}`,
+        kind: 'geodesic' as const,
+        source: { type: 'segment' as const, a: points[e.a], b: points[e.b] },
+        style: { color: '#c33', width: 0.06 * r0 },
+      })),
+      ...graph.nodes.map((n, k) => ({
+        id: `cay:${wordId(n.word)}`,
+        kind: 'point' as const,
+        at: points[k],
+        style: { color: '#111', radius: 0.11 * r0 },
+      })),
+    ];
+    return { geom: group.geom, scene };
+  }
+
+  const sizePx = 400;
+  const camera = (scalePx: number): Camera => ({
+    view: identity(3),
+    scalePx,
+    centerPx: [sizePx / 2, sizePx / 2],
+  });
+
+  const panels: { name: string; kind: GeometryKind; orders: [number, number, number]; maxWord: number; model: Model<Point2>; cam: Camera; expectCulls: boolean }[] = [
+    // Disk charts framing the whole domain, plus a zoomed Klein camera to
+    // exercise the off-frame branch on straight-chart chords. Only the zoomed
+    // cameras are guaranteed to cull; the others pin pure output equality.
+    { name: 'H/klein', kind: 'hyperbolic', orders: [2, 3, 7], maxWord: 12, model: new Klein2(), cam: camera(185), expectCulls: false },
+    { name: 'H/klein zoomed', kind: 'hyperbolic', orders: [2, 3, 7], maxWord: 12, model: new Klein2(), cam: camera(900), expectCulls: true },
+    { name: 'H/poincare', kind: 'hyperbolic', orders: [2, 3, 7], maxWord: 12, model: new Poincare2(), cam: camera(185), expectCulls: false },
+    { name: 'E/cartesian fit', kind: 'euclidean', orders: [2, 4, 4], maxWord: 10, model: new Cartesian2(), cam: camera(18), expectCulls: false },
+    { name: 'E/cartesian detail', kind: 'euclidean', orders: [2, 4, 4], maxWord: 10, model: new Cartesian2(), cam: camera(70), expectCulls: true },
+    { name: 'S/stereographic', kind: 'spherical', orders: [2, 3, 5], maxWord: 20, model: new Stereographic2(), cam: camera(60), expectCulls: false },
+  ];
+
+  it.each(panels.map((p) => [p.name, p] as const))(
+    '%s: the path list is IDENTICAL with the pre-cull on and off',
+    (_name, p) => {
+      const { geom, scene } = groupScene(p.kind, p.orders, p.maxWord);
+      const ctx: BuildContext = { geom, model: p.model, camera: p.cam, size: { widthPx: sizePx, heightPx: sizePx } };
+      const fast = buildPathList(scene, ctx);
+      const slow = buildPathList(scene, { ...ctx, preCull: false });
+
+      expect(fast.length).toBe(slow.length);
+      let mismatches = 0;
+      for (let i = 0; i < fast.length; i++) {
+        const a = fast[i];
+        const b = slow[i];
+        if (a.id !== b.id || a.color !== b.color || a.opacity !== b.opacity) mismatches++;
+        else if (a.contours.length !== b.contours.length) mismatches++;
+        else {
+          for (let c = 0; c < a.contours.length && mismatches === 0; c++) {
+            const ca = a.contours[c];
+            const cb = b.contours[c];
+            if (ca.length !== cb.length) mismatches++;
+            else for (let k = 0; k < ca.length; k++) if (ca[k] !== cb[k]) mismatches++;
+          }
+        }
+      }
+      expect(mismatches).toBe(0);
+      if (p.expectCulls) {
+        // Not vacuous there: the zoomed frame drops whole items.
+        const emittedIds = new Set(fast.map((path) => path.id));
+        expect(emittedIds.size).toBeLessThan(scene.length);
+      }
+    },
+  );
 });

@@ -34,11 +34,17 @@ function triangleSpec(geometry: GeometryKind, orders: [number, number, number]):
   };
 }
 
-/** The chamber scene: polygon, walls (id = generator index), incircle, points. */
+/** The chamber scene: domain, polygon, walls (id = generator index), incircle, points. */
 function chamberScene(realized: RealizedPolygon): Scene {
   const r0 = realized.inradius;
   const origin = realized.geom.origin();
   return [
+    {
+      // The geometry itself (V2.2): shaded domain, rimmed disk boundary.
+      id: 'domain',
+      kind: 'domain',
+      style: { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
+    },
     {
       id: 'chamber',
       kind: 'polygon',
@@ -161,16 +167,6 @@ function renderAll(): void {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const camera = panelCamera(panel.realized, panel.model, size);
-
-    // Demo chrome: the domain boundary of disk charts.
-    if (panel.model.domain.kind === 'disk') {
-      g.beginPath();
-      g.arc(size / 2, size / 2, panel.model.domain.radius * camera.scalePx, 0, 2 * Math.PI);
-      g.strokeStyle = '#ccc';
-      g.lineWidth = 1;
-      g.stroke();
-    }
-
     const scene = chamberScene(panel.realized);
     const ctx = { geom: panel.realized.geom, model: panel.model, camera, size: { widthPx: size, heightPx: size } };
     paint(g, buildPathList(scene, ctx), camera);

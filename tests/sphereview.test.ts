@@ -126,6 +126,15 @@ describe('sphereview/scene: buildSpherePathList', () => {
     expect(paths.map((p) => p.id)).toEqual(['w', 'sphere', 'sphere:rim', 'w']);
   });
 
+  it('skips flat-chart domain items in a shared scene (V2.2)', () => {
+    const scene: Scene = [
+      { id: 'domain', kind: 'domain', style: { fill: { color: '#eee' }, rim: { color: '#999', widthPx: 2 } } },
+    ];
+    const paths = buildSpherePathList(scene, ctx());
+    // Only the globe's own dressing — nothing emitted for the domain item.
+    expect(paths.map((p) => p.id)).toEqual(['sphere', 'sphere:rim']);
+  });
+
   it('an equatorial wall (p₀ ≡ 0) is entirely back', () => {
     const wall = Hyperplane.fromCovector(S2, Float64Array.of(1, 0, 0));
     const scene: Scene = [

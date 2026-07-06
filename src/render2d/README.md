@@ -63,6 +63,15 @@ A scene is a list of items `{ id, kind, canonical data, style }`:
 | `geodesic` | segment `{a, b}` **or** line `{wall: Hyperplane}` | color, intrinsic **width** | filled outline |
 | `circle` | `center: Point2`, intrinsic `radius` | optional fill + outline stroke | honestly-sampled metric circle |
 | `polygon` | `vertices: Point2[]` (cyclic) | optional fill + edge stroke | geodesic-edged region |
+| `domain` (V2) | none — the model's `domain` IS the data | optional fill + **px-width rim** | the chart's image region: disk domains shade the disk and rim its boundary circle; plane domains shade the whole frame |
+
+The `domain` item draws **the geometry itself** through the chart. Its rim
+is the ONE exception to intrinsic styling (same exception, same reason as
+sphereview's globe rim): the disk boundary is at infinity in H, or is chart
+apparatus — no intrinsic width exists. The rim is emitted as an annulus fill
+through the ordinary path list, so both backends and the SVG export inherit
+it by construction. `Model` stays pure math; the renderer interprets its
+`domain` field.
 
 - **Ids are load-bearing**: a wall item's id encodes its generator index,
   exactly as everywhere else (combinatorics, decorations, words, Cayley).
@@ -127,6 +136,22 @@ additionally be stroked on top. Chamber polygons come straight from
   branches — the sampler follows the chart, not the wish.
 - **Culling**: an item whose screen extent falls below `cullPx` is dropped
   before path construction.
+- **Pre-sampling cull (V2)**: before any sampling, one conservative test
+  per item — the bbox of the projected defining points (vertices / center /
+  endpoints), padded by the item's intrinsic radius × the max defining-point
+  `scaleAt` × a safety factor 2 — skips off-frame and sub-`cullPx` items.
+  Scale variation across a screen-small item is bounded, and the factor
+  covers conformal edge bulge; walls skip the pre-test (frame-clipped by
+  construction). **Safety property**: the pre-cull may only drop items the
+  post-sampling cull would also drop — pinned by test against the full
+  Milestone-1 scenes.
+- **Fill honesty (V2)**: a polygon or circle whose image wraps through the
+  chart's puncture (the stereographic antipode) bounds the COMPLEMENT of
+  its projected loop, so an even-odd fill would paint the wrong region. A
+  wrapped fill is detected — at full subdivision depth, an adjacent-sample
+  jump exceeding the expanded-frame diagonal — and dropped. Strokes need no
+  new handling: wrapped edges give finite off-frame outlines, and
+  non-finite samples are already dropped.
 
 Defaults: `flatnessPx = 0.25`, `widthPx = 0.25`, `cullPx = 0.5`,
 `maxDepth = 12` (per curve, so ≤ 2¹² segments).
@@ -148,15 +173,17 @@ instantiation for these types to serve.
 | `marks.ts` | jacobian-image point ellipses | V1 |
 | `scene.ts` | scene → path list: apply `g`, project, clip walls to frame/domain, cull, resolve style overrides | V1 |
 | `canvas.ts` | the Canvas2D painter (immediate mode) | V1 |
-| `svg.ts` | one-file path-list → SVG serializer | V2 |
+| `svg.ts` | one-file path-list → SVG string builder (no DOM): the painter's viewport formula verbatim, one `<path>` per RenderPath, `fill-rule="evenodd"`, `fill-opacity`, item id as `data-id` (one item emits several paths, so not `id`), 2-decimal px coordinates | V2 |
 | `interact.ts` | screen zoom/pan, isometry dragging, hover highlight (composing into `camera.view`) | V3 |
 
 Increments (PLAN.md §5.3.1): **V0** this README + `types.ts`, approved before
 further code · **V1** sample/stroke/marks/scene + Canvas painter + the
 success-criterion demo — the solved (2,3,7) H, (2,4,4) E, (2,3,5) S chambers
 with walls and incircles through straight AND conformal charts, static
-camera · **V2** tile fills, domain dressing, culling polish, SVG export ·
-**V3** interaction.
+camera · **V2** (plan at §5.3.1's V2 entry) **V2.1** pre-sampling cull ·
+**V2.2** the `domain` item, demos shed hand-drawn chrome · **V2.3**
+wrap-around fill honesty · **V2.4** `svg.ts` + the export button on
+`demos/group` · **V3** interaction.
 
 ## Tests pin the math
 
@@ -166,4 +193,12 @@ camera · **V2** tile fills, domain dressing, culling polish, SVG export ·
 - sampled-polyline deviation from dense reference sampling ≤ tolerance;
 - metric-circle samples at exact intrinsic distance `r` from the center;
 - serializer path geometry identical to the painter's input;
-- cull thresholds drop/keep items on either side of `cullPx`.
+- cull thresholds drop/keep items on either side of `cullPx`;
+- (V2) pre-cull safety: on the full Milestone-1 scenes, everything the
+  pre-cull drops, the post-sampling cull also drops;
+- (V2) domain geometry: the disk fill at the domain radius, the rim annulus
+  at px width / scalePx;
+- (V2) fill honesty: the actual (2,3,5) stereographic far tile's fill is
+  dropped, its neighbors' kept;
+- (V2) SVG: parsed path coordinates identical to the painter's screen
+  points; `data-id`, `fill-rule`, `fill-opacity` present.

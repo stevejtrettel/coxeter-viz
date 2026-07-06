@@ -491,6 +491,76 @@ chart, in one demo, static camera.
   boundary-accumulation threshold 0.25 px; the disk-chart domain circle in
   the demo is demo chrome — domain dressing proper is V2.
 - **V2** — tile fills, domain dressing, culling polish, SVG export.
+  **PLANNED 2026-07-05** (collaboratively; Milestone 1's `demos/group` is
+  the driving data). Decisions:
+  - **Cull before sampling** (user ruling: yes, if *clean code*): one
+    conservative pre-test per item — the bbox of the projected defining
+    points (vertices / center / endpoints), padded by the item's intrinsic
+    radius × the max vertex `scaleAt` × a safety factor 2 (scale variation
+    across a screen-small item is bounded; the factor covers conformal
+    bulge) — skips sampling when off-frame or sub-cullPx. **Safety
+    property, tested**: pre-cull may only drop items the existing
+    post-sampling cull would also drop (checked by brute force against the
+    full Milestone-1 scenes). Walls skip the pre-test (they are
+    frame-clipped by construction). `keepContours` stays as the safety net.
+  - **The geometry itself is drawable** (user ruling: "models should come
+    with their own rendering command… shaded in, even for the sphere;
+    boundary for the hyperbolic models"). Interpretation on record: `Model`
+    stays pure math — its `domain` field IS the drawing instruction; the
+    renderer interprets it via a **fifth scene-item kind `domain`**
+    (canonical data: none — the model supplies it). Style: a fill (disk
+    domains shade the disk; plane domains — Cartesian, stereographic,
+    gnomonic — shade the whole frame, the chart's image being the plane)
+    plus a **px-width rim** for disk boundaries. The rim is the ONE
+    render2d exception to intrinsic styling, same as sphereview's globe
+    rim and for the same reason: the disk boundary is at infinity (H) or
+    is chart apparatus (Klein/Poincaré circle), so no intrinsic width
+    exists. Emitted as an annulus fill through the same path list, so SVG
+    export inherits it by construction.
+  - **Fill honesty (robust regions)**: a polygon or circle whose image
+    wraps through the chart's puncture (the stereographic far tile) bounds
+    the COMPLEMENT of its projected loop; an even-odd fill would paint the
+    wrong region. The layer detects and drops such fills: at full
+    subdivision depth an adjacent-sample jump exceeding the expanded-frame
+    diagonal marks the wrap (verify against the actual (2,3,5) far tile
+    before trusting — an increment gate). Strokes need no new handling:
+    wrapped edges produce finite off-frame outlines, and non-finite
+    samples are already dropped by `keepContours`. `demos/group` then
+    sheds its far-tile skip.
+  - **SVG export**: `svg.ts`, a one-file string builder (no DOM), applying
+    exactly the painter's viewport formula — the exported figure is
+    geometrically identical to the canvas by construction (the V0 test
+    hook). One `<path>` per RenderPath, `fill-rule="evenodd"`,
+    `fill-opacity`, the item id as `data-id` (not `id`: one item emits
+    several paths), coordinates at 2 decimals in px. A download button on
+    `demos/group` (demo chrome).
+  - **Dashed strokes stay parked** (asked 2026-07-05): already in §6 under
+    sphereview stage 2; entry widened to cover the flat charts; evaluated
+    after V2, not in it.
+  - Sub-increments, each `typecheck`+`test` green: **V2.0** this plan +
+    README amendments, approved before code — **DONE, approved
+    2026-07-05** · **V2.1** pre-sampling cull + the safety-property test +
+    a perf sanity check on the Milestone-1 scenes — **DONE 2026-07-05**,
+    refinements: off-frame pre-culling restricted to straight
+    NON-spherical charts (chords stay in the projected-point hull; conformal
+    arcs bulge outside it, gnomonic segments can cross the horizon) and to
+    segments/polygons (a circle reaches r from its one defining point);
+    the pad is LAZY (it only expands the kept region, so on-frame
+    super-cull items keep without evaluating distances/scaleAt — the
+    full-view overhead vanishes); the safety test pins output IDENTITY
+    (with vs without pre-cull) on six Milestone-1 panels incl. zoomed
+    cameras. Measured: ~7× on zoomed Klein (23.5 → 3.3 ms/frame), ~2.7× on
+    the E detail panel, no regression on full views ·
+    **V2.2** the `domain` item + demos shed hand-drawn chrome — **DONE
+    2026-07-05, pending the user's visual pass** (`DomainItem` in types;
+    the builder emits the disk fill + px rim annulus or the frame
+    rectangle for plane charts; render-space circles sampled to the
+    flatness tolerance, no geodesic machinery; overrides ignored — view
+    dressing, matching sphereview's globe precedent; sphereview's builder
+    explicitly skips domain items in shared scenes; `demos/render2d` and
+    `demos/group` shed their hand-drawn circles) ·
+    **V2.3** wrap-around fill honesty + the demo's far-tile skip removed ·
+    **V2.4** `svg.ts` + serializer tests + the export button.
 - **V3** — interaction: screen zoom/pan, isometry dragging, hover highlight.
 
 **Tests pin the math**: outline half-width at a sample ≈ (w/2)·|J·n̂|
@@ -700,8 +770,8 @@ math/geometry/polytope/coxeter.
   written up in the README ("Why left and right both appear").
 - **G4** — **the Milestone-1 demo**: (2,3,7) H, (2,4,4) E, (2,3,5) S
   tessellations + Cayley graphs through at least two models per geometry,
-  including (2,3,5) on the perspective globe. **BUILT 2026-07-05, pending
-  the user's visual approval** (`demos/group`, `npm run dev group`): 3 × 2
+  including (2,3,5) on the perspective globe. **DONE, approved 2026-07-05
+  — MILESTONE 1 COMPLETE** (`demos/group`, `npm run dev group`): 3 × 2
   grid — Klein + Poincaré (H, maxWord 16 = 540 tiles), Cartesian fit +
   detail (E, maxWord 12 = 209 tiles; straight = conformal, so the two E
   panels vary scale), stereographic + perspective globe (S, exhausted =
@@ -755,7 +825,9 @@ tile/Cayley coloring by word lists).
   - *Dashed back-side strokes*: a StrokeStyle dash field (types amendment) +
     chopping outlines into dash contours (keeps SVG export identical by
     construction). Dash parametrization (screen vs intrinsic arclength)
-    decided here.
+    decided here. Widened 2026-07-05 (user, during V2 planning): wanted for
+    the flat charts too, not just the sphere view; evaluate as its own
+    small increment after render2d V2.
   - *Region clipping against the cap* (fills straddling the silhouette —
     stage 1 skips them).
   - *Hit-testing / unproject with a sheet choice* (it is not a `Model`).
