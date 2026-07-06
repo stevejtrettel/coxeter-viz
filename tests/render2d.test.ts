@@ -21,7 +21,9 @@ import {
   type StyleOverrides,
   type ViewSize,
 } from '@/viz2d/render/types';
-import { buildPathList, dashRanges, frameOf, preCulled, type BuildContext, type Frame } from '@/viz2d/render/scene';
+import { buildPathList, type BuildContext } from '@/viz2d/render/scene';
+import { dashRanges } from '@/viz2d/render/dash';
+import { frameOf, preCulled, type Frame } from '@/viz2d/render/cull';
 import { toSvg } from '@/viz2d/render/svg';
 import type { PathList } from '@/viz2d/render/types';
 import { draggedCamera, hitTest, modelUnprojector, pannedCamera, unprojectScreen, zoomedCamera, RENORM_EVERY } from '@/viz2d/render/interact';

@@ -1,25 +1,23 @@
-import { addScaled, cross, normSq, scale, vec3, type Vec, type Vec3 } from '@/math/vec';
 import type { Geometry, Isometry2, Point2 } from '@/geometry/types';
-import { Hyperplane } from '@/geometry/Hyperplane';
 import type { Model } from '@/models/types';
 import {
   DEFAULT_TOLERANCES,
   type Camera,
-  type FillStyle,
   type PathList,
-  type PointStyle,
-  type RegionStyle,
   type RenderPath,
   type RenderTolerances,
   type Scene,
-  type StrokeStyle,
-  type StyleOverride,
   type StyleOverrides,
   type ViewSize,
 } from './types';
-import { circleGamma, sampleCircle, sampleCurve, sampleSegment, type SampledCurve } from './sample';
+import { circleGamma, sampleCircle, sampleSegment, type SampledCurve } from './sample';
 import { strokeOutline } from './stroke';
 import { markEllipse } from './marks';
+import { resolvePoint, resolveRegion, resolveStroke } from './style';
+import { expandFrame, frameOf, keepContours, preCulled } from './cull';
+import { wallParamRange } from './wallclip';
+import { circleSpeed, strokeContours } from './dash';
+import { honestFill, polygonInterior } from './honesty';
 
 /**
  * Scene → path list (see README, "The pipeline"): apply the camera's view
@@ -28,16 +26,15 @@ import { markEllipse } from './marks';
  * — implicitly, since geodesics live on the locus — to the domain, cull
  * sub-pixel and off-frame items, and resolve per-frame style overrides.
  * Immediate mode: callers rebuild the whole list on every change.
+ *
+ * The reusable pieces live in sibling modules — style resolution (`style`),
+ * frame + culling (`cull`), wall-line clipping (`wallclip`), dash arithmetic
+ * (`dash`), fill honesty (`honesty`) — several shared with sphereview's
+ * builder; this file is just the per-kind dispatch.
  */
 
 /** Frame margin for wall clipping, px. Provisional (PLAN.md §5.3.1 V0 note). */
 const MARGIN_PX = 40;
-/** Doubling steps when extending a wall line's parameter range. */
-const EXTEND_MAX_ITERS = 60;
-/** Bisection steps when shrinking an overshot wall endpoint back to the frame. */
-const SHRINK_ITERS = 40;
-/** A wall-line step below this px length counts as boundary accumulation. */
-const ACCUMULATION_PX = 0.25;
 
 export interface BuildContext {
   readonly geom: Geometry<Point2, Isometry2>;
@@ -53,382 +50,6 @@ export interface BuildContext {
    */
   readonly preCull?: boolean;
 }
-
-/** The visible rectangle in render coordinates: V⁻¹ of the screen rect. */
-export interface Frame {
-  readonly minX: number;
-  readonly minY: number;
-  readonly maxX: number;
-  readonly maxY: number;
-}
-
-export function frameOf(camera: Camera, size: ViewSize): Frame {
-  const s = camera.scalePx;
-  const [cx, cy] = camera.centerPx;
-  // screen x = cx + s·uₓ, screen y = cy − s·u_y (y flips).
-  return {
-    minX: (0 - cx) / s,
-    maxX: (size.widthPx - cx) / s,
-    minY: (cy - size.heightPx) / s,
-    maxY: cy / s,
-  };
-}
-
-function expandFrame(f: Frame, m: number): Frame {
-  return { minX: f.minX - m, minY: f.minY - m, maxX: f.maxX + m, maxY: f.maxY + m };
-}
-
-/** Distance (render units) from u to the frame rectangle; 0 inside. */
-function distToFrame(u: Vec3, f: Frame): number {
-  const dx = Math.max(f.minX - u[0], 0, u[0] - f.maxX);
-  const dy = Math.max(f.minY - u[1], 0, u[1] - f.maxY);
-  return Math.hypot(dx, dy);
-}
-
-/**
- * A wall's geodesic line as a unit-speed curve: the foot of the perpendicular
- * from `anchor` and the unit tangent along the wall.
- *
- * Foot: p₀ = normalize(q − (c·q)·Jc) — subtracting the pole component lands
- * in the wall (c·p = 0) in all three geometries, and stays on the correct
- * side of the locus (for H the residual is timelike: ⟨v,v⟩ = −1 − (c·q)²).
- * Degenerate only on S, when the anchor IS the wall's pole — the caller
- * retries with a different anchor.
- *
- * Tangent: w = c × n_p with n_p the conormal of the tangent space at p₀
- * (J·p₀ for S/H, e₀ for E — the affine slice's conormal), so c·w = 0 (along
- * the wall) and n_p·w = 0 (tangent), normalized by the form.
- */
-export function wallLine(
-  geom: Geometry<Point2, Isometry2>,
-  wall: Hyperplane,
-  anchor: Point2,
-): { p0: Point2; tangent: Vec } | null {
-  const side = wall.side(anchor);
-  const v = addScaled(anchor, wall.pole, -side);
-  if (normSq(v) < 1e-16) return null; // spherical anchor at the pole
-  const p0 = geom.normalize(v);
-  const np = geom.kind === 'euclidean' ? vec3(1, 0, 0) : geom.dual(p0);
-  const w = cross(wall.covector, np);
-  const len = Math.sqrt(geom.form(w, w));
-  return { p0, tangent: scale(w, 1 / len) };
-}
-
-/** The anchor for wall clipping: the frame center, clamped into the domain. */
-function frameAnchor(model: Model<Point2>, frame: Frame): Point2 {
-  let ux = 0.5 * (frame.minX + frame.maxX);
-  let uy = 0.5 * (frame.minY + frame.maxY);
-  if (model.domain.kind === 'disk') {
-    const r = Math.hypot(ux, uy);
-    const rMax = 0.9 * model.domain.radius;
-    if (r > rMax) {
-      ux *= rMax / r;
-      uy *= rMax / r;
-    }
-  }
-  return model.unproject(vec3(ux, uy, 0));
-}
-
-function finite2(u: Vec3): boolean {
-  return Number.isFinite(u[0]) && Number.isFinite(u[1]);
-}
-
-/**
- * Extend a wall line's parameter in one direction (±1) by doubling from s0
- * until the projection is outside the margin-expanded frame and receding
- * (then bisect back until just outside), or steps fall sub-pixel (H-boundary
- * accumulation), or — on S, where the line closes up with period 2π — |s|
- * reaches π (the half-period that already covers the great circle once).
- */
-function extendWallRange(
-  gamma: (s: number) => Point2,
-  model: Model<Point2>,
-  dir: 1 | -1,
-  s0: number,
-  frameM: Frame,
-  marginRender: number,
-  scalePx: number,
-  spherical: boolean,
-): number {
-  let sPrev = 0;
-  let uPrev = model.project(gamma(0));
-  let dPrev = distToFrame(uPrev, frameM);
-  let mag = s0;
-  for (let i = 0; i < EXTEND_MAX_ITERS; i++) {
-    if (spherical && mag > Math.PI) mag = Math.PI;
-    const s = dir * mag;
-    const u = model.project(gamma(s));
-    if (!finite2(u)) {
-      return shrinkOutside(gamma, model, sPrev, s, frameM, marginRender);
-    }
-    const d = distToFrame(u, frameM);
-    if (d > 0) {
-      if (dPrev === 0) {
-        // Crossed the frame boundary this step: stop at the crossing.
-        return d <= marginRender ? s : shrinkOutside(gamma, model, sPrev, s, frameM, marginRender);
-      }
-      if (d >= dPrev) {
-        // Outside and receding (never entered): give up on this direction.
-        return shrinkOutside(gamma, model, sPrev, s, frameM, marginRender);
-      }
-      // Outside but approaching: keep marching toward the frame.
-    }
-    if (Math.hypot(u[0] - uPrev[0], u[1] - uPrev[1]) * scalePx < ACCUMULATION_PX) {
-      return s;
-    }
-    if (spherical && mag >= Math.PI) return s;
-    sPrev = s;
-    uPrev = u;
-    dPrev = d;
-    mag *= 2;
-  }
-  return sPrev;
-}
-
-/**
- * Bisect between an acceptable parameter and an overshot one until the
- * endpoint sits just outside the margin frame (but not far outside — keeps
- * the gnomonic two-branch blowup out of the sampled range).
- */
-function shrinkOutside(
-  gamma: (s: number) => Point2,
-  model: Model<Point2>,
-  sIn: number,
-  sOut: number,
-  frameM: Frame,
-  marginRender: number,
-): number {
-  let lo = sIn;
-  let hi = sOut;
-  for (let i = 0; i < SHRINK_ITERS; i++) {
-    const u = model.project(gamma(hi));
-    if (finite2(u)) {
-      const d = distToFrame(u, frameM);
-      if (d > 0 && d <= marginRender) return hi;
-    }
-    const mid = 0.5 * (lo + hi);
-    const um = model.project(gamma(mid));
-    if (finite2(um) && distToFrame(um, frameM) === 0) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  return hi;
-}
-
-// ── Style resolution ────────────────────────────────────────────────────────
-
-function resolvedOpacity(base: number | undefined, ov?: StyleOverride): number {
-  return ov?.opacity ?? base ?? 1;
-}
-
-export function resolveStroke(sty: StrokeStyle, ov?: StyleOverride): StrokeStyle & { opacity: number } {
-  return {
-    color: ov?.color ?? sty.color,
-    width: ov?.width ?? sty.width,
-    opacity: resolvedOpacity(sty.opacity, ov),
-    dash: sty.dash,
-  };
-}
-
-export function resolvePoint(sty: PointStyle, ov?: StyleOverride): PointStyle & { opacity: number } {
-  return {
-    color: ov?.color ?? sty.color,
-    radius: ov?.radius ?? sty.radius,
-    opacity: resolvedOpacity(sty.opacity, ov),
-  };
-}
-
-export interface ResolvedRegion {
-  fill?: FillStyle & { opacity: number };
-  edge?: StrokeStyle & { opacity: number };
-}
-
-/**
- * Region merge: `null` on an override's fill/edge suppresses that part; a
- * provided FillStyle/StrokeStyle replaces it; the flat color/opacity/width
- * fields then recolor/resize whatever parts remain.
- */
-export function resolveRegion(sty: RegionStyle, ov?: StyleOverride): ResolvedRegion {
-  const fillBase = ov?.fill === null ? undefined : (ov?.fill ?? sty.fill);
-  const edgeBase = ov?.edge === null ? undefined : (ov?.edge ?? sty.edge);
-  const out: ResolvedRegion = {};
-  if (fillBase) {
-    out.fill = {
-      color: ov?.color ?? fillBase.color,
-      opacity: resolvedOpacity(fillBase.opacity, ov),
-    };
-  }
-  if (edgeBase) {
-    out.edge = {
-      color: ov?.color ?? edgeBase.color,
-      width: ov?.width ?? edgeBase.width,
-      opacity: resolvedOpacity(edgeBase.opacity, ov),
-      dash: edgeBase.dash,
-    };
-  }
-  return out;
-}
-
-// ── Dashing (P1) ────────────────────────────────────────────────────────────
-
-/** Above this many dashes on one curve, fall back to a solid stroke. */
-const MAX_DASHES = 1024;
-
-/**
- * The ON parameter ranges of an intrinsic dash pattern along a
- * CONSTANT-SPEED curve (all three generators are: segments at d(a,b), walls
- * at 1, circles at sin_κ(r)), so dashing is exact parameter arithmetic — no
- * arclength integration. Degenerate patterns (or > MAX_DASHES) return the
- * whole range: solid is the safe fallback.
- */
-export function dashRanges(
-  t0: number,
-  t1: number,
-  speed: number,
-  dash: { on: number; off: number; phase?: number },
-): [number, number][] {
-  const period = dash.on + dash.off;
-  const L = (t1 - t0) * speed;
-  if (!(speed > 0) || !(dash.on > 0) || !(dash.off > 0) || L / period > MAX_DASHES) {
-    return [[t0, t1]];
-  }
-  const phase = ((dash.phase ?? 0) % period + period) % period;
-  const ranges: [number, number][] = [];
-  for (let s = -phase; s < L; s += period) {
-    const a = Math.max(0, s);
-    const b = Math.min(L, s + dash.on);
-    if (b - a > 1e-12) ranges.push([t0 + a / speed, t0 + b / speed]);
-  }
-  return ranges;
-}
-
-/**
- * Outline contours for a (possibly dashed) stroke along a constant-speed
- * curve: each ON range is adaptively sampled as its own open curve (dash
- * ends are butt caps), and all dash outlines become contours of ONE
- * RenderPath — the SVG export inherits dashing by construction.
- */
-function strokeContours(
-  gamma: (t: number) => Point2,
-  t0: number,
-  t1: number,
-  speed: number,
-  sty: StrokeStyle,
-  model: Model<Point2>,
-  scalePx: number,
-  tol: RenderTolerances,
-): Float64Array[] {
-  const ranges = sty.dash ? dashRanges(t0, t1, speed, sty.dash) : [[t0, t1] as [number, number]];
-  const out: Float64Array[] = [];
-  for (const [a, b] of ranges) {
-    const curve = sampleCurve(gamma, a, b, model, scalePx, tol, sty.width / 2);
-    out.push(...strokeOutline(curve, model, sty.width));
-  }
-  return out;
-}
-
-/** sin_κ(r): the constant speed of the circle parametrization θ ↦ exp_c(r·v(θ)). */
-function circleSpeed(geom: Geometry<Point2, Isometry2>, r: number): number {
-  switch (geom.kind) {
-    case 'spherical':
-      return Math.sin(r);
-    case 'euclidean':
-      return r;
-    case 'hyperbolic':
-      return Math.sinh(r);
-  }
-}
-
-// ── Culling ─────────────────────────────────────────────────────────────────
-
-/**
- * Keep an item iff its contours are finite, intersect the frame, and exceed
- * cullPx. Shared with sphereview's builder.
- */
-export function keepContours(
-  contours: readonly Float64Array[],
-  frame: Frame,
-  scalePx: number,
-  cullPx: number,
-): boolean {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const c of contours) {
-    for (let i = 0; i < c.length; i += 2) {
-      const x = c[i];
-      const y = c[i + 1];
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  if (minX > maxX) return false; // empty
-  if (maxX < frame.minX || minX > frame.maxX || maxY < frame.minY || minY > frame.maxY) {
-    return false;
-  }
-  return Math.max(maxX - minX, maxY - minY) * scalePx >= cullPx;
-}
-
-/**
- * V2 pre-sampling cull (README): a conservative screen bound from the item's
- * projected defining points, padded by intrinsicRadius × maxScale × 2, so
- * sampling can be skipped outright. Only the SOUND cases decide:
- *
- * - sub-pixel, all charts — the small-item regime: the chart's scale is
- *   near-constant across a screen-small item, and the factor 2 covers the
- *   variation;
- * - off-frame, only where the projected spine provably stays in the convex
- *   hull of the projected defining points (straight non-spherical charts:
- *   Klein, Cartesian — geodesics are chords there; conformal arcs bulge
- *   outside the hull, and gnomonic segments can cross the horizon).
- *
- * Non-finite projections are unboundable — keep and sample. `keepContours`
- * remains the post-sampling safety net either way, so the pre-cull can only
- * ever save work, never change the output.
- *
- * `pad` (render units, = intrinsicRadius × maxScale × 2) is LAZY: it only
- * ever expands the kept region, so an item whose bare bbox already
- * intersects the frame at super-cull size is kept without evaluating it —
- * the common full-view case pays for the projections and nothing else.
- */
-export function preCulled(
-  pts: readonly Vec3[],
-  pad: () => number,
-  offFrameEligible: boolean,
-  frame: Frame,
-  scalePx: number,
-  cullPx: number,
-): boolean {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const u of pts) {
-    if (!finite2(u)) return false;
-    if (u[0] < minX) minX = u[0];
-    if (u[0] > maxX) maxX = u[0];
-    if (u[1] < minY) minY = u[1];
-    if (u[1] > maxY) maxY = u[1];
-  }
-  if (minX > maxX) return false;
-  const bigEnough = Math.max(maxX - minX, maxY - minY) * scalePx >= cullPx;
-  const onFrame = !(maxX < frame.minX || minX > frame.maxX || maxY < frame.minY || minY > frame.maxY);
-  if (bigEnough && (onFrame || !offFrameEligible)) return false; // keep: pad can't shrink either verdict
-  const m = pad();
-  if ((Math.max(maxX - minX, maxY - minY) + 2 * m) * scalePx < cullPx) return true;
-  return (
-    offFrameEligible &&
-    (maxX + m < frame.minX || minX - m > frame.maxX || maxY + m < frame.minY || minY - m > frame.maxY)
-  );
-}
-
-// ── The builder ─────────────────────────────────────────────────────────────
 
 export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
   const { geom, model, camera, size } = ctx;
@@ -649,61 +270,6 @@ export function buildPathList(scene: Scene, ctx: BuildContext): PathList {
 }
 
 /**
- * A canonical interior point of a geodesically convex vertex loop: the
- * normalized vertex mean (chordal mean, inside the convex hull in all three
- * geometries). Null when undecidable (spherical mean ≈ 0).
- */
-function polygonInterior(geom: Geometry<Point2, Isometry2>, verts: readonly Point2[]): Point2 | null {
-  const s = vec3(0, 0, 0);
-  for (const v of verts) {
-    s[0] += v[0];
-    s[1] += v[1];
-    s[2] += v[2];
-  }
-  if (Math.abs(geom.form(s, s)) < 1e-12) return null;
-  return geom.normalize(s);
-}
-
-/** Even-odd ray cast: is (x, y) inside the closed contour? */
-function insideContour(c: Float64Array, x: number, y: number): boolean {
-  let inside = false;
-  for (let i = 0, j = c.length - 2; i < c.length; j = i, i += 2) {
-    const yi = c[i + 1];
-    const yj = c[j + 1];
-    if (yi > y !== yj > y && x < c[i] + ((y - yi) / (yj - yi)) * (c[j] - c[i])) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-/**
- * V2.3 fill honesty (README): a region containing the chart's puncture
- * projects to the COMPLEMENT of its boundary loop, so an even-odd fill would
- * paint the wrong side. Only spherical flat charts can wrap — S² is compact,
- * so every flat chart of it is punctured or branched, while the H/E charts
- * are embeddings and always honest. The test: a canonical interior point
- * must project INSIDE the sampled loop; a wrapped region puts it outside
- * (or at the puncture itself, non-finite). Callers supply the interior
- * point: a circle's center exactly; a polygon's normalized vertex mean —
- * interior for the geodesically convex loops the polytope layer emits
- * (non-convex regions would need an explicit interior point; none exist
- * yet). An undecidable mean (≈ 0, a hemisphere-spanning loop) keeps the
- * fill: dropping is the exceptional act and needs evidence.
- */
-function honestFill(
-  geom: Geometry<Point2, Isometry2>,
-  model: Model<Point2>,
-  interior: Point2 | null,
-  contour: Float64Array,
-): boolean {
-  if (geom.kind !== 'spherical') return true;
-  if (interior === null) return true;
-  const u = model.project(interior);
-  return finite2(u) && insideContour(contour, u[0], u[1]);
-}
-
-/**
  * A render-space circle about the origin as a closed contour, segment count
  * chosen so the sagitta stays under the flatness tolerance (the domain
  * boundary is chart apparatus in render coords — no geodesic sampling).
@@ -729,53 +295,4 @@ function contourOf(curve: SampledCurve): Float64Array {
     contour[2 * i + 1] = curve.samples[i].u[1];
   }
   return contour;
-}
-
-/**
- * Transform a wall by g and clip its line to the frame, returning the
- * unit-speed parametrization and its visible range (P1 refactor: dashing
- * needs the range, not a pre-sampled curve).
- */
-function wallParamRange(
-  geom: Geometry<Point2, Isometry2>,
-  model: Model<Point2>,
-  wall: Hyperplane,
-  g: Isometry2,
-  frameM: Frame,
-  marginRender: number,
-  scalePx: number,
-): { gamma: (s: number) => Point2; sMin: number; sMax: number } | null {
-  const moved = Hyperplane.fromCovector(geom, geom.applyDual(g, wall.covector));
-  let line = wallLine(geom, moved, frameAnchor(model, frameM));
-  if (!line) {
-    // Spherical anchor at the pole: any other point works.
-    line = wallLine(geom, moved, geom.exp(geom.origin(), vec3(0, 1, 0), 1));
-    if (!line) line = wallLine(geom, moved, geom.exp(geom.origin(), vec3(0, 0, 1), 1));
-    if (!line) return null;
-  }
-  const { p0, tangent } = line;
-  const gamma = (s: number): Point2 => geom.exp(p0, tangent, s);
-  const spherical = geom.kind === 'spherical';
-
-  let sMin: number;
-  let sMax: number;
-  if (spherical && model.straight) {
-    // Gnomonic: the great circle projects in TWO branches (the sampler
-    // follows the chart, not the wish — README); p₀(s) = cos(s)·p0₀ +
-    // sin(s)·w₀ = A·cos(s − φ) vanishes at φ ± π/2, so the visible branch
-    // (p₀ > 0, which already covers the projected line completely) is
-    // exactly that open interval, shrunk back to the frame from the
-    // blowups. γ(φ) is the wall's closest point to the chart origin.
-    const phi = Math.atan2(tangent[0], p0[0]);
-    sMax = shrinkOutside(gamma, model, phi, phi + Math.PI / 2 - 1e-9, frameM, marginRender);
-    sMin = shrinkOutside(gamma, model, phi, phi - Math.PI / 2 + 1e-9, frameM, marginRender);
-  } else {
-    // First step ≈ 1/8 of the frame diagonal in render terms.
-    const diag = Math.hypot(frameM.maxX - frameM.minX, frameM.maxY - frameM.minY);
-    const s0 = diag / (8 * Math.max(model.scaleAt(p0), 1e-9));
-    sMax = extendWallRange(gamma, model, 1, s0, frameM, marginRender, scalePx, spherical);
-    sMin = extendWallRange(gamma, model, -1, s0, frameM, marginRender, scalePx, spherical);
-  }
-  if (sMax - sMin < 1e-12) return null;
-  return { gamma, sMin, sMax };
 }

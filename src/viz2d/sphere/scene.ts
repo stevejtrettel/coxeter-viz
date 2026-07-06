@@ -15,15 +15,10 @@ import { sampleCircle, sampleCurve, tangentFrame, type SampledCurve } from '@/vi
 import { strokeOutline } from '@/viz2d/render/stroke';
 import { markEllipse } from '@/viz2d/render/marks';
 import type { StrokeStyle } from '@/viz2d/render/types';
-import {
-  dashRanges,
-  frameOf,
-  keepContours,
-  resolvePoint,
-  resolveRegion,
-  resolveStroke,
-  wallLine,
-} from '@/viz2d/render/scene';
+import { dashRanges } from '@/viz2d/render/dash';
+import { frameOf, keepContours } from '@/viz2d/render/cull';
+import { resolvePoint, resolveRegion, resolveStroke } from '@/viz2d/render/style';
+import { wallLine } from '@/viz2d/render/wallclip';
 import { SpherePerspective, trigRoots } from './projection';
 import { DEFAULT_SPHERE_STYLE, type SphereCamera, type SphereStyle } from './types';
 

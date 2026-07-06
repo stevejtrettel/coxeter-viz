@@ -261,7 +261,12 @@ instantiation for these types to serve.
 | `sample.ts` | adaptive sampling of projected curves: geodesics, metric circles; tangent frames | V1 |
 | `stroke.ts` | filled-outline construction: offsets `±(w/2)·J·n̂`, end joins | V1 |
 | `marks.ts` | jacobian-image point ellipses | V1 |
-| `scene.ts` | scene → path list: apply `g`, project, clip walls to frame/domain, cull, resolve style overrides | V1 |
+| `style.ts` | style resolution: merge a `StyleOverride` over an item's style (pure, no geometry) | R2 |
+| `cull.ts` | the visible `Frame`, `keepContours` (post-sampling), `preCulled` (V2 pre-sampling); shared with `sphere/` | R2 |
+| `wallclip.ts` | `wallLine` (a wall as a unit-speed curve, shared with `sphere/`) + `wallParamRange` (clip its line to the frame) | R2 |
+| `dash.ts` | intrinsic dash arithmetic: `dashRanges` / `strokeContours` / `circleSpeed`; shared with `sphere/` | R2 |
+| `honesty.ts` | V2.3 fill honesty: the interior-point winding test (`honestFill`, `polygonInterior`) | R2 |
+| `scene.ts` | scene → path list: the per-kind dispatch, composing the modules above (apply `g`, project, clip walls to frame/domain, cull, resolve style overrides) | V1 / R2 |
 | `canvas.ts` | the Canvas2D painter (immediate mode) | V1 |
 | `svg.ts` | one-file path-list → SVG string builder (no DOM): the painter's viewport formula verbatim, one `<path>` per RenderPath, `fill-rule="evenodd"`, `fill-opacity`, item id as `data-id` (one item emits several paths, so not `id`), 2-decimal px coordinates | V2 |
 | `interact.ts` | pure camera transforms (zoom / pan / double-bisector drag with drift renormalization), `hitTest`, and the thin DOM controller | V3 |
