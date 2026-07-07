@@ -26,6 +26,7 @@ import { realizePolygon } from '@/viz2d/kit/realize';
 import { cayId, cayleyScene, domainItem, highlightElements, polygonItem, tileId, tilesToScene } from '@/viz2d/kit/scene';
 import { tippedView } from '@/viz2d/kit/camera';
 import { COSET_COLORS, ENTRY, GREY, HOVER, HULL } from '@/viz2d/kit/palette';
+import { PAD, button, canvas2d, downloadSvg, dpr, pageShell, rafScheduler } from '../shared';
 
 // ── Group data ──────────────────────────────────────────────────────────────
 
@@ -144,17 +145,13 @@ const panels: Panel[] = [
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
 const GAP = 16;
 const HEAD_H = 24;
 const STATS_H = 18;
 
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent =
-  'wordlists / Milestone 3 — coset coloring, hulls, exact areas · drag / shift-drag / wheel · hover a tile';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 8px';
-document.body.appendChild(heading);
+const heading = pageShell(
+  'wordlists / Milestone 3 — coset coloring, hulls, exact areas · drag / shift-drag / wheel · hover a tile',
+);
 
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:10px;align-items:baseline;margin-bottom:10px';
@@ -196,7 +193,7 @@ function renderAll(): void {
   grid.style.cssText = `display:grid;grid-template-columns:repeat(3,${size}px);gap:${GAP}px`;
   grid.replaceChildren();
   repaints.length = 0;
-  const dpr = window.devicePixelRatio || 1;
+  const d = dpr();
 
   panels.forEach((panel, i) => {
     const cell = document.createElement('div');
@@ -205,24 +202,19 @@ function renderAll(): void {
     const title = document.createElement('div');
     title.textContent = panel.title;
     title.style.cssText = 'font-size:12px;color:#555;white-space:nowrap;overflow:hidden;flex:1';
-    const save = document.createElement('button');
-    save.textContent = 'SVG';
-    save.style.cssText =
-      'font-size:10px;padding:1px 7px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer';
+    const save = button('SVG');
+    save.style.fontSize = '10px';
+    save.style.padding = '1px 7px';
     bar.append(title, save);
     const canvas = document.createElement('canvas');
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    canvas.style.cssText = `width:${size}px;height:${size}px;background:#fff;border-radius:4px`;
+    const g = canvas2d(canvas, size, d);
+    canvas.style.background = '#fff';
+    canvas.style.borderRadius = '4px';
     const stats = document.createElement('div');
     stats.textContent = panel.stats;
     stats.style.cssText = `font-size:11px;color:#777;height:${STATS_H}px;margin-top:4px;white-space:nowrap;overflow:hidden`;
     cell.append(bar, canvas, stats);
     grid.appendChild(cell);
-
-    const g = canvas.getContext('2d');
-    if (!g) return;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     let camera = panel.initialCamera(size);
     const saved = savedViews[i];
@@ -247,24 +239,13 @@ function renderAll(): void {
       g.clearRect(0, 0, size, size);
       paint(g, build(), camera);
     };
-    let pending = false;
-    const schedule = (): void => {
-      if (pending) return;
-      pending = true;
-      requestAnimationFrame(() => {
-        pending = false;
-        draw();
-      });
-    };
+    const schedule = rafScheduler(draw);
     repaints.push(schedule);
 
     draw();
     save.addEventListener('click', () => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([toSvg(build(), camera, { widthPx: size, heightPx: size })], { type: 'image/svg+xml' }));
-      a.download = `${panel.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.svg`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      const slug = panel.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      downloadSvg(toSvg(build(), camera, { widthPx: size, heightPx: size }), `${slug}.svg`);
     });
     attachInteraction(canvas, {
       geom,

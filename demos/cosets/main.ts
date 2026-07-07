@@ -12,14 +12,10 @@
 
 import type { GeometryKind, Isometry2, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
-import { Poincare2 } from '@/models/poincare';
-import { Cartesian2 } from '@/models/cartesian';
-import { Stereographic2 } from '@/models/stereographic';
 import { identity } from '@/math/mat';
-import { classifyPolygon, type RealizationSpec } from '@/coxeter/spec';
-import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
-import { groupFromPolygon, wordId, type CoxeterGroup } from '@/group/CoxeterGroup';
-import { cosetIndex } from '@/group/wordlists';
+import type { RealizedPolygon } from '@/coxeter/solve';
+import type { CoxeterGroup } from '@/group/CoxeterGroup';
+import { cosetIndex, parabolicFixedPoint } from '@/group/wordlists';
 import { matrixKey } from '@/group/orbit';
 import type { Camera, Scene, SceneItem, ViewSize } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
@@ -30,31 +26,18 @@ import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
 import { TilingShader } from '@/viz2d/shader/TilingShader';
 import { tilingLayer } from '@/viz2d/shader/layer';
 import { coverageRadius, mergeFieldPaths } from '@/viz2d/shader/vector';
-import { footOnWall, hashHue } from '@/viz2d/shader/uniforms';
+import { hashHue } from '@/viz2d/shader/uniforms';
 import type { TilingStyle } from '@/viz2d/shader/types';
+import { realizePolygon } from '@/viz2d/kit/realize';
+import { cosetColor, domainItem, fieldTileId, hueColor, tilesToScene, wallItems } from '@/viz2d/kit/scene';
+import { cosetField, fieldStyle } from '@/viz2d/kit/field';
+import { GREY, WALL_COLORS } from '@/viz2d/kit/palette';
 
-const WALL_COLORS = ['#c0392b', '#27ae60', '#2f6fb7', '#8e44ad', '#d68910', '#16a085'];
 const LIVE_EPSILON_PX = 3;
 const EXPORT_EPSILON_PX = 1.5;
 const MAX_TILES = 20000;
 /** A parabolic that outgrows this is treated as INFINITE (cosets undrawable). */
 const PARABOLIC_CAP = 400;
-
-/** Golden-angle pastel (fallback when no fixed anchor exists). */
-const cosetColor = (i: number) => `hsl(${((i * 137.508) % 360).toFixed(1)}, 55%, 78%)`;
-/** The SHARED hue convention (§5.8): CPU tiles match the GPU field exactly. */
-const hueColor = (h: number) => `hsl(${(h * 360).toFixed(2)}, 55%, 78%)`;
-
-function fieldStyle(r0: number): TilingStyle {
-  return {
-    even: [1, 1, 1, 1],
-    odd: [0.98, 0.955, 0.905, 1],
-    edge: [0.604, 0.553, 0.459, 0.45],
-    edgeHalfWidth: 0.0075 * r0,
-    vertex: [0, 0, 0, 0],
-    vertexRadius: 0,
-  };
-}
 
 interface State {
   kind: GeometryKind;
@@ -69,31 +52,13 @@ interface State {
 }
 
 function realize(orders: number[], S: number[]): State {
-  const kind = classifyPolygon(orders);
-  const n = orders.length;
-  const spec: RealizationSpec = {
-    geometry: kind,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: Array.from({ length: n }, (_, k) => k) },
-    decorations: orders.map((m, k) => ({ walls: [k, (k + 1) % n] as [number, number], order: m })),
-  };
-  const poly = solvePolygon(spec);
-  const group = groupFromPolygon(poly);
-  const model =
-    kind === 'hyperbolic' ? new Poincare2() : kind === 'euclidean' ? new Cartesian2() : new Stereographic2();
+  const { kind, group, poly, model, r0 } = realizePolygon(orders); // geometry INFERRED
   const sub = group.subgroup(S.map((i) => group.reflections[i]), PARABOLIC_CAP + 1);
   const ws = sub.size > PARABOLIC_CAP ? null : sub;
-  // The W_S-fixed anchor: x₀ (trivial), the wall foot (one), the vertex (pair).
-  let anchor: Point2 | null = null;
-  if (S.length === 0) anchor = group.basePoint;
-  else if (S.length === 1) anchor = footOnWall(group.geom, group.basePoint, group.walls[S[0]]);
-  else if (S.length === 2) {
-    anchor =
-      poly.chamber.vertices.find((q) =>
-        S.every((i) => Math.abs(poly.walls[i].side(q)) < 1e-7),
-      ) ?? null;
-  }
-  return { kind, group, poly, model, r0: poly.inradius, ws, anchor };
+  // The W_S-fixed anchor (§5.8): x₀ (trivial), the wall foot (one), the
+  // vertex (pair), or null (no fixed point) — enables the GPU coset field.
+  const anchor = parabolicFixedPoint(group, S);
+  return { kind, group, poly, model, r0, ws, anchor };
 }
 
 /**
@@ -104,50 +69,41 @@ function realize(orders: number[], S: number[]): State {
  * field carries the coloring live).
  */
 function cosetScene(state: State, radius: number, withTiles: boolean): { scene: Scene; nCosets: number } {
-  const items: SceneItem[] = [
-    { id: 'domain', kind: 'domain', style: { rim: { color: '#bbbbbb', widthPx: 1.25 } } },
-  ];
   let nCosets = 0;
+  let tileItems: SceneItem[] = [];
   if (state.ws && withTiles) {
     const tiles = state.group.tessellateBall(radius, MAX_TILES);
     const index = state.anchor ? null : cosetIndex(state.group, state.ws, tiles);
     const hues = new Set<number>();
-    for (const t of tiles) {
-      let color: string;
-      if (state.anchor) {
-        const h = hashHue(state.group.geom.apply(t.element, state.anchor));
-        hues.add(Math.round(h * 65536));
-        color = hueColor(h);
-      } else {
-        const coset = index!.get(matrixKey(t.element)) ?? 0;
-        nCosets = Math.max(nCosets, coset + 1);
-        color = cosetColor(coset);
-      }
-      items.push({
-        id: `field:tile:${wordId(t.word)}`,
-        kind: 'polygon',
-        vertices: t.polytope.vertices,
-        style: {
-          fill: { color, opacity: 1 },
-          edge: { color: '#9a8d75', width: 0.012 * state.r0, opacity: 0.35 },
-        },
-      });
-    }
+    tileItems = tilesToScene(
+      tiles,
+      (t) => {
+        let color: string;
+        if (state.anchor) {
+          const h = hashHue(state.group.geom.apply(t.element, state.anchor));
+          hues.add(Math.round(h * 65536));
+          color = hueColor(h);
+        } else {
+          const coset = index!.get(matrixKey(t.element)) ?? 0;
+          nCosets = Math.max(nCosets, coset + 1);
+          color = cosetColor(coset);
+        }
+        return { fill: { color, opacity: 1 }, edge: { color: GREY.ambientEdge, width: 0.012 * state.r0, opacity: 0.35 } };
+      },
+      fieldTileId,
+    );
     if (state.anchor) nCosets = hues.size;
   }
-  items.push(
-    ...state.poly.walls.map((wall, i) => ({
-      id: `wall:${i}`,
-      kind: 'geodesic' as const,
-      source: { type: 'line' as const, wall },
-      style: {
-        color: WALL_COLORS[i % WALL_COLORS.length],
-        width: (SBoxes[i]?.checked ? 0.07 : 0.035) * state.r0,
-        opacity: SBoxes[i]?.checked ? 0.95 : 0.55,
-      },
+  const scene: Scene = [
+    domainItem(false),
+    ...tileItems,
+    ...wallItems(state.poly.walls, (i) => ({
+      color: WALL_COLORS[i % WALL_COLORS.length],
+      width: (SBoxes[i]?.checked ? 0.07 : 0.035) * state.r0,
+      opacity: SBoxes[i]?.checked ? 0.95 : 0.55,
     })),
-  );
-  return { scene: items, nCosets };
+  ];
+  return { scene, nCosets };
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
@@ -283,7 +239,7 @@ function rebuild(): void {
   // CPU tiles then serve only the SVG and the verify overlay.
   const gpuCoset = state.anchor !== null && state.ws !== null;
   const gpuStyle: TilingStyle = gpuCoset
-    ? { ...fieldStyle(state.r0), coset: { anchor: state.anchor! } }
+    ? cosetField(fieldStyle(state.r0), state.anchor!)
     : fieldStyle(state.r0);
   const liveRadius = coverageRadius(state.group, state.model, camera, frame, LIVE_EPSILON_PX);
   const { scene, nCosets } = cosetScene(state, liveRadius, !gpuCoset || overlayBox.checked);

@@ -1420,14 +1420,18 @@ imports + folder READMEs; pure rename) — DONE · **R2** split
 `transportWall`; equivalence-checked byte-faithful) — DONE · **R4-lib** the
 library-core additions per #3 (Hyperplane.foot + shader re-export; cayleyBall;
 dihedralWords/parabolicFixedPoint/parseWordList) + tests in each layer + the
-group/geometry README updates (gate: green) · **R4-kit** `src/viz2d/kit/`
-(the 5 files) + convention tests, pinned against a captured Milestone-1
-scene (gate: green, no demo changes) · **R4b** migrate the six group demos
-onto `kit/` in batches (group+wordlists · wordfile+tilings · cosets+uniform),
-gallery demos adopt `realize`/`palette` (gate: green + hands-on visual pass,
-pictures unchanged) · **R5** `demos/shared/` harness (own README spec,
-approved first) + migrate demos to data→scene→mount (gate: green +
-hands-on). Milestone 2 (3D) stays queued after.
+group/geometry README updates — DONE (green, +17 tests) · **R4-kit**
+`src/viz2d/kit/` (realize/scene/camera/field/palette; `polygonItem` covers
+fd + hulls) + convention tests pinned against the Milestone-1 shapes — DONE
+(green, +18 tests, 427 total) · **R4b** migrated ALL nine demos onto
+`kit/` in batches (group+wordlists · wordfile+tilings · cosets+uniform) +
+the gallery demos (render2d/sphereview/tilingshader) adopting
+`realize`/`palette` — DONE, approved hands-on 2026-07-06 (no spec/anchor/
+rotation math left inline in any demo; tilings' inline Cayley-ball adjacency
+→ `cayleyBall`; cosets' anchor block → `parabolicFixedPoint`) · **R5**
+`demos/shared/` harness (own README spec, approved first) + migrate demos to
+data→scene→mount (gate: green + hands-on). Milestone 2 (3D) stays queued
+after.
 
 ### Milestones cut vertically, not horizontally
 

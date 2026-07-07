@@ -6,7 +6,7 @@
  * domain circle on disk charts is demo chrome, not render-layer output.
  */
 
-import type { GeometryKind, Point2 } from '@/geometry/types';
+import type { Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
 import { Klein2 } from '@/models/klein';
 import { Poincare2 } from '@/models/poincare';
@@ -14,42 +14,27 @@ import { Cartesian2 } from '@/models/cartesian';
 import { Gnomonic2 } from '@/models/gnomonic';
 import { Stereographic2 } from '@/models/stereographic';
 import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
-import type { RealizationSpec } from '@/coxeter/spec';
 import type { Camera, Scene } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
 import { paint } from '@/viz2d/render/canvas';
-
-const WALL_COLORS = ['#c0392b', '#27ae60', '#2f6fb7'];
-
-function triangleSpec(geometry: GeometryKind, orders: [number, number, number]): RealizationSpec {
-  return {
-    geometry,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
-    decorations: [
-      { walls: [0, 1], order: orders[0] },
-      { walls: [1, 2], order: orders[1] },
-      { walls: [2, 0], order: orders[2] },
-    ],
-  };
-}
+import { polygonSpec } from '@/viz2d/kit/realize';
+import { domainItem } from '@/viz2d/kit/scene';
+import { fitToDomain, fitToPoints } from '@/viz2d/kit/camera';
+import { FD, GEN_COLORS } from '@/viz2d/kit/palette';
+import { PAD, canvas2d, dpr, pageShell } from '../shared';
 
 /** The chamber scene: domain, polygon, walls (id = generator index), incircle, points. */
 function chamberScene(realized: RealizedPolygon): Scene {
   const r0 = realized.inradius;
   const origin = realized.geom.origin();
   return [
-    {
-      // The geometry itself (V2.2): shaded domain, rimmed disk boundary.
-      id: 'domain',
-      kind: 'domain',
-      style: { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
-    },
+    // The geometry itself (V2.2): shaded domain, rimmed disk boundary.
+    domainItem(true),
     {
       id: 'chamber',
       kind: 'polygon',
       vertices: realized.chamber.vertices,
-      style: { fill: { color: '#f6d9a0', opacity: 0.8 } },
+      style: { fill: { color: FD, opacity: 0.8 } },
     },
     {
       id: 'incircle',
@@ -65,7 +50,7 @@ function chamberScene(realized: RealizedPolygon): Scene {
       id: `wall:${i}`,
       kind: 'geodesic' as const,
       source: { type: 'line' as const, wall },
-      style: { color: WALL_COLORS[i], width: 0.12 * r0 },
+      style: { color: GEN_COLORS[i], width: 0.12 * r0 },
     })),
     {
       id: 'incenter',
@@ -88,17 +73,10 @@ function chamberScene(realized: RealizedPolygon): Scene {
  * to sweep past.
  */
 function panelCamera(realized: RealizedPolygon, model: Model<Point2>, sizePx: number): Camera {
-  let scalePx: number;
-  if (model.domain.kind === 'disk') {
-    scalePx = sizePx / 2 / (model.domain.radius * 1.08);
-  } else {
-    let extent = 0;
-    for (const v of realized.chamber.vertices) {
-      const u = model.project(v);
-      extent = Math.max(extent, Math.hypot(u[0], u[1]));
-    }
-    scalePx = sizePx / 2 / (extent * 2.2);
-  }
+  const scalePx =
+    model.domain.kind === 'disk'
+      ? fitToDomain(model, realized.geom.kind, realized.inradius, sizePx)
+      : fitToPoints(realized.geom, model, realized.chamber.vertices, sizePx, { margin: 2.2 });
   return { view: realized.geom.identity(), scalePx, centerPx: [sizePx / 2, sizePx / 2] };
 }
 
@@ -108,9 +86,9 @@ interface Panel {
   model: Model<Point2>;
 }
 
-const h237 = solvePolygon(triangleSpec('hyperbolic', [2, 3, 7]));
-const e244 = solvePolygon(triangleSpec('euclidean', [2, 4, 4]));
-const s235 = solvePolygon(triangleSpec('spherical', [2, 3, 5]));
+const h237 = solvePolygon(polygonSpec([2, 3, 7], 'hyperbolic'));
+const e244 = solvePolygon(polygonSpec([2, 4, 4], 'euclidean'));
+const s235 = solvePolygon(polygonSpec([2, 3, 5], 'spherical'));
 
 const panels: Panel[] = [
   { title: '(2,3,7) H² — Klein (straight)', realized: h237, model: new Klein2() },
@@ -123,15 +101,11 @@ const panels: Panel[] = [
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
 const GAP = 16;
 const TITLE_H = 24;
 
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent = 'render2d V1 — chambers, walls, incircles through straight and conformal charts';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 12px';
-document.body.appendChild(heading);
+const heading = pageShell('render2d V1 — chambers, walls, incircles through straight and conformal charts');
+heading.style.margin = '0 0 12px';
 
 const grid = document.createElement('div');
 document.body.appendChild(grid);
@@ -148,7 +122,7 @@ function renderAll(): void {
   const size = panelSize();
   grid.style.cssText = `display:grid;grid-template-columns:repeat(3,${size}px);gap:${GAP}px`;
   grid.replaceChildren();
-  const dpr = window.devicePixelRatio || 1;
+  const d = dpr();
 
   for (const panel of panels) {
     const cell = document.createElement('div');
@@ -156,15 +130,11 @@ function renderAll(): void {
     title.textContent = panel.title;
     title.style.cssText = `font-size:12px;height:${TITLE_H - 6}px;margin-bottom:6px;color:#555;white-space:nowrap;overflow:hidden`;
     const canvas = document.createElement('canvas');
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    canvas.style.cssText = `width:${size}px;height:${size}px;background:#fff;border-radius:4px`;
+    const g = canvas2d(canvas, size, d);
+    canvas.style.background = '#fff';
+    canvas.style.borderRadius = '4px';
     cell.append(title, canvas);
     grid.appendChild(cell);
-
-    const g = canvas.getContext('2d');
-    if (!g) continue;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const camera = panelCamera(panel.realized, panel.model, size);
     const scene = chamberScene(panel.realized);

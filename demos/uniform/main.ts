@@ -11,15 +11,11 @@
 
 import type { GeometryKind, Isometry2, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
-import { Poincare2 } from '@/models/poincare';
-import { Cartesian2 } from '@/models/cartesian';
-import { Stereographic2 } from '@/models/stereographic';
 import { identity } from '@/math/mat';
-import { classifyPolygon, type RealizationSpec } from '@/coxeter/spec';
-import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
-import { groupFromPolygon, type CoxeterGroup } from '@/group/CoxeterGroup';
-import { uniformCells } from '@/group/wythoff';
-import type { Camera, Scene, SceneItem, ViewSize } from '@/viz2d/render/types';
+import type { RealizedPolygon } from '@/coxeter/solve';
+import type { CoxeterGroup } from '@/group/CoxeterGroup';
+import { uniformCells, wythoffPoint } from '@/group/wythoff';
+import type { Camera, Scene, ViewSize } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
 import { paint } from '@/viz2d/render/canvas';
 import { toSvg } from '@/viz2d/render/svg';
@@ -28,36 +24,24 @@ import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
 import { coverageRadius, mergeFieldPaths } from '@/viz2d/shader/vector';
 import { TilingShader } from '@/viz2d/shader/TilingShader';
 import { tilingLayer } from '@/viz2d/shader/layer';
-import { wythoffPoint } from '@/group/wythoff';
-import type { Rgba, TilingStyle } from '@/viz2d/shader/types';
-
-/** One soft color per face type (= per vertex dihedral). */
-const TYPE_COLORS = ['#f2e3c4', '#cfe0ee', '#d5e8d0'];
-const rgba = (hex: string, a: number): Rgba => [
-  parseInt(hex.slice(1, 3), 16) / 255,
-  parseInt(hex.slice(3, 5), 16) / 255,
-  parseInt(hex.slice(5, 7), 16) / 255,
-  a,
-];
-const OFF: Rgba = [0, 0, 0, 0];
+import type { TilingStyle } from '@/viz2d/shader/types';
+import { realizePolygon } from '@/viz2d/kit/realize';
+import { domainItem, polygonItem } from '@/viz2d/kit/scene';
+import { blankStyle, regionsField, rgba, starBands, starField } from '@/viz2d/kit/field';
+import { TYPE_COLORS } from '@/viz2d/kit/palette';
 
 /** §5.8 D3: the uniform tiling as a FIELD PROGRAM — regions + seed star. */
 function uniformGpuStyle(state: State, rings: boolean[]): TilingStyle {
   const seed = wythoffPoint(state.poly, rings);
-  return {
-    even: OFF,
-    odd: OFF,
-    edge: OFF,
-    edgeHalfWidth: 0,
-    vertex: OFF,
-    vertexRadius: 0,
-    regions: { seed, colors: TYPE_COLORS.map((c) => rgba(c, 1)) },
-    star: {
+  return regionsField(
+    starField(blankStyle(), {
       anchor: seed,
       halfWidth: 0.01 * state.r0,
-      bands: state.poly.walls.map((_, i) => ({ wall: i, color: rgba('#5a4f3f', 0.75) })),
-    },
-  };
+      bands: starBands(state.poly.walls, () => rgba('#5a4f3f', 0.75)),
+    }),
+    seed,
+    TYPE_COLORS.map((c) => rgba(c, 1)),
+  );
 }
 const LIVE_EPSILON_PX = 3;
 const EXPORT_EPSILON_PX = 1.5;
@@ -72,36 +56,27 @@ interface State {
 }
 
 function realize(orders: [number, number, number]): State {
-  const kind = classifyPolygon(orders);
-  const spec: RealizationSpec = {
-    geometry: kind,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
-    decorations: orders.map((m, k) => ({ walls: [k, (k + 1) % 3] as [number, number], order: m })),
-  };
-  const poly = solvePolygon(spec);
-  const group = groupFromPolygon(poly);
-  const model =
-    kind === 'hyperbolic' ? new Poincare2() : kind === 'euclidean' ? new Cartesian2() : new Stereographic2();
-  return { kind, group, poly, model, r0: poly.inradius };
+  const { kind, group, poly, model, r0 } = realizePolygon(orders); // geometry INFERRED
+  return { kind, group, poly, model, r0 };
 }
 
 /** The uniform tiling out to `radius` as a Scene (faces by type + rim). */
 function uniformScene(state: State, rings: boolean[], radius: number): { scene: Scene; count: number } {
   const cells = uniformCells(state.group, state.poly, rings, radius, MAX_TILES);
-  const items: SceneItem[] = [
-    { id: 'domain', kind: 'domain', style: { rim: { color: '#bbbbbb', widthPx: 1.25 } } },
-    ...cells.map((c, k) => ({
-      id: `field:tile:${c.type}:${k}`,
-      kind: 'polygon' as const,
-      vertices: c.polytope.vertices,
-      style: {
-        fill: { color: TYPE_COLORS[c.type % TYPE_COLORS.length], opacity: 1 },
-        edge: { color: '#5a4f3f', width: 0.02 * state.r0, opacity: 0.75 },
-      },
-    })),
+  const scene: Scene = [
+    domainItem(false),
+    ...cells.map((c, k) =>
+      polygonItem(
+        c.polytope,
+        {
+          fill: { color: TYPE_COLORS[c.type % TYPE_COLORS.length], opacity: 1 },
+          edge: { color: '#5a4f3f', width: 0.02 * state.r0, opacity: 0.75 },
+        },
+        `field:tile:${c.type}:${k}`,
+      ),
+    ),
   ];
-  return { scene: items, count: cells.length };
+  return { scene, count: cells.length };
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────

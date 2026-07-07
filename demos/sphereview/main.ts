@@ -6,10 +6,8 @@
  * widths tapering toward the silhouette.
  */
 
-import { matMul, mat3 } from '@/math/mat';
-import type { GeometryKind, Isometry2 } from '@/geometry/types';
+import type { Isometry2 } from '@/geometry/types';
 import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
-import type { RealizationSpec } from '@/coxeter/spec';
 import type { Scene } from '@/viz2d/render/types';
 import { paint } from '@/viz2d/render/canvas';
 import { toSvg } from '@/viz2d/render/svg';
@@ -17,22 +15,12 @@ import { attachInteraction } from '@/viz2d/render/interact';
 import { buildSpherePathList } from '@/viz2d/sphere/scene';
 import { SpherePerspective, sphereUnprojector } from '@/viz2d/sphere/projection';
 import type { SphereCamera } from '@/viz2d/sphere/types';
+import { polygonSpec } from '@/viz2d/kit/realize';
+import { tippedView } from '@/viz2d/kit/camera';
+import { FD, GEN_COLORS } from '@/viz2d/kit/palette';
+import { PAD, button, canvas2d, downloadSvg, dpr, pageShell, rafScheduler } from '../shared';
 
-const WALL_COLORS = ['#c0392b', '#27ae60', '#2f6fb7'];
 const EYE_DISTANCE = 5;
-
-function triangleSpec(geometry: GeometryKind, orders: [number, number, number]): RealizationSpec {
-  return {
-    geometry,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
-    decorations: [
-      { walls: [0, 1], order: orders[0] },
-      { walls: [1, 2], order: orders[1] },
-      { walls: [2, 0], order: orders[2] },
-    ],
-  };
-}
 
 /** The V1 chamber scene, verbatim (demos/render2d): the same items draw here. */
 function chamberScene(realized: RealizedPolygon): Scene {
@@ -43,7 +31,7 @@ function chamberScene(realized: RealizedPolygon): Scene {
       id: 'chamber',
       kind: 'polygon',
       vertices: realized.chamber.vertices,
-      style: { fill: { color: '#f6d9a0', opacity: 0.8 } },
+      style: { fill: { color: FD, opacity: 0.8 } },
     },
     {
       id: 'incircle',
@@ -59,7 +47,7 @@ function chamberScene(realized: RealizedPolygon): Scene {
       id: `wall:${i}`,
       kind: 'geodesic' as const,
       source: { type: 'line' as const, wall },
-      style: { color: WALL_COLORS[i], width: 0.12 * r0 },
+      style: { color: GEN_COLORS[i], width: 0.12 * r0 },
     })),
     {
       id: 'incenter',
@@ -76,42 +64,24 @@ function chamberScene(realized: RealizedPolygon): Scene {
   ];
 }
 
-/** Rotation by angle a in the (i, j) coordinate plane of ambient R³. */
-function planeRotation(i: number, j: number, a: number) {
-  const rows = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ];
-  rows[i][i] = Math.cos(a);
-  rows[j][j] = Math.cos(a);
-  rows[i][j] = -Math.sin(a);
-  rows[j][i] = Math.sin(a);
-  return mat3(rows);
-}
-
-const s235 = solvePolygon(triangleSpec('spherical', [2, 3, 5]));
+const s235 = solvePolygon(polygonSpec([2, 3, 5], 'spherical'));
 const scene = chamberScene(s235);
 // Tip the chamber off-axis so the walls' far arcs wrap behind the globe.
-const initialView = matMul(planeRotation(0, 1, 0.9), planeRotation(0, 2, 0.45));
+const initialView = tippedView(0.9, 0.45);
 // P3: back arcs dash (the hidden-line convention), sized by the inradius.
 const backDash = { on: 0.5 * s235.inradius, off: 0.35 * s235.inradius };
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent =
-  'sphereview — the (2,3,5) chamber, perspective d = 5 · drag to rotate, wheel to zoom · dashed hidden lines';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 12px';
-document.body.appendChild(heading);
+const heading = pageShell(
+  'sphereview — the (2,3,5) chamber, perspective d = 5 · drag to rotate, wheel to zoom · dashed hidden lines',
+);
+heading.style.margin = '0 0 12px';
 
-const save = document.createElement('button');
-save.textContent = 'SVG';
+const save = button('SVG');
 save.title = 'Download as SVG — identical to the canvas, current view included';
-save.style.cssText =
-  'font-size:11px;padding:2px 9px;margin-bottom:8px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer;display:block';
+save.style.marginBottom = '8px';
+save.style.display = 'block';
 document.body.appendChild(save);
 
 const canvas = document.createElement('canvas');
@@ -128,13 +98,9 @@ function renderAll(): void {
     260,
     Math.min(760, window.innerWidth - 2 * PAD, window.innerHeight - 2 * PAD - headingH),
   );
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = size * dpr;
-  canvas.height = size * dpr;
-  canvas.style.cssText = `width:${size}px;height:${size}px;background:#fff;border-radius:4px`;
-  const g = canvas.getContext('2d');
-  if (!g) return;
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const g = canvas2d(canvas, size, dpr());
+  canvas.style.background = '#fff';
+  canvas.style.borderRadius = '4px';
 
   const silhouette = EYE_DISTANCE / Math.sqrt(EYE_DISTANCE * EYE_DISTANCE - 1);
   let camera: SphereCamera = {
@@ -150,24 +116,11 @@ function renderAll(): void {
     g.clearRect(0, 0, size, size);
     paint(g, build(), camera);
   };
-  let pending = false;
-  const schedule = (): void => {
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      draw();
-    });
-  };
+  const schedule = rafScheduler(draw);
 
   draw();
   save.onclick = () => {
-    const svg = toSvg(build(), camera, { widthPx: size, heightPx: size });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-    a.download = 'sphereview-235-chamber.svg';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadSvg(toSvg(build(), camera, { widthPx: size, heightPx: size }), 'sphereview-235-chamber.svg');
   };
   // Globe rotation (stage 2a): drag the front sheet, the double-bisector
   // machinery composes the rotation into the view.

@@ -29,7 +29,8 @@ import type { SphereCamera } from '@/viz2d/sphere/types';
 import { realizePolygon } from '@/viz2d/kit/realize';
 import { cayleyScene, domainItem, parityColor, tilesToScene } from '@/viz2d/kit/scene';
 import { fitToPoints, tippedView } from '@/viz2d/kit/camera';
-import { GEN_COLORS, GREY, TILE } from '@/viz2d/kit/palette';
+import { GEN_COLORS, GREY, HOVER, TILE } from '@/viz2d/kit/palette';
+import { PAD, button, canvas2d, downloadSvg, dpr, pageShell, rafScheduler } from '../shared';
 
 const EYE_DISTANCE = 5;
 
@@ -130,13 +131,10 @@ function flatPanel(title: string, scene: Scene, data: GroupData, model: Model<Po
   };
 }
 
-function downloadSvg(panel: Panel, camera: Camera, sizePx: number): void {
+function savePanelSvg(panel: Panel, camera: Camera, sizePx: number): void {
   const svg = toSvg(panel.paths(camera, sizePx), camera, { widthPx: sizePx, heightPx: sizePx });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-  a.download = `${panel.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.svg`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const slug = panel.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  downloadSvg(svg, `${slug}.svg`);
 }
 
 const identityView: Isometry2 = mat3([
@@ -206,16 +204,13 @@ const panels: Panel[] = [
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
 const GAP = 16;
 const TITLE_H = 24;
 
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent =
-  'group G4 / Milestone 1 — tessellations and Cayley graphs in S, E, H · drag to slide, shift-drag to pan, wheel to zoom';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 12px';
-document.body.appendChild(heading);
+const heading = pageShell(
+  'group G4 / Milestone 1 — tessellations and Cayley graphs in S, E, H · drag to slide, shift-drag to pan, wheel to zoom',
+);
+heading.style.margin = '0 0 12px';
 
 // The view isometry each panel has been dragged into — survives resize
 // (the affine part is re-derived from the new panel size).
@@ -236,7 +231,7 @@ function renderAll(): void {
   const size = panelSize();
   grid.style.cssText = `display:grid;grid-template-columns:repeat(3,${size}px);gap:${GAP}px`;
   grid.replaceChildren();
-  const dpr = window.devicePixelRatio || 1;
+  const d = dpr();
 
   panels.forEach((panel, i) => {
     const cell = document.createElement('div');
@@ -245,22 +240,17 @@ function renderAll(): void {
     const title = document.createElement('div');
     title.textContent = panel.title;
     title.style.cssText = 'font-size:12px;color:#555;white-space:nowrap;overflow:hidden;flex:1';
-    const save = document.createElement('button');
-    save.textContent = 'SVG';
+    const save = button('SVG');
     save.title = 'Download this panel as SVG — identical to the canvas, current view included';
-    save.style.cssText =
-      'font-size:10px;padding:1px 7px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer';
+    save.style.fontSize = '10px';
+    save.style.padding = '1px 7px';
     bar.append(title, save);
     const canvas = document.createElement('canvas');
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    canvas.style.cssText = `width:${size}px;height:${size}px;background:#fff;border-radius:4px`;
+    const g = canvas2d(canvas, size, d);
+    canvas.style.background = '#fff';
+    canvas.style.borderRadius = '4px';
     cell.append(bar, canvas);
     grid.appendChild(cell);
-
-    const g = canvas.getContext('2d');
-    if (!g) return;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     let camera = panel.initialCamera(size);
     const saved = savedViews[i];
@@ -272,23 +262,15 @@ function renderAll(): void {
     let hovered: ItemId | null = null;
     const draw = (): void => {
       const overrides = hovered
-        ? new Map([[hovered, { fill: { color: '#ffb454', opacity: 0.95 } }]])
+        ? new Map([[hovered, { fill: { color: HOVER, opacity: 0.95 } }]])
         : undefined;
       g.clearRect(0, 0, size, size);
       paint(g, panel.paths(camera, size, overrides), camera);
     };
-    let pending = false;
-    const schedule = (): void => {
-      if (pending) return;
-      pending = true;
-      requestAnimationFrame(() => {
-        pending = false;
-        draw();
-      });
-    };
+    const schedule = rafScheduler(draw);
 
     draw();
-    save.addEventListener('click', () => downloadSvg(panel, camera, size));
+    save.addEventListener('click', () => savePanelSvg(panel, camera, size));
     if (panel.interact) {
       attachInteraction(canvas, {
         geom: panel.interact.geom,

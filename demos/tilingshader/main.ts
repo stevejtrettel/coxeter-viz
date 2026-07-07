@@ -16,9 +16,7 @@ import { Cartesian2 } from '@/models/cartesian';
 import { Stereographic2 } from '@/models/stereographic';
 import { Gnomonic2 } from '@/models/gnomonic';
 import { identity } from '@/math/mat';
-import { classifyPolygon, type RealizationSpec } from '@/coxeter/spec';
-import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
-import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
+import type { RealizedPolygon } from '@/coxeter/solve';
 import type { Camera, Scene } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
 import { paint } from '@/viz2d/render/canvas';
@@ -27,6 +25,8 @@ import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
 import { TilingShader } from '@/viz2d/shader/TilingShader';
 import { tilingLayer } from '@/viz2d/shader/layer';
 import type { TilingStyle } from '@/viz2d/shader/types';
+import { realizePolygon } from '@/viz2d/kit/realize';
+import { tilesToScene } from '@/viz2d/kit/scene';
 
 // The reference shader's palette, kept: blue tiles, cream edges, ember vertices.
 const EVEN: [number, number, number, number] = [0.55, 0.7, 0.85, 1];
@@ -53,27 +53,10 @@ interface State {
 }
 
 function realize(orders: [number, number, number]): State {
-  const kind = classifyPolygon(orders);
-  const spec: RealizationSpec = {
-    geometry: kind,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
-    decorations: [
-      { walls: [0, 1], order: orders[0] },
-      { walls: [1, 2], order: orders[1] },
-      { walls: [2, 0], order: orders[2] },
-    ],
-  };
-  const poly = solvePolygon(spec);
-  const r0 = poly.inradius;
-  const overlay: Scene = groupFromPolygon(poly)
-    .tessellate(OVERLAY_DEPTH[kind], 20000)
-    .map((t) => ({
-      id: `tile:${wordId(t.word)}`,
-      kind: 'polygon' as const,
-      vertices: t.polytope.vertices,
-      style: { edge: { color: OVERLAY_COLOR, width: 0.05 * r0, opacity: 0.55 } },
-    }));
+  const { kind, group, poly, r0 } = realizePolygon(orders); // geometry INFERRED
+  const overlay: Scene = tilesToScene(group.tessellate(OVERLAY_DEPTH[kind], 20000), () => ({
+    edge: { color: OVERLAY_COLOR, width: 0.05 * r0, opacity: 0.55 },
+  }));
   return { kind, poly, overlay, r0 };
 }
 
