@@ -104,4 +104,19 @@ export class Hyperplane {
         return Math.asinh(s);
     }
   }
+
+  /**
+   * The perpendicular foot of p on the wall: normalize(p − (c·p)·Jc) — the
+   * nearest point of the wall to p, landing in the wall { c·x = 0 } in all
+   * three geometries (κ enters only through the pole Jc). Degenerate only on
+   * S when p is the wall's own pole (the whole wall is then equidistant);
+   * such callers retry with another point. The anchor for wall-perpendicular
+   * constructions: parabolic fixed points, Cayley/Wythoff feet, wall lines.
+   */
+  foot<P extends Vec, I>(geom: Geometry<P, I>, p: P): P {
+    const s = this.side(p);
+    const v = new Float64Array(p.length);
+    for (let i = 0; i < p.length; i++) v[i] = p[i] - s * this.pole[i];
+    return geom.normalize(v);
+  }
 }

@@ -12,14 +12,10 @@
 
 import type { GeometryKind, Isometry2, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
-import { Poincare2 } from '@/models/poincare';
-import { Cartesian2 } from '@/models/cartesian';
-import { Stereographic2 } from '@/models/stereographic';
 import { identity } from '@/math/mat';
-import { classifyPolygon, type RealizationSpec } from '@/coxeter/spec';
-import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
-import { groupFromPolygon, wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
-import { matrixKey } from '@/group/orbit';
+import type { RealizedPolygon } from '@/coxeter/solve';
+import type { CoxeterGroup, Tile } from '@/group/CoxeterGroup';
+import { parseWordList } from '@/group/wordlists';
 import { polygonArea } from '@/polytope/measure';
 import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
@@ -30,58 +26,18 @@ import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
 import { TilingShader } from '@/viz2d/shader/TilingShader';
 import { tilingLayer } from '@/viz2d/shader/layer';
 import { coverageRadius, fieldScene, mergeFieldPaths } from '@/viz2d/shader/vector';
-import type { Rgba, TilingStyle } from '@/viz2d/shader/types';
+import type { TilingStyle } from '@/viz2d/shader/types';
+import { realizePolygon } from '@/viz2d/kit/realize';
+import { cayleyScene, domainItem, polygonItem, tilesToScene, wallItems } from '@/viz2d/kit/scene';
+import { fieldStyle, rgba, starBands, starField } from '@/viz2d/kit/field';
+import { FD, GREY, HOVER, LIST, WALL_COLORS } from '@/viz2d/kit/palette';
 
-/** The fundamental domain: ALWAYS highlighted, whatever the word list says. */
-const FD_COLOR = '#f6d9a0';
-/** Word-list tiles: drawn OVER everything, the identity included. */
-const LIST_COLOR = '#d15954';
-const HOVER_COLOR = '#ffb454';
-/** Generator wall colors, cycled for high rank. */
-const WALL_COLORS = ['#c0392b', '#27ae60', '#2f6fb7', '#8e44ad', '#d68910', '#16a085'];
-/** '#rrggbb' → Rgba for shader uniforms. */
-const rgba = (hex: string, a: number): Rgba => [
-  parseInt(hex.slice(1, 3), 16) / 255,
-  parseInt(hex.slice(3, 5), 16) / 255,
-  parseInt(hex.slice(5, 7), 16) / 255,
-  a,
-];
 /** ε = min tile width in px: the export dial, and a coarser one for live CPU ambience. */
 const EXPORT_EPSILON_PX = 1.5;
 const LIVE_EPSILON_PX = 3;
 /** Cayley nodes are only legible where tiles are ≳ this wide. */
 const CAYLEY_EPSILON_PX = 12;
 const MAX_TILES = 20000;
-
-/** The GPU field's ambience (as wordfile): quiet parity, faint intrinsic edges. */
-function fieldStyle(r0: number): TilingStyle {
-  return {
-    even: [1, 1, 1, 1],
-    odd: [0.98, 0.955, 0.905, 1],
-    edge: [0.604, 0.553, 0.459, 0.45],
-    edgeHalfWidth: 0.0075 * r0,
-    vertex: [0, 0, 0, 0],
-    vertexRadius: 0,
-  };
-}
-
-// ── Parsing ─────────────────────────────────────────────────────────────────
-
-/** Dot-words over generators 0…n−1 (`e` = identity), whitespace/comma separated. */
-function parseWords(text: string, n: number): { words: number[][]; bad: string[] } {
-  const words: number[][] = [];
-  const bad: string[] = [];
-  for (const tok of text.split(/[\s,;]+/).filter(Boolean)) {
-    if (tok === 'e') {
-      words.push([]);
-      continue;
-    }
-    const letters = /^[0-9]+(\.[0-9]+)*$/.test(tok) ? tok.split('.').map(Number) : null;
-    if (letters && letters.every((i) => i < n)) words.push(letters);
-    else bad.push(tok);
-  }
-  return { words, bad };
-}
 
 // ── The realized state ──────────────────────────────────────────────────────
 
@@ -97,92 +53,37 @@ interface State {
 }
 
 function realize(orders: number[], words: number[][], gpuField: boolean): State {
-  const kind = classifyPolygon(orders);
-  const n = orders.length;
-  const spec: RealizationSpec = {
-    geometry: kind,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: Array.from({ length: n }, (_, k) => k) },
-    decorations: orders.map((m, k) => ({ walls: [k, (k + 1) % n] as [number, number], order: m })),
-  };
-  const poly = solvePolygon(spec);
-  const group = groupFromPolygon(poly);
-  const model =
-    kind === 'hyperbolic' ? new Poincare2() : kind === 'euclidean' ? new Cartesian2() : new Stereographic2();
+  const { kind, group, poly, model, r0 } = realizePolygon(orders); // geometry INFERRED
   const tiles = group.tilesFor(words);
   const scene: Scene = [
-    {
-      id: 'domain',
-      kind: 'domain',
-      style: gpuField
-        ? { rim: { color: '#bbbbbb', widthPx: 1.25 } }
-        : { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
-    },
+    domainItem(!gpuField),
     // The fundamental domain, always marked (list or no list).
-    {
-      id: 'fd',
-      kind: 'polygon' as const,
-      vertices: poly.chamber.vertices,
-      style: {
-        fill: { color: FD_COLOR, opacity: 0.92 },
-        edge: { color: '#7a6a4a', width: 0.03 * poly.inradius, opacity: 0.6 },
-      },
-    },
+    polygonItem(
+      poly.chamber,
+      { fill: { color: FD, opacity: 0.92 }, edge: { color: GREY.tileEdge, width: 0.03 * r0, opacity: 0.6 } },
+      'fd',
+    ),
     // The word list, in red, OVER the fd (listing `e` paints it red too).
-    ...tiles.map((t) => ({
-      id: `tile:${wordId(t.word)}`,
-      kind: 'polygon' as const,
-      vertices: t.polytope.vertices,
-      style: {
-        fill: { color: LIST_COLOR, opacity: 0.9 },
-        edge: { color: '#7a4a44', width: 0.03 * poly.inradius, opacity: 0.6 },
-      },
+    ...tilesToScene(tiles, () => ({
+      fill: { color: LIST, opacity: 0.9 },
+      edge: { color: '#7a4a44', width: 0.03 * r0, opacity: 0.6 },
     })),
-    ...poly.walls.map((wall, i) => ({
-      id: `wall:${i}`,
-      kind: 'geodesic' as const,
-      source: { type: 'line' as const, wall },
-      style: { color: WALL_COLORS[i % WALL_COLORS.length], width: 0.05 * poly.inradius, opacity: 0.8 },
-    })),
+    ...wallItems(poly.walls, (i) => ({ color: WALL_COLORS[i % WALL_COLORS.length], width: 0.05 * r0, opacity: 0.8 })),
   ];
-  return { kind, group, poly, model, r0: poly.inradius, tiles, scene };
+  return { kind, group, poly, model, r0, tiles, scene };
 }
 
 /**
- * The Cayley graph over the adaptive ball (§5.7 C2): nodes at g·basePoint,
- * an edge g — g·R_i per generator found by MATRIX-KEY LOOKUP among the
- * ball's elements (the cayley.ts recipe at metric-ball scope; edges whose
- * far end left the ball are absent, the induced subgraph). ε picks the
- * legible depth automatically.
+ * The Cayley graph over the adaptive ball (§5.7 C2): the library's
+ * `cayleyBall` (the induced graph on the metric ball), drawn by kit's
+ * `cayleyScene`. ε picks the legible depth automatically.
  */
 function cayleyItems(state: State, camera: Camera, frame: { widthPx: number; heightPx: number }): SceneItem[] {
-  const geom = state.group.geom;
   const radius = coverageRadius(state.group, state.model, camera, frame, CAYLEY_EPSILON_PX);
-  const ball = state.group.tessellateBall(radius, 4000);
-  const index = new Map(ball.map((t, k) => [matrixKey(t.element), k]));
-  const pts = ball.map((t) => geom.apply(t.element, state.group.basePoint));
-  const items: SceneItem[] = [];
-  ball.forEach((t, a) => {
-    for (let i = 0; i < state.group.rank; i++) {
-      const b = index.get(matrixKey(geom.compose(t.element, state.group.reflections[i])));
-      if (b === undefined || b <= a) continue; // absent far end / each edge once
-      items.push({
-        id: `cayedge:${wordId(t.word)}:${i}`,
-        kind: 'geodesic',
-        source: { type: 'segment', a: pts[a], b: pts[b] },
-        style: { color: WALL_COLORS[i % WALL_COLORS.length], width: 0.06 * state.r0, opacity: 0.85 },
-      });
-    }
+  return cayleyScene(state.group, state.group.cayleyBall(radius, 4000), {
+    edge: (g) => ({ color: WALL_COLORS[g % WALL_COLORS.length], width: 0.06 * state.r0, opacity: 0.85 }),
+    node: () => ({ color: '#1a1a1a', radius: 0.11 * state.r0 }),
   });
-  ball.forEach((t, k) => {
-    items.push({
-      id: `cay:${wordId(t.word)}`,
-      kind: 'point',
-      at: pts[k],
-      style: { color: '#1a1a1a', radius: 0.11 * state.r0 },
-    });
-  });
-  return items;
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
@@ -286,7 +187,7 @@ function rebuild(): void {
   let bad: string[] = [];
   try {
     if (!orders) throw new Error('orders: ≥ 3 integers ≥ 2, the cyclic vertex orders');
-    const parsed = parseWords(wordsInput.value, orders.length);
+    const parsed = parseWordList(wordsInput.value, orders.length);
     bad = parsed.bad;
     state = realize(orders, parsed.words, gpuBox.checked);
   } catch (err) {
@@ -356,24 +257,18 @@ function rebuild(): void {
   // and the vector SVG.
   const gpuStar = gpuBox.checked && cayBox.checked;
   const gpuStyle: TilingStyle = gpuStar
-    ? {
-        ...fieldStyle(state.r0),
-        star: {
-          anchor: state.group.basePoint,
-          halfWidth: 0.03 * state.r0,
-          bands: state.poly.walls.map((_, i) => ({
-            wall: i,
-            color: rgba(WALL_COLORS[i % WALL_COLORS.length], 0.85),
-          })),
-          node: { color: [0.1, 0.1, 0.1, 1], radius: 0.11 * state.r0 },
-        },
-      }
+    ? starField(fieldStyle(state.r0), {
+        anchor: state.group.basePoint,
+        halfWidth: 0.03 * state.r0,
+        bands: starBands(state.poly.walls, (i) => rgba(WALL_COLORS[i % WALL_COLORS.length], 0.85)),
+        node: { color: [0.1, 0.1, 0.1, 1], radius: 0.11 * state.r0 },
+      })
     : fieldStyle(state.r0);
   const cayleyLive = cayBox.checked && !gpuBox.checked ? cayleyItems(state, camera, frame) : [];
   const build = (): PathList =>
     buildPathList(
       [...liveTwin, ...state.scene, ...cayleyLive],
-      ctx(hovered ? new Map([[hovered, { fill: { color: HOVER_COLOR, opacity: 0.95 } }]]) : undefined),
+      ctx(hovered ? new Map([[hovered, { fill: { color: HOVER, opacity: 0.95 } }]]) : undefined),
     );
   const draw = (): void => {
     if (gpuBox.checked) {

@@ -1345,16 +1345,20 @@ SVG). Verification per increment: headless GPU-vs-CPU coincidence.
 
 ### 5.9 — the 2D consolidation reorg (user-directed 2026-07-06)
 
-**Status: R0 (spec) UNDERWAY.** The 2D program (§5.3.1 render2d V0–V3 +
-polish, §5.3.2 sphereview, §5.6 tilingshader, §5.7–5.8 field programs) is
-feature-complete but has accreted three seams the user wants cleaned so the
-2D code is "modular, clean, and close to the math." A review (2026-07-06)
-found the architecture sound — the layering law holds, every folder is a
-README-spec, the `Chart2` seam (`{project, jacobianAt}`) is right, and
-`sample`/`stroke`/`marks` are already generic over it — but with three
-consolidation opportunities, and the user chose the FULL PASS with an
-explicit `src/viz2d/` umbrella and the scene adapter as a first-class src
-module:
+**Status: R0–R3 DONE and green (392 tests + typecheck); R4 REPLANNED
+library-first 2026-07-06, awaiting go.** The 2D program (§5.3.1 render2d
+V0–V3 + polish, §5.3.2 sphereview, §5.6 tilingshader, §5.7–5.8 field
+programs) is feature-complete but has accreted three seams the user wants
+cleaned so the code is "modular, clean, and close to the math." A review
+(2026-07-06) found the architecture sound — the layering law holds, every
+folder is a README-spec, the `Chart2` seam (`{project, jacobianAt}`) is
+right, and `sample`/`stroke`/`marks` are already generic over it — but with
+three consolidation opportunities, and the user chose the FULL PASS with an
+explicit `src/viz2d/` umbrella. **Framing (user, mid-R4, load-bearing): this
+is a LIBRARY to work with Coxeter groups, not a set of demos — all
+mathematics belongs in the library core; the viz layer only assembles
+pictures; the demos are thin, transparent, math-free. Author the complete
+module-level plan up front, not per-increment.**
 
 1. **`render2d/scene.ts` (781 lines) wears six hats and has become an
    undeclared shared library** — sphereview reaches into it for seven
@@ -1374,35 +1378,56 @@ module:
    single unified `buildPathList`** — the sphere's silhouette-split/two-pass
    is genuinely different; forcing one function would be cleverness, not
    clarity.
-3. **The demos carry a whole second application layer.** A survey found the
-   duplication far larger than the "four-times-duplicated group→Scene" note:
-   split cleanly into (a) a SCENE ADAPTER — the `realize` preamble (spec →
-   `solvePolygon` → `groupFromPolygon` → model-by-kind, ×4), `cayleyToScene`
-   (×3, identical magic constants `width:0.06·r0`/`radius:0.11·r0`),
-   `tilesToScene(colorizer)`, `wallItems`, `domainItem`, palette/`fieldStyle`
-   — first-class in `src/viz2d/adapters/`, conventions pinned once by tests;
-   and (b) an app HARNESS (page shell, DPR canvas sizing, rAF `schedule`,
-   `attachInteraction`+hover, GPU layer-stack, SVG/PNG/k× export, parsers)
-   → `demos/shared/` (app glue, not src).
+3. **The demos carry a whole second application layer, and it contains MATH.**
+   A survey (all six group demos read in full) found the duplication far
+   larger than the "four-times-duplicated group→Scene" note, and — worse for
+   a library — genuine mathematics living in demos: the Cayley graph on a
+   metric ball (tilings' inline adjacency), the parabolic word list
+   (`dihedralWords`), the W_S-fixed anchor (cosets), the perpendicular foot
+   (`footOnWall`), camera-fit projection, word-list parsing. The library-first
+   cut (user rulings mid-R4): push all such math DOWN into the library core;
+   the viz layer only assembles pictures; the demos become thin.
+   - **library core** (`src/group`, `src/geometry`): `Hyperplane.foot`
+     (moved from `shader/uniforms`, re-exported there); `cayleyBall` (group/
+     cayley); `dihedralWords` / `parabolicFixedPoint` / `parseWordList`
+     (group/wordlists) — each tested in its own layer.
+   - **`src/viz2d/kit/`** (~5 cohesive files, NO math — spec =
+     `viz2d/kit/README.md`): `realize` (spec→group→model), `scene` (item
+     builders + the `tile:`/`cay:`/`cayedge:`/`wall:` id scheme + parity/coset/
+     hue color maps; kills the `0.06·r0`/`0.11·r0` constants), `camera`
+     (fit-to-domain / fit-to-points / tipped view), `field` (`fieldStyle` +
+     coset/star/regions `TilingStyle` assembly), `palette`.
+   - **`demos/shared/`** (app harness, not library, own README spec): page
+     shell, DPR canvas sizing, rAF `schedule`, `attachInteraction`+hover, GPU
+     layer-stack, SVG/PNG/k× export, control widgets. Demos end at
+     data → scene → mount.
 
 Target structure: `src/viz2d/{render (←render2d), sphere (←sphereview),
-shader (←tilingshader), adapters (new)}` + `src/viz2d/README.md` (umbrella
-spec). The `render2d` NAME goes away in code + folder READMEs; PLAN.md's
-historical §5.3.1/render2d references stay as-is (history is appended to,
-not rewritten). The `@/` alias rename touches ~20 import sites through one
-line each in tsconfig/vite/vitest.
+shader (←tilingshader), kit (new, no math)}` + library-core additions in
+`src/group` & `src/geometry` + `demos/shared/` + `src/viz2d/README.md`
+(umbrella spec). The `render2d` NAME goes away in code + folder READMEs;
+PLAN.md's historical §5.3.1/render2d references stay as-is (history is
+appended to, not rewritten). The `@/` alias rename touched ~20 import sites
+through one line each in tsconfig/vite/vitest.
 
-Increments, each a green-gated reviewable session (392 tests + typecheck the
-floor throughout): **R0** `viz2d/README.md` + this entry (spec, no code) ·
-**R1** the move (rename the three folders under `viz2d/`, update imports +
-folder READMEs; pure rename, zero logic change; gate: green + demos launch)
-· **R2** split `render/scene.ts` per #1, re-point sphere at the named
-modules (gate: green — existing tests pin the extracted behavior) · **R3**
-share the per-item builders per #2 (gate: green + a before/after path-list
-snapshot on the Milestone-1 scenes proves byte-identical output) · **R4**
-the scene adapter per #3a + convention tests, migrate the 6 group-consuming
-demos (gate: green + hands-on visual pass) · **R5** the demo harness per #3b,
-migrate demos (gate: green + hands-on). Milestone 2 (3D) stays queued after.
+Increments, each a green-gated reviewable unit (392 tests + typecheck the
+floor throughout): **R0** `viz2d/README.md` + this entry (spec, no code) —
+DONE · **R1** the move (rename the three folders under `viz2d/`, update
+imports + folder READMEs; pure rename) — DONE · **R2** split
+`render/scene.ts` per #1, re-point sphere at the named modules — DONE ·
+**R3** share the per-item builders per #2 (`render/item.ts`:
+`spineContour`/`fillContourFromEdges`/`vertexMean`/`convexContainment`/
+`transportWall`; equivalence-checked byte-faithful) — DONE · **R4-lib** the
+library-core additions per #3 (Hyperplane.foot + shader re-export; cayleyBall;
+dihedralWords/parabolicFixedPoint/parseWordList) + tests in each layer + the
+group/geometry README updates (gate: green) · **R4-kit** `src/viz2d/kit/`
+(the 5 files) + convention tests, pinned against a captured Milestone-1
+scene (gate: green, no demo changes) · **R4b** migrate the six group demos
+onto `kit/` in batches (group+wordlists · wordfile+tilings · cosets+uniform),
+gallery demos adopt `realize`/`palette` (gate: green + hands-on visual pass,
+pictures unchanged) · **R5** `demos/shared/` harness (own README spec,
+approved first) + migrate demos to data→scene→mount (gate: green +
+hands-on). Milestone 2 (3D) stays queued after.
 
 ### Milestones cut vertically, not horizontally
 

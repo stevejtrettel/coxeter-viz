@@ -12,142 +12,75 @@ import type { Model } from '@/models/types';
 import { Poincare2 } from '@/models/poincare';
 import { Cartesian2 } from '@/models/cartesian';
 import { Stereographic2 } from '@/models/stereographic';
-import { mat3, matMul } from '@/math/mat';
-import { solvePolygon } from '@/coxeter/solve';
-import type { RealizationSpec } from '@/coxeter/spec';
-import { groupFromPolygon, wordId, type CoxeterGroup } from '@/group/CoxeterGroup';
-import { matrixKey, type OrbitElement } from '@/group/orbit';
-import { cosetIndex, hullOfWords } from '@/group/wordlists';
-import { transformPolytope } from '@/polytope/transform';
+import { mat3 } from '@/math/mat';
+import { matrixKey } from '@/group/orbit';
+import type { CoxeterGroup } from '@/group/CoxeterGroup';
+import { cosetIndex, dihedralWords, hullOfWords, parseWordList } from '@/group/wordlists';
 import { polygonArea } from '@/polytope/measure';
-import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverride, StyleOverrides } from '@/viz2d/render/types';
+import type { Camera, ItemId, PathList, Scene, StyleOverride, StyleOverrides } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
 import { paint } from '@/viz2d/render/canvas';
 import { toSvg } from '@/viz2d/render/svg';
 import { attachInteraction, hitTest, modelUnprojector } from '@/viz2d/render/interact';
-
-// ── Style ───────────────────────────────────────────────────────────────────
-
-/** Categorical palette, cycled over coset ordinals. */
-const COSET_COLORS = [
-  '#f4d6a0', '#bfe3c0', '#bcd6f0', '#f0c4c4', '#ddc9ec', '#f2e2b8',
-  '#c8e6e0', '#e6cdb8', '#ccd9f2', '#e0e4bb', '#e8c7dd', '#c9e0f4',
-];
-const ENTRY_COLOR = '#e84a5f';
-const HOVER_COLOR = '#ffb454';
-const HULL_COLOR = '#2f6fb7';
-
-/** The dihedral parabolic ⟨R₁,R₂⟩ as words, per group's m₁₂. */
-function dihedralWords(m: number): number[][] {
-  const words: number[][] = [[]];
-  for (let k = 1; k <= 2 * m - 1; k++) {
-    // Alternating words 1,2,1,… and their length-k prefixes cover the group.
-    words.push(Array.from({ length: k }, (_, i) => (i % 2 === 0 ? 1 : 2)));
-    words.push(Array.from({ length: k }, (_, i) => (i % 2 === 0 ? 2 : 1)));
-  }
-  return words;
-}
+import { realizePolygon } from '@/viz2d/kit/realize';
+import { cayId, cayleyScene, domainItem, highlightElements, polygonItem, tileId, tilesToScene } from '@/viz2d/kit/scene';
+import { tippedView } from '@/viz2d/kit/camera';
+import { COSET_COLORS, ENTRY, GREY, HOVER, HULL } from '@/viz2d/kit/palette';
 
 // ── Group data ──────────────────────────────────────────────────────────────
 
 interface GroupData {
   group: CoxeterGroup<Point2, Isometry2>;
-  ball: OrbitElement<Isometry2>[];
-  coset: Map<string, number>; // element key → coset ordinal
   idsOf: Map<string, { tile: ItemId; node: ItemId }>; // element key → scene ids
   scene: Scene;
   r0: number;
   chamberArea: number;
   ballArea: number;
+  tileCount: number;
 }
 
 function generate(kind: GeometryKind, orders: [number, number, number], maxWord: number): GroupData {
-  const spec: RealizationSpec = {
-    geometry: kind,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
-    decorations: [
-      { walls: [0, 1], order: orders[0] },
-      { walls: [1, 2], order: orders[1] },
-      { walls: [2, 0], order: orders[2] },
-    ],
-  };
-  const realized = solvePolygon(spec);
-  const group = groupFromPolygon(realized);
-  const geom = group.geom;
-  const r0 = realized.inradius;
-  const ball = group.orbit(maxWord, 20000);
+  const rg = realizePolygon(orders, { geometry: kind });
+  const { group, poly, r0 } = rg;
+  const tiles = group.tessellate(maxWord, 20000);
   const graph = group.cayleyGraph(maxWord, 20000);
 
+  // Left cosets of the vertex dihedral ⟨R₁,R₂⟩ (completely enumerated).
   const H = group.subgroup([group.reflections[1], group.reflections[2]]);
-  const coset = cosetIndex(group, H, ball);
+  const coset = cosetIndex(group, H, tiles);
+  const cosetColorOf = (key: string): string => COSET_COLORS[(coset.get(key) ?? 0) % COSET_COLORS.length];
 
-  const chamberArea = polygonArea(geom, realized.chamber.vertices);
-  let ballArea = 0;
-
+  const chamberArea = polygonArea(group.geom, poly.chamber.vertices);
   const idsOf = new Map<string, { tile: ItemId; node: ItemId }>();
-  const items: SceneItem[] = [
-    {
-      id: 'domain',
-      kind: 'domain',
-      style: { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
-    },
+  for (const t of tiles) idsOf.set(matrixKey(t.element), { tile: tileId(t.word), node: cayId(t.word) });
+
+  // The dihedral word list's base-point hull; thin gray Cayley edges, coset nodes.
+  const hull = hullOfWords(group, dihedralWords(1, 2, orders[1]));
+  const scene: Scene = [
+    domainItem(true),
+    ...tilesToScene(tiles, (t) => ({
+      fill: { color: cosetColorOf(matrixKey(t.element)), opacity: 0.9 },
+      edge: { color: GREY.tileEdge, width: 0.02 * r0, opacity: 0.4 },
+    })),
+    polygonItem(hull, {
+      fill: { color: HULL, opacity: 0.12 },
+      edge: { color: HULL, width: 0.09 * r0, opacity: 0.9 },
+    }, "hull"),
+    ...cayleyScene(group, graph, {
+      edge: () => ({ color: '#666666', width: 0.035 * r0, opacity: 0.6 }),
+      node: (n) => ({ color: cosetColorOf(matrixKey(n.element)), radius: 0.14 * r0 }),
+    }),
   ];
 
-  // Tiles, colored by coset.
-  for (const e of ball) {
-    const key = matrixKey(e.element);
-    const tileId = `tile:${wordId(e.word)}`;
-    const poly = transformPolytope(realized.chamber, geom, e.element);
-    ballArea += chamberArea; // isometric copies — exact by Gauss–Bonnet
-    items.push({
-      id: tileId,
-      kind: 'polygon',
-      vertices: poly.vertices,
-      style: {
-        fill: { color: COSET_COLORS[(coset.get(key) ?? 0) % COSET_COLORS.length], opacity: 0.9 },
-        edge: { color: '#7a6a4a', width: 0.02 * r0, opacity: 0.4 },
-      },
-    });
-    idsOf.set(key, { tile: tileId, node: `cay:${wordId(e.word)}` });
-  }
-
-  // The dihedral word list's base-point hull.
-  const m12 = orders[1];
-  const hull = hullOfWords(group, dihedralWords(m12));
-  items.push({
-    id: 'hull',
-    kind: 'polygon',
-    vertices: hull.vertices,
-    style: {
-      fill: { color: HULL_COLOR, opacity: 0.12 },
-      edge: { color: HULL_COLOR, width: 0.09 * r0, opacity: 0.9 },
-    },
-  });
-
-  // Cayley graph: thin gray edges, coset-colored nodes.
-  const points = graph.nodes.map((n) => geom.apply(n.element, group.basePoint));
-  for (const e of graph.edges) {
-    items.push({
-      id: `cayedge:${wordId(graph.nodes[e.a].word)}:${e.generator}`,
-      kind: 'geodesic',
-      source: { type: 'segment', a: points[e.a], b: points[e.b] },
-      style: { color: '#666666', width: 0.035 * r0, opacity: 0.6 },
-    });
-  }
-  graph.nodes.forEach((n, k) => {
-    items.push({
-      id: `cay:${wordId(n.word)}`,
-      kind: 'point',
-      at: points[k],
-      style: {
-        color: COSET_COLORS[(coset.get(matrixKey(n.element)) ?? 0) % COSET_COLORS.length],
-        radius: 0.14 * r0,
-      },
-    });
-  });
-
-  return { group, ball, coset, idsOf, scene: items, r0, chamberArea, ballArea };
+  return {
+    group,
+    idsOf,
+    scene,
+    r0,
+    chamberArea,
+    ballArea: tiles.length * chamberArea,
+    tileCount: tiles.length,
+  };
 }
 
 const h237 = generate('hyperbolic', [2, 3, 7], 14);
@@ -156,33 +89,12 @@ const s235 = generate('spherical', [2, 3, 5], 20);
 
 // ── Word entry (ruling 3): abstract words → elements → highlighted ids ──────
 
-function parseWords(text: string): { words: number[][]; bad: string[] } {
-  const words: number[][] = [];
-  const bad: string[] = [];
-  for (const tok of text.split(/[\s,;]+/).filter(Boolean)) {
-    if (tok === 'e') {
-      words.push([]);
-    } else if (/^\d+(\.\d+)*$/.test(tok)) {
-      const w = tok.split('.').map(Number);
-      if (w.every((i) => i <= 2)) words.push(w);
-      else bad.push(tok);
-    } else {
-      bad.push(tok);
-    }
-  }
-  return { words, bad };
-}
-
-/** The per-panel overrides a typed word list induces — elementwise. */
+/** The per-panel overrides a typed word list induces — elementwise (kit). */
 function entryOverrides(data: GroupData, words: number[][]): Map<ItemId, StyleOverride> {
-  const out = new Map<ItemId, StyleOverride>();
-  for (const key of data.group.elements(words).keys()) {
-    const ids = data.idsOf.get(key);
-    if (!ids) continue; // outside the generated ball
-    out.set(ids.tile, { fill: { color: ENTRY_COLOR, opacity: 0.95 } });
-    out.set(ids.node, { color: ENTRY_COLOR, radius: 0.2 * data.r0 });
-  }
-  return out;
+  return highlightElements(data.group, words, data.idsOf, {
+    tile: { fill: { color: ENTRY, opacity: 0.95 } },
+    node: { color: ENTRY, radius: 0.2 * data.r0 },
+  });
 }
 
 // ── Panels ──────────────────────────────────────────────────────────────────
@@ -200,18 +112,7 @@ const identityView: Isometry2 = mat3([
   [0, 1, 0],
   [0, 0, 1],
 ]);
-const sphereTip = matMul(
-  mat3([
-    [Math.cos(0.55), -Math.sin(0.55), 0],
-    [Math.sin(0.55), Math.cos(0.55), 0],
-    [0, 0, 1],
-  ]),
-  mat3([
-    [Math.cos(0.35), 0, -Math.sin(0.35)],
-    [0, 1, 0],
-    [Math.sin(0.35), 0, Math.cos(0.35)],
-  ]),
-);
+const sphereTip = tippedView(0.55, 0.35);
 
 function fmt(x: number): string {
   return x.toPrecision(5);
@@ -220,21 +121,21 @@ function fmt(x: number): string {
 const panels: Panel[] = [
   {
     title: '(2,3,7) H² — Poincaré, cosets of ⟨R₁,R₂⟩ (order 6)',
-    stats: `chamber area = ${fmt(h237.chamberArea)} = π/42 exactly · ball: ${h237.ball.length} tiles, area ${fmt(h237.ballArea)}`,
+    stats: `chamber area = ${fmt(h237.chamberArea)} = π/42 exactly · ball: ${h237.tileCount} tiles, area ${fmt(h237.ballArea)}`,
     data: h237,
     model: new Poincare2(),
     initialCamera: (s) => ({ view: identityView, scalePx: s / 2 / 1.08, centerPx: [s / 2, s / 2] }),
   },
   {
     title: '(2,4,4) E² — Cartesian, cosets of ⟨R₁,R₂⟩ (order 8)',
-    stats: `chamber area = ${fmt(e244.chamberArea)} (scale modulus: inradius 1) · ball: ${e244.ball.length} tiles, area ${fmt(e244.ballArea)}`,
+    stats: `chamber area = ${fmt(e244.chamberArea)} (scale modulus: inradius 1) · ball: ${e244.tileCount} tiles, area ${fmt(e244.ballArea)}`,
     data: e244,
     model: new Cartesian2(),
     initialCamera: (s) => ({ view: identityView, scalePx: s / 2 / 14, centerPx: [s / 2, s / 2] }),
   },
   {
     title: '(2,3,5) S² — stereographic, cosets of ⟨R₁,R₂⟩ (order 6)',
-    stats: `chamber area = ${fmt(s235.chamberArea)} = 4π/120 exactly · all ${s235.ball.length} tiles, total ${fmt(s235.ballArea)} = 4π`,
+    stats: `chamber area = ${fmt(s235.chamberArea)} = 4π/120 exactly · all ${s235.tileCount} tiles, total ${fmt(s235.ballArea)} = 4π`,
     data: s235,
     model: new Stereographic2(),
     initialCamera: (s) => ({ view: sphereTip, scalePx: s / 2 / 3.2, centerPx: [s / 2, s / 2] }),
@@ -273,7 +174,7 @@ let typedWords: number[][] = [];
 const repaints: (() => void)[] = [];
 
 entry.addEventListener('input', () => {
-  const { words, bad } = parseWords(entry.value);
+  const { words, bad } = parseWordList(entry.value, 3);
   typedWords = words;
   feedback.textContent =
     (words.length ? `${words.length} word${words.length === 1 ? '' : 's'}` : '') +
@@ -338,7 +239,7 @@ function renderAll(): void {
     });
     const overrides = (): StyleOverrides => {
       const map = entryOverrides(panel.data, typedWords);
-      if (hovered && !map.has(hovered)) map.set(hovered, { fill: { color: HOVER_COLOR, opacity: 0.95 } });
+      if (hovered && !map.has(hovered)) map.set(hovered, { fill: { color: HOVER, opacity: 0.95 } });
       return map;
     };
     const build = (): PathList => buildPathList(panel.data.scene, ctx(overrides()));

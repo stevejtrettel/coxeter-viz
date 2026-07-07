@@ -83,25 +83,27 @@ wraps around them. (Deliberately NOT a single unified `buildPathList` —
 PLAN.md §5.9: the sphere's two-pass split is different enough that one
 function would be cleverness, not clarity.)
 
-## The adapter layer — group data → `Scene`
+## The `kit/` layer — group data → `Scene`
 
-`adapters/` sits ABOVE the painters and BELOW the app: it turns the group
-layer's output (`CoxeterGroup` tessellations, Cayley graphs, Wythoff cells,
-word lists) into `Scene` items with the house conventions pinned **once**,
-so the demos are thin and every demo colors a tile or draws a Cayley edge the
-same way. It is the group→viz seam expressed as testable code, not copied
-magic constants.
+`kit/` sits ABOVE the painters and BELOW the demos: it turns the group layer's
+output (`CoxeterGroup` tessellations, Cayley graphs, Wythoff cells, word
+lists) into `Scene` items, `Camera`s, and `TilingStyle`s with the house
+conventions pinned **once**, so the demos are thin and every demo colors a
+tile or draws a Cayley edge the same way. It is **picture assembly only** —
+all group theory and geometry lives in the library core (`src/group`,
+`src/geometry`), so `kit/` holds no math (see `kit/README.md`).
 
-- the `realize` preamble: `RealizationSpec` → `solvePolygon` →
-  `groupFromPolygon` → model-by-geometry-kind;
-- `tilesToScene(colorizer)` — parity/coset/highlight fills over a tessellation;
-- `cayleyToScene` — nodes at `g·basePoint`, generator-colored geodesic edges;
-- `wallItems` / `domainItem` — the chamber's mirrors and the chart dressing;
-- the shared palette and `fieldStyle` (the GPU-field ambience).
+- `realize` — `RealizationSpec` → `solvePolygon` → `groupFromPolygon` →
+  model-by-geometry-kind;
+- `scene` — `tilesToScene` / `cayleyScene` / `wallItems` / `domainItem` /
+  `polygonItem`, the id scheme, and the parity/coset/hue color maps;
+- `camera` — fit-to-domain / fit-to-points / tipped-view framing;
+- `field` — `fieldStyle` + the coset/star/regions `TilingStyle` assembly;
+- `palette` — the house color constants.
 
 The GPU field programs (coset / star / regions, §5.8) have their CPU twins in
-`shader/vector.ts`; the adapter chooses between the vector twin (SVG) and the
-live GPU field (screen/PNG) — the demos just say which.
+`shader/vector.ts`; the demo chooses between the vector twin (SVG) and the
+live GPU field (screen/PNG).
 
 ## Layering within the slot
 
@@ -109,14 +111,14 @@ live GPU field (screen/PNG) — the demos just say which.
 render/  (core: types, Chart2, sample/stroke/marks, the vector builder, canvas/svg/png, interact)
    ├── sphere/    (perspective builder over render's Chart2 + machinery)
    ├── shader/    (GPU field + vector twin; imports render TYPES + png only)
-   └── adapters/  (group data → Scene; imports render + shader)
-          └── demos/  (app: demos/shared harness + per-demo shells)
+   └── kit/       (group data → Scene/Camera/TilingStyle; imports render + shader + group)
+          └── demos/  (data + colors + layout: demos/shared harness + per-demo shells)
 ```
 
 `render/` knows nothing above it; `sphere/` and `shader/` know only
-`render/`; `adapters/` knows the painters and the group layer; the app knows
-the adapters. The `Camera` type is shared by all three painters (the
-one-camera contract: one interaction controller repaints every layer).
+`render/`; `kit/` knows the painters and the group layer; the demos know
+`kit/` and `demos/shared`. The `Camera` type is shared by all three painters
+(the one-camera contract: one interaction controller repaints every layer).
 
 ## Folders
 
@@ -125,7 +127,7 @@ one-camera contract: one interaction controller repaints every layer).
 | `render/` | the flat-chart core + the shared seams, samplers, stroker, marker, vector builder, Canvas/SVG/PNG backends, interaction | `render/README.md` |
 | `sphere/` | the perspective sphere view (translucent globe, silhouette splits, two-pass paint) | `sphere/README.md` |
 | `shader/` | the WebGL2 tiling field (backward per-pixel fold) + its SVG vector twin + field programs | `shader/README.md` |
-| `adapters/` | group/tiling/Cayley/Wythoff data → `Scene`; the pinned house conventions | this file (until it earns its own) |
+| `kit/` | group data → `Scene`/`Camera`/`TilingStyle`: picture assembly, the pinned house conventions (no math) | `kit/README.md` |
 
 ## Provenance and status
 

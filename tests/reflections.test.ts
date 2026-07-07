@@ -25,6 +25,19 @@ describe.each(cells)('$name reflections', (cell) => {
     }
   });
 
+  it('foot: on the wall, the nearest point, fixed by the reflection', () => {
+    const wall = sampleWall(cell);
+    const R = geom.reflection(wall);
+    const rand = rng(23);
+    for (let k = 0; k < 10; k++) {
+      const p = randomPoint(cell, rand);
+      const f = wall.foot(geom, p);
+      expect(Math.abs(wall.side(f))).toBeLessThan(1e-9); // lands in { c·x = 0 }
+      expect(geom.distance(p, f)).toBeCloseTo(wall.distanceTo(geom, p), 9); // nearest point
+      expectVecClose(comps, geom.apply(R, f), f, 1e-9); // on the mirror ⇒ fixed by R
+    }
+  });
+
   it('preserves distances (is an isometry) and the point locus', () => {
     // NB: the invariant valid in ALL three geometries is the distance — in E
     // the degenerate form on point positions is not preserved (only tangents

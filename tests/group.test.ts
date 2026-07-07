@@ -5,7 +5,15 @@ import type { RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
 import { matrixKey, orbit, type GroupOps } from '@/group/orbit';
 import { groupFromPolygon, wordId } from '@/group/CoxeterGroup';
-import { cosetIndex, hullOfTiles, hullOfWords } from '@/group/wordlists';
+import {
+  cosetIndex,
+  dihedralWords,
+  hullOfTiles,
+  hullOfWords,
+  parabolicFixedPoint,
+  parseWordFile,
+  parseWordList,
+} from '@/group/wordlists';
 import { polygonArea } from '@/polytope/measure';
 
 /**
@@ -276,6 +284,102 @@ describe('CoxeterGroup: the Cayley graph', () => {
     // Dropping a word's first letter is a g·R_i step down in length, so the
     // ball is connected in the RIGHT-edge graph too (not just the BFS tree).
     expect(connected(graph.nodes.length, graph.edges)).toBe(true);
+  });
+});
+
+// ── R4-lib: the library additions the viz toolkit consumes ──────────────────
+
+describe('CoxeterGroup.cayleyBall: the metric-ball Cayley graph (R4-lib)', () => {
+  const degreeOf = (n: number, edges: { a: number; b: number }[]): number[] => {
+    const d = new Array(n).fill(0);
+    for (const e of edges) {
+      d[e.a]++;
+      d[e.b]++;
+    }
+    return d;
+  };
+
+  it('a radius past the sphere diameter exhausts (2,3,5): 120 nodes, 180 edges, 3-regular', () => {
+    const g = triangleGroup('spherical', [2, 3, 5]);
+    const graph = g.cayleyBall(4); // radius > π (S² diameter) ⇒ the whole group
+    expect(graph.nodes).toHaveLength(120);
+    expect(graph.edges).toHaveLength((120 * 3) / 2);
+    expect(degreeOf(graph.nodes.length, graph.edges).every((k) => k === g.rank)).toBe(true);
+    // Same node/edge counts as the depth-bounded graph on the full group.
+    const byDepth = g.cayleyGraph(20);
+    expect(graph.nodes.length).toBe(byDepth.nodes.length);
+    expect(graph.edges.length).toBe(byDepth.edges.length);
+  });
+
+  it('a hyperbolic ball is the induced subgraph on orbitBall (degrees ≤ rank; edges {g, g·R_i})', () => {
+    const g = triangleGroup('hyperbolic', [2, 3, 7]);
+    const graph = g.cayleyBall(3);
+    expect(graph.nodes.length).toBe(g.orbitBall(3).length);
+    expect(degreeOf(graph.nodes.length, graph.edges).every((k) => k <= g.rank)).toBe(true);
+    for (const e of graph.edges) {
+      expect(e.a).toBeLessThan(e.b);
+      const moved = g.geom.compose(graph.nodes[e.a].element, g.reflections[e.generator]);
+      expect(matrixKey(moved)).toBe(matrixKey(graph.nodes[e.b].element));
+    }
+  });
+});
+
+describe('wordlists.dihedralWords: the ⟨R_i,R_j⟩ parabolic as words (R4-lib)', () => {
+  it.each([
+    ['spherical', [2, 3, 5], 3], // decoration [1,2] has order 3 ⇒ |⟨R₁,R₂⟩| = 6
+    ['euclidean', [2, 4, 4], 4], // order 4 ⇒ |⟨R₁,R₂⟩| = 8
+  ] as [GeometryKind, number[], number][])('%s (%j): enumerates the 2m elements', (kind, orders, m) => {
+    const g = triangleGroup(kind, orders);
+    const set = g.elements(dihedralWords(1, 2, m));
+    expect(set.size).toBe(2 * m);
+  });
+});
+
+describe('wordlists.parabolicFixedPoint: the W_S anchor (R4-lib)', () => {
+  const g = triangleGroup('hyperbolic', [2, 3, 7]);
+
+  it('S = ∅ ⇒ the base point', () => {
+    expect(parabolicFixedPoint(g, [])).toBe(g.basePoint);
+  });
+
+  it('|S| = 1 ⇒ the foot on that wall, fixed by its reflection', () => {
+    const a = parabolicFixedPoint(g, [0])!;
+    expect(a).not.toBeNull();
+    expect(Math.abs(g.walls[0].side(a))).toBeLessThan(1e-9);
+    const moved = g.geom.apply(g.reflections[0], a);
+    for (let i = 0; i < 3; i++) expect(moved[i]).toBeCloseTo(a[i], 9);
+  });
+
+  it('|S| = 2 ⇒ the shared chamber vertex, on both walls', () => {
+    const a = parabolicFixedPoint(g, [0, 1])!;
+    expect(a).not.toBeNull();
+    expect(Math.abs(g.walls[0].side(a))).toBeLessThan(1e-6);
+    expect(Math.abs(g.walls[1].side(a))).toBeLessThan(1e-6);
+  });
+
+  it('|S| ≥ 3 ⇒ null (no fixed point in the chamber)', () => {
+    expect(parabolicFixedPoint(g, [0, 1, 2])).toBeNull();
+  });
+});
+
+describe('wordlists: word-list parsing (R4-lib)', () => {
+  it('parseWordList: dot format, "e" identity, indices ≥ rank rejected', () => {
+    const { words, bad } = parseWordList('e, 0, 1.0, 3', 3);
+    expect(words).toEqual([[], [0], [1, 0]]);
+    expect(bad).toEqual(['3']); // 3 ≥ rank 3
+  });
+
+  it('parseWordFile: JSON array, {words}, and malformed-entry skipping', () => {
+    expect(parseWordFile('[[0,1],[1]]', 2).words).toEqual([[0, 1], [1]]);
+    expect(parseWordFile('{"words":[[0]]}', 3).words).toEqual([[0]]);
+    const bad = parseWordFile('[[0,1],[5]]', 2); // 5 ≥ rank 2
+    expect(bad.words).toEqual([[0, 1]]);
+    expect(bad.errors.length).toBe(1);
+  });
+
+  it('parseWordFile: non-JSON falls back to the dot format', () => {
+    const { words } = parseWordFile('0.1 e 1', 2);
+    expect(words).toEqual([[0, 1], [], [1]]);
   });
 });
 

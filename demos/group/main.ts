@@ -8,19 +8,16 @@
  * demos repeat themselves).
  */
 
-import type { Geometry, GeometryKind, Point2 } from '@/geometry/types';
+import type { Geometry, GeometryKind, Isometry2, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
 import { Klein2 } from '@/models/klein';
 import { Poincare2 } from '@/models/poincare';
 import { Cartesian2 } from '@/models/cartesian';
 import { Stereographic2 } from '@/models/stereographic';
-import { mat3, matMul } from '@/math/mat';
-import { solvePolygon } from '@/coxeter/solve';
-import type { RealizationSpec } from '@/coxeter/spec';
-import { groupFromPolygon, wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
+import { mat3 } from '@/math/mat';
+import type { CoxeterGroup, Tile } from '@/group/CoxeterGroup';
 import type { CayleyGraph } from '@/group/cayley';
-import type { Isometry2 } from '@/geometry/types';
-import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/viz2d/render/types';
+import type { Camera, ItemId, PathList, Scene, StyleOverrides } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
 import { paint } from '@/viz2d/render/canvas';
 import { toSvg } from '@/viz2d/render/svg';
@@ -29,26 +26,12 @@ import { SpherePerspective, sphereUnprojector } from '@/viz2d/sphere/projection'
 import { sphereHitTest } from '@/viz2d/sphere/interact';
 import { buildSpherePathList } from '@/viz2d/sphere/scene';
 import type { SphereCamera } from '@/viz2d/sphere/types';
+import { realizePolygon } from '@/viz2d/kit/realize';
+import { cayleyScene, domainItem, parityColor, tilesToScene } from '@/viz2d/kit/scene';
+import { fitToPoints, tippedView } from '@/viz2d/kit/camera';
+import { GEN_COLORS, GREY, TILE } from '@/viz2d/kit/palette';
 
-// Generator colors — the same indexing as walls, decorations, words.
-const GEN_COLORS = ['#c0392b', '#27ae60', '#2f6fb7'];
-const TILE_IDENTITY = '#f6d9a0';
-const TILE_EVEN = '#f2e3c4';
-const TILE_ODD = '#ffffff';
 const EYE_DISTANCE = 5;
-
-function triangleSpec(geometry: GeometryKind, orders: [number, number, number]): RealizationSpec {
-  return {
-    geometry,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
-    decorations: [
-      { walls: [0, 1], order: orders[0] },
-      { walls: [1, 2], order: orders[1] },
-      { walls: [2, 0], order: orders[2] },
-    ],
-  };
-}
 
 /** A generated group: the tessellation and Cayley graph out to maxWord. */
 interface GroupData {
@@ -60,81 +43,35 @@ interface GroupData {
 }
 
 function generate(geometry: GeometryKind, orders: [number, number, number], maxWord: number): GroupData {
-  const realized = solvePolygon(triangleSpec(geometry, orders));
-  const group = groupFromPolygon(realized);
+  const rg = realizePolygon(orders, { geometry });
   return {
-    group,
-    tiles: group.tessellate(maxWord, 20000),
-    graph: group.cayleyGraph(maxWord, 20000),
-    r0: realized.inradius,
+    group: rg.group,
+    tiles: rg.group.tessellate(maxWord, 20000),
+    graph: rg.group.cayleyGraph(maxWord, 20000),
+    r0: rg.r0,
   };
 }
 
 /**
- * The group layer's structures as render2d scene items, ids per the README
- * scheme (tile:<word>, cay:<word>, cayedge:<word>:<i>): tiles filled by word
- * parity (the identity tile emphasized), Cayley nodes at g·basePoint, edges
- * colored by their generator. The far tile needs no special casing: render2d
- * V2.3 fill honesty drops a fill that wraps the chart's puncture.
+ * The group layer's structures as scene items (kit builders): tiles filled by
+ * word parity (identity emphasized), Cayley nodes at g·basePoint, edges
+ * colored by their generator, over the shaded domain. Ids and the intrinsic
+ * style ratios live in kit; the far tile needs no special casing (render V2.3
+ * fill honesty drops a fill that wraps the chart's puncture).
  */
 function groupScene(data: GroupData): Scene {
   const { group, tiles, graph, r0 } = data;
-  const items: SceneItem[] = [
-    {
-      // The geometry itself (render2d V2.2): shaded domain, rimmed disk
-      // boundary. The globe panel's builder skips it (draws its own globe).
-      id: 'domain',
-      kind: 'domain',
-      style: { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
-    },
+  return [
+    domainItem(true),
+    ...tilesToScene(tiles, (t) => ({
+      fill: { color: parityColor(t.word, TILE), opacity: 0.9 },
+      edge: { color: GREY.tileEdge, width: 0.025 * r0, opacity: 0.5 },
+    })),
+    ...cayleyScene(group, graph, {
+      edge: (gen) => ({ color: GEN_COLORS[gen], width: 0.06 * r0, opacity: 0.85 }),
+      node: () => ({ color: '#1a1a1a', radius: 0.11 * r0 }),
+    }),
   ];
-
-  for (const tile of tiles) {
-    const fill = tile.word.length === 0 ? TILE_IDENTITY : tile.word.length % 2 === 0 ? TILE_EVEN : TILE_ODD;
-    items.push({
-      id: `tile:${wordId(tile.word)}`,
-      kind: 'polygon',
-      vertices: tile.polytope.vertices,
-      style: {
-        fill: { color: fill, opacity: 0.9 },
-        edge: { color: '#7a6a4a', width: 0.025 * r0, opacity: 0.5 },
-      },
-    });
-  }
-
-  const points = graph.nodes.map((n) => group.geom.apply(n.element, group.basePoint));
-  for (const e of graph.edges) {
-    items.push({
-      id: `cayedge:${wordId(graph.nodes[e.a].word)}:${e.generator}`,
-      kind: 'geodesic',
-      source: { type: 'segment', a: points[e.a], b: points[e.b] },
-      style: { color: GEN_COLORS[e.generator], width: 0.06 * r0, opacity: 0.85 },
-    });
-  }
-  graph.nodes.forEach((n, k) => {
-    items.push({
-      id: `cay:${wordId(n.word)}`,
-      kind: 'point',
-      at: points[k],
-      style: { color: '#1a1a1a', radius: 0.11 * r0 },
-    });
-  });
-
-  return items;
-}
-
-/** Rotation by angle a in the (i, j) coordinate plane of ambient R³. */
-function planeRotation(i: number, j: number, a: number): Isometry2 {
-  const rows = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ];
-  rows[i][i] = Math.cos(a);
-  rows[j][j] = Math.cos(a);
-  rows[i][j] = -Math.sin(a);
-  rows[j][i] = Math.sin(a);
-  return mat3(rows);
 }
 
 // ── The three Milestone-1 groups ────────────────────────────────────────────
@@ -145,7 +82,7 @@ const s235 = generate('spherical', [2, 3, 5], 20); // exhausts: all 120 elements
 
 // Tip the sphere off-axis: a generic view direction for the globe and the
 // stereographic chart alike.
-const sphereTip = matMul(planeRotation(0, 1, 0.55), planeRotation(0, 2, 0.35));
+const sphereTip = tippedView(0.55, 0.35);
 
 const sceneH = groupScene(h237);
 const sceneE = groupScene(e244);
@@ -153,12 +90,8 @@ const sceneS = groupScene(s235);
 
 /** Fit: pixels per render unit so every Cayley node lands inside the frame. */
 function fitToNodes(data: GroupData, model: Model<Point2>, view: Isometry2, sizePx: number, margin: number): number {
-  let extent = 0;
-  for (const n of data.graph.nodes) {
-    const u = model.project(data.group.geom.apply(view, data.group.geom.apply(n.element, data.group.basePoint)));
-    extent = Math.max(extent, Math.hypot(u[0], u[1]));
-  }
-  return sizePx / 2 / (extent * margin);
+  const pts = data.graph.nodes.map((n) => data.group.geom.apply(n.element, data.group.basePoint));
+  return fitToPoints(data.group.geom, model, pts, sizePx, { view, margin });
 }
 
 // ── Panels ──────────────────────────────────────────────────────────────────

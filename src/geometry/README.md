@@ -107,6 +107,14 @@ covector — callers guard).
 unit covector is the κ-sine of the signed distance, so distance is one
 κ-trig row: arcsin |side| (S) · |side| (E) · arcsinh |side| (H).
 
+**Perpendicular foot** — `Hyperplane.foot(geom, p)`: the nearest point of the
+wall to p, `normalize(p − (c·p)·Jc)` — landing in { c·x = 0 } in all three
+geometries, κ entering only through the pole Jc. `distance(p, foot) =
+distanceTo(p)`, and the foot is fixed by the wall's reflection (it is on the
+mirror). Degenerate only on S when p is the wall's own pole. The anchor for
+wall-perpendicular constructions above the geometry layer (parabolic fixed
+points, Cayley/Wythoff feet); the tiling shader's `footOnWall` re-exports it.
+
 **Isometry renormalization** — `Geometry.renormalizeIsometry(g)`: project a
 float-drifted matrix back onto the isometry group (composing a drag isometry
 into the camera 60×/s walks off O(n,1) hyperbolically). S/H: Gram–Schmidt on
@@ -125,4 +133,5 @@ exactly J-orthogonal after; moves an O(ε)-drifted matrix by O(ε).
 - `Spherical.ts`, `Euclidean.ts`, `Hyperbolic.ts` — `Spherical2/3`,
   `Euclidean2/3`, `Hyperbolic2/3`.
 - `Hyperplane.ts` — wall = covector (+ cached pole); `fromCovector`,
-  `fromPole` (S/H only), `side`; V3 adds `bisector`, `distanceTo`.
+  `fromPole` (S/H only), `side`; V3 adds `bisector`, `distanceTo`; R4-lib
+  adds `foot` (the perpendicular foot, moved up from the tiling shader).

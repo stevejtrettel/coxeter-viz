@@ -233,8 +233,14 @@ tile, one edge per shared wall image.
 
 Geometric placement is immediate *downstream*: node g sits at g·basePoint,
 edges are geodesics between node points. Conversion to viz2d/render Scene items
-lives in the Milestone-1 demo (promotable to an adapter module if demos
-repeat themselves); there is no `CayleyGraphView` equivalent here.
+lives in `viz2d/kit` (the picturing toolkit); there is no `CayleyGraphView`
+equivalent here.
+
+Two node sets, one edge-building recipe (`cayleyOf`, private): `cayleyGraph(
+maxWord)` bounds the nodes by WORD DEPTH; `cayleyBall(radius)` (R4-lib) bounds
+them by INTRINSIC RADIUS (`orbitBall`) — the induced Cayley subgraph on the
+metric ball, group-independent coverage where `maxWord` is not. Both emit each
+undirected edge once, dropping edges to tiles outside the node set.
 
 **Left out deliberately** (parent features Milestone 1 doesn't need):
 `subgroup` enumeration, Wythoff constructions. They return in later phases.
@@ -273,6 +279,20 @@ operation states what a word maps to:
   hull(their vertices), deduplicated across shared edges before hulling.
   Same machinery, same refusal. Pin: a dihedral flower's union is convex,
   so its tile hull's Gauss–Bonnet area is exactly 2m × the chamber area.
+
+**R4-lib additions** (`wordlists.ts`) — the abstract word-list machinery the
+viz toolkit consumes, kept in the library (Python parity) rather than a demo:
+- `dihedralWords(i, j, m)` — the alternating words of the dihedral parabolic
+  ⟨R_i, R_j⟩ of order 2m (length-k prefixes of iji… and jij…, k = 0…2m−1);
+  duplicates collapse in `elements`. The standard patch for coset/hull demos.
+- `parabolicFixedPoint(group, S)` (2D) — the point fixed by W_S: the base
+  point (S = ∅), the perpendicular `Hyperplane.foot` (|S| = 1), the shared
+  chamber vertex of a wall pair (|S| = 2), else null. The anchor a coset
+  coloring or a GPU coset field hangs on.
+- `parseWordList(text, rank)` / `parseWordFile(text, rank)` — the word-list
+  input format: the dot form (`0.1.0`, `e` = identity, whitespace/comma
+  separated) and the Python-friendly JSON (`[[…]]` or `{words}`), with
+  out-of-range/malformed tokens reported.
 
 ## Type shapes
 
@@ -333,6 +353,7 @@ export class CoxeterGroup<P extends Vec, I> {
   tessellate(maxWord: number, maxCount?: number): Tile<P, I>[];
   neighbor(tile: Tile<P, I>, i: number): Tile<P, I>;
   cayleyGraph(maxWord: number, maxCount?: number): CayleyGraph<I>;
+  cayleyBall(radius: number, maxCount?: number): CayleyGraph<I>; // R4-lib
 }
 
 /** The 2D factory: consume a solved polygon, derive the reflections. */
@@ -364,9 +385,9 @@ export interface CayleyGraph<I> {
 | file | responsibility | increment |
 |---|---|---|
 | `orbit.ts` | the generic BFS engine: `GroupOps<I>`, `orbit`, `matrixKey` | G1 |
-| `CoxeterGroup.ts` | the class, `Tile`, `wordId`, the 2D factory; M3 adds `elements`, `tilesFor`, `subgroup` | G2, M3.2 |
+| `CoxeterGroup.ts` | the class, `Tile`, `wordId`, the 2D factory; M3 adds `elements`, `tilesFor`, `subgroup`; R4-lib adds `cayleyBall` | G2, M3.2, R4-lib |
 | `cayley.ts` | the combinatorial graph types (the builder is a class method) | G3 |
-| `wordlists.ts` | M3: `cosetIndex`, `hullOfWords` (2D) | M3.2–3 |
+| `wordlists.ts` | M3: `cosetIndex`, `hullOfWords`/`hullOfTiles` (2D); R4-lib: `dihedralWords`, `parabolicFixedPoint`, `parseWordList`/`parseWordFile` | M3.2–3, R4-lib |
 
 ## Tests pin the mathematics
 

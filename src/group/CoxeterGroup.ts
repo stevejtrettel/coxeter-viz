@@ -141,12 +141,31 @@ export class CoxeterGroup<P extends Vec, I extends Float64Array> {
    * undirected edge is emitted once, from its lower-indexed end.
    */
   cayleyGraph(maxWord: number, maxCount?: number): CayleyGraph<I> {
-    const nodes: CayleyNode<I>[] = this.orbit(maxWord, maxCount).map((e) => ({
-      word: e.word,
-      element: e.element,
-    }));
-    const index = new Map(nodes.map((n, k) => [matrixKey(n.element), k]));
+    return this.cayleyOf(this.orbit(maxWord, maxCount));
+  }
 
+  /**
+   * The Cayley graph on the METRIC BALL of the given radius: like
+   * `cayleyGraph`, but the nodes are `orbitBall(radius)` — the induced
+   * subgraph on the tiles whose base points lie within `radius`. Edges to
+   * tiles outside the ball are absent (each undirected edge still emitted
+   * once). Group-independent coverage where `maxWord` is not (README, "The
+   * metric bound"): one radius means the same reach for every group.
+   */
+  cayleyBall(radius: number, maxCount?: number): CayleyGraph<I> {
+    return this.cayleyOf(this.orbitBall(radius, maxCount));
+  }
+
+  /**
+   * Build the Cayley graph over a fixed node set: edges {g, g·R_i} found by
+   * MATRIX-KEY LOOKUP among the nodes — never word surgery (README). Edges
+   * whose far end is not in the set are absent (the induced subgraph); each
+   * undirected edge is emitted once, from its lower-indexed end. Shared by
+   * `cayleyGraph` (depth-bounded) and `cayleyBall` (metric-bounded).
+   */
+  private cayleyOf(elements: readonly OrbitElement<I>[]): CayleyGraph<I> {
+    const nodes: CayleyNode<I>[] = elements.map((e) => ({ word: e.word, element: e.element }));
+    const index = new Map(nodes.map((n, k) => [matrixKey(n.element), k]));
     const edges: CayleyEdge[] = [];
     for (let a = 0; a < nodes.length; a++) {
       for (let i = 0; i < this.rank; i++) {

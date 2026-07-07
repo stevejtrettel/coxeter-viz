@@ -9,8 +9,95 @@ import type { CoxeterGroup } from './CoxeterGroup';
  * Word-list helpers beyond the class (folder README, "Word lists"; M3).
  * Everything here is ELEMENTWISE — word lists were converted to elements
  * upstream (`CoxeterGroup.elements`); no literal word syntax survives to
- * this layer.
+ * this layer. Also the word-list PARSERS (the abstract input format) and the
+ * standard parabolic constructions (dihedral word list, W_S fixed point).
  */
+
+/**
+ * The alternating words of the dihedral parabolic ⟨R_i, R_j⟩ (order 2m): the
+ * length-k prefixes of iji… and jij… for k = 0…2m−1 enumerate all 2m
+ * elements (duplicates collapse in `elements`). The standard patch for coset
+ * / hull demos over a vertex dihedral.
+ */
+export function dihedralWords(i: number, j: number, m: number): number[][] {
+  const words: number[][] = [[]];
+  for (let k = 1; k <= 2 * m - 1; k++) {
+    words.push(Array.from({ length: k }, (_, t) => (t % 2 === 0 ? i : j)));
+    words.push(Array.from({ length: k }, (_, t) => (t % 2 === 0 ? j : i)));
+  }
+  return words;
+}
+
+/**
+ * The point fixed by the parabolic W_S (the anchor a coset coloring / a GPU
+ * coset field hangs on): the base point for S = ∅; the perpendicular foot of
+ * the base point on the single wall for |S| = 1; the shared chamber vertex of
+ * the two walls for |S| = 2 (a vertex dihedral); null when no such fixed
+ * point exists in the chamber (|S| ≥ 3, or a non-adjacent pair). 2D — a pair
+ * of walls meets at a vertex.
+ */
+export function parabolicFixedPoint(
+  group: CoxeterGroup<Point2, Isometry2>,
+  S: readonly number[],
+): Point2 | null {
+  if (S.length === 0) return group.basePoint;
+  if (S.length === 1) return group.walls[S[0]].foot(group.geom, group.basePoint);
+  if (S.length === 2) {
+    return (
+      group.chamber.vertices.find((q) => S.every((i) => Math.abs(group.walls[i].side(q)) < 1e-7)) ??
+      null
+    );
+  }
+  return null;
+}
+
+/**
+ * Parse a word list in the DOT FORMAT: whitespace/comma/semicolon-separated
+ * tokens, each a run of generator indices joined by "." (`0.1.0`), with `e`
+ * the identity `[]`. Tokens with an index ≥ rank or bad syntax go to `bad`.
+ * The abstract input the group consumes; `CoxeterGroup.elements` turns it
+ * into elements.
+ */
+export function parseWordList(text: string, rank: number): { words: number[][]; bad: string[] } {
+  const words: number[][] = [];
+  const bad: string[] = [];
+  for (const tok of text.split(/[\s,;]+/).filter(Boolean)) {
+    if (tok === 'e') {
+      words.push([]);
+      continue;
+    }
+    const letters = /^[0-9]+(\.[0-9]+)*$/.test(tok) ? tok.split('.').map(Number) : null;
+    if (letters && letters.every((i) => i < rank)) words.push(letters);
+    else bad.push(tok);
+  }
+  return { words, bad };
+}
+
+/**
+ * Parse a word-list FILE: the Python-friendly JSON form first — an array
+ * `[[0,1],…]` or `{ "words": [...] }` of index arrays — else the dot format
+ * (`parseWordList`). Malformed JSON entries (non-arrays, indices out of
+ * `[0, rank)`) are skipped with a note.
+ */
+export function parseWordFile(text: string, rank: number): { words: number[][]; errors: string[] } {
+  const errors: string[] = [];
+  const isWord = (w: unknown): w is number[] =>
+    Array.isArray(w) && w.every((i) => Number.isInteger(i) && i >= 0 && i < rank);
+  try {
+    const json: unknown = JSON.parse(text);
+    const list = Array.isArray(json) ? json : (json as { words?: unknown }).words;
+    if (Array.isArray(list)) {
+      const words = list.filter(isWord) as number[][];
+      if (words.length < list.length) errors.push(`${list.length - words.length} malformed entries skipped`);
+      return { words, errors };
+    }
+    errors.push('JSON has no word array');
+    return { words: [], errors };
+  } catch {
+    const { words, bad } = parseWordList(text, rank);
+    return { words, errors: bad.length ? [`ignored: ${bad.slice(0, 5).join(' ')}`] : [] };
+  }
+}
 
 /**
  * Assign each element its LEFT coset gH: g₁ and g₂ share a coset iff

@@ -10,14 +10,10 @@
 
 import type { GeometryKind, Isometry2, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
-import { Poincare2 } from '@/models/poincare';
-import { Cartesian2 } from '@/models/cartesian';
-import { Stereographic2 } from '@/models/stereographic';
 import { identity } from '@/math/mat';
-import { classifyPolygon, type RealizationSpec } from '@/coxeter/spec';
-import { solvePolygon, type RealizedPolygon } from '@/coxeter/solve';
-import { groupFromPolygon, wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
-import { hullOfTiles, hullOfWords } from '@/group/wordlists';
+import type { RealizedPolygon } from '@/coxeter/solve';
+import { wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
+import { hullOfTiles, hullOfWords, parseWordFile } from '@/group/wordlists';
 import { polygonArea } from '@/polytope/measure';
 import type { Camera, ItemId, PathList, Scene, SceneItem, StyleOverrides } from '@/viz2d/render/types';
 import { buildPathList } from '@/viz2d/render/scene';
@@ -28,15 +24,14 @@ import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
 import { TilingShader } from '@/viz2d/shader/TilingShader';
 import { tilingLayer } from '@/viz2d/shader/layer';
 import { coverageRadius, fieldScene, mergeFieldPaths } from '@/viz2d/shader/vector';
-import type { TilingStyle } from '@/viz2d/shader/types';
+import { realizePolygon } from '@/viz2d/kit/realize';
+import { domainItem, parityColor, polygonItem, tilesToScene, wallItems } from '@/viz2d/kit/scene';
+import { fieldStyle } from '@/viz2d/kit/field';
+import { GEN_COLORS, GREY, HOVER, HULL, HULL_TILES, TILE } from '@/viz2d/kit/palette';
 // The example ships with the demo and auto-loads through the SAME parser a
 // picked file goes through.
 import exampleRaw from './example-words.json?raw';
 
-const TILE_IDENTITY = '#f6d9a0';
-const TILE_EVEN = '#f2e3c4';
-const TILE_ODD = '#ffffff';
-const HOVER_COLOR = '#ffb454';
 /** CPU ambient background tessellation depth per geometry (GPU field off). */
 const BG_DEPTH: Record<GeometryKind, number> = { hyperbolic: 12, euclidean: 12, spherical: 20 };
 /**
@@ -48,51 +43,6 @@ const BG_DEPTH: Record<GeometryKind, number> = { hyperbolic: 12, euclidean: 12, 
  * (2,3,7) at the default view).
  */
 const EXPORT_EPSILON_PX = 1.5;
-
-/**
- * The GPU field's ambience (§5.6 T4): quiet parity in the house cream/white,
- * faint intrinsic edges matching the CPU ambient strokes, no vertex disks —
- * the anonymous group as BACKGROUND; every named element paints on top.
- */
-function fieldStyle(r0: number): TilingStyle {
-  return {
-    even: [1, 1, 1, 1],
-    odd: [0.98, 0.955, 0.905, 1],
-    edge: [0.604, 0.553, 0.459, 0.45], // #9a8d75, the ambient edge color
-    edgeHalfWidth: 0.0075 * r0,
-    vertex: [0, 0, 0, 0],
-    vertexRadius: 0,
-  };
-}
-
-// ── Parsing ─────────────────────────────────────────────────────────────────
-
-/** Words from file text: JSON first (array or {words}), else the dot format. */
-function parseFile(text: string): { words: number[][]; errors: string[] } {
-  const errors: string[] = [];
-  const isWord = (w: unknown): w is number[] =>
-    Array.isArray(w) && w.every((i) => Number.isInteger(i) && i >= 0 && i <= 2);
-  try {
-    const json: unknown = JSON.parse(text);
-    const list = Array.isArray(json) ? json : (json as { words?: unknown }).words;
-    if (Array.isArray(list)) {
-      const words = list.filter(isWord) as number[][];
-      if (words.length < list.length) errors.push(`${list.length - words.length} malformed entries skipped`);
-      return { words, errors };
-    }
-    errors.push('JSON has no word array');
-    return { words: [], errors };
-  } catch {
-    // Plain text: whitespace/comma-separated dot words.
-    const words: number[][] = [];
-    for (const tok of text.split(/[\s,;]+/).filter(Boolean)) {
-      if (tok === 'e') words.push([]);
-      else if (/^[0-2](\.[0-2])*$/.test(tok)) words.push(tok.split('.').map(Number));
-      else errors.push(tok);
-    }
-    return { words, errors: errors.length ? [`ignored: ${errors.slice(0, 5).join(' ')}`] : [] };
-  }
-}
 
 // ── The realized state ──────────────────────────────────────────────────────
 
@@ -120,67 +70,31 @@ function realize(
   hulls: HullOptions,
   gpuField: boolean,
 ): State {
-  const kind = classifyPolygon(orders); // the geometry is INFERRED (model: auto)
-  const spec: RealizationSpec = {
-    geometry: kind,
-    dim: 2,
-    combinatorics: { kind: 'polygon', cyclicOrder: [0, 1, 2] },
-    decorations: [
-      { walls: [0, 1], order: orders[0] },
-      { walls: [1, 2], order: orders[1] },
-      { walls: [2, 0], order: orders[2] },
-    ],
-  };
-  const realized = solvePolygon(spec);
-  const group = groupFromPolygon(realized);
-  const r0 = realized.inradius;
-  const model =
-    kind === 'hyperbolic' ? new Poincare2() : kind === 'euclidean' ? new Cartesian2() : new Stereographic2();
-
+  const { kind, group, poly, model, r0 } = realizePolygon(orders); // geometry INFERRED (model: auto)
   const tiles = group.tilesFor(words);
   // The GPU field replaces the CPU domain FILL and the depth-capped ambient
   // tessellation (§5.6: identity is the knife — the anonymous group moves to
   // the shader, unlimited depth); the rim stays as chrome. With the field
   // off, the original CPU ambience is drawn as before.
   const scene: Scene = [
-    {
-      id: 'domain',
-      kind: 'domain',
-      style: gpuField
-        ? { rim: { color: '#bbbbbb', widthPx: 1.25 } }
-        : { fill: { color: '#fbf9f3' }, rim: { color: '#bbbbbb', widthPx: 1.25 } },
-    },
+    domainItem(!gpuField),
     // The ambient tessellation, faint — the word list reads as a HIGHLIGHTED
     // PATCH within the tiling, not as tiles floating in space.
-    ...(gpuField ? [] : group.tessellate(BG_DEPTH[kind], 20000)).map((t) => ({
-      id: `bg:${wordId(t.word)}`,
-      kind: 'polygon' as const,
-      vertices: t.polytope.vertices,
-      style: {
+    ...tilesToScene(
+      gpuField ? [] : group.tessellate(BG_DEPTH[kind], 20000),
+      () => ({
         fill: { color: '#ffffff', opacity: 0.5 },
-        edge: { color: '#9a8d75', width: 0.015 * r0, opacity: 0.35 },
-      },
-    })),
-    ...tiles.map((t) => ({
-      id: `tile:${wordId(t.word)}`,
-      kind: 'polygon' as const,
-      vertices: t.polytope.vertices,
-      style: {
-        fill: {
-          // Word-length parity is elementwise (det = ±1), so any spelling agrees.
-          color: t.word.length === 0 ? TILE_IDENTITY : t.word.length % 2 === 0 ? TILE_EVEN : TILE_ODD,
-          opacity: 0.92,
-        },
-        edge: { color: '#7a6a4a', width: 0.03 * r0, opacity: 0.6 },
-      },
+        edge: { color: GREY.ambientEdge, width: 0.015 * r0, opacity: 0.35 },
+      }),
+      (w) => `bg:${wordId(w)}`,
+    ),
+    // The word list, colored by word-length parity (elementwise: any spelling agrees).
+    ...tilesToScene(tiles, (t) => ({
+      fill: { color: parityColor(t.word, TILE), opacity: 0.92 },
+      edge: { color: GREY.tileEdge, width: 0.03 * r0, opacity: 0.6 },
     })),
     // The walls, for orientation (ids = generator indices, as everywhere).
-    ...realized.walls.map((wall, i) => ({
-      id: `wall:${i}`,
-      kind: 'geodesic' as const,
-      source: { type: 'line' as const, wall },
-      style: { color: ['#c0392b', '#27ae60', '#2f6fb7'][i], width: 0.05 * r0, opacity: 0.8 },
-    })),
+    ...wallItems(poly.walls, (i) => ({ color: GEN_COLORS[i], width: 0.05 * r0, opacity: 0.8 })),
   ];
 
   // The hulls, per the toggles: of the base-point CENTERS (M3.3) and/or of
@@ -191,30 +105,28 @@ function realize(
     if (tiles.length < 3) return;
     try {
       const hull = which === 'centers' ? hullOfWords(group, words) : hullOfTiles(group, words);
-      (scene as SceneItem[]).push({
-        id: `hull:${which}`,
-        kind: 'polygon',
-        vertices: hull.vertices,
-        style: {
-          fill: { color, opacity: 0.09 },
-          edge: { color, width: 0.07 * r0, opacity: 0.9 },
-        },
-      });
+      (scene as SceneItem[]).push(
+        polygonItem(
+          hull,
+          { fill: { color, opacity: 0.09 }, edge: { color, width: 0.07 * r0, opacity: 0.9 } },
+          `hull:${which}`,
+        ),
+      );
       hullNote += ` · ${which} hull: area ${polygonArea(group.geom, hull.vertices).toPrecision(4)}`;
     } catch {
       hullNote += ` · ${which} hull: — (spans > a hemisphere)`;
     }
   };
-  if (hulls.tiles) drawHull('tiles', '#8e44ad');
-  if (hulls.centers) drawHull('centers', '#2f6fb7');
+  if (hulls.tiles) drawHull('tiles', HULL_TILES);
+  if (hulls.centers) drawHull('centers', HULL);
   return {
     kind,
     group,
-    poly: realized,
+    poly,
     model,
     tiles,
     scene,
-    chamberArea: polygonArea(group.geom, realized.chamber.vertices),
+    chamberArea: polygonArea(group.geom, poly.chamber.vertices),
     r0,
     hullNote,
   };
@@ -383,7 +295,7 @@ function rebuild(): void {
   const build = (): PathList =>
     buildPathList(
       state.scene,
-      ctx(hovered ? new Map([[hovered, { fill: { color: HOVER_COLOR, opacity: 0.95 } }]]) : undefined),
+      ctx(hovered ? new Map([[hovered, { fill: { color: HOVER, opacity: 0.95 } }]]) : undefined),
     );
   const draw = (): void => {
     if (gpuBox.checked) {
@@ -468,7 +380,7 @@ fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (!file) return;
   void file.text().then((text) => {
-    const { words, errors } = parseFile(text);
+    const { words, errors } = parseWordFile(text, 3);
     currentWords = words;
     if (errors.length) status.textContent = `⚠ ${errors.join(' · ')}`;
     rebuild();
@@ -486,5 +398,5 @@ kSelect.addEventListener('change', updatePxLabel);
 window.addEventListener('resize', rebuild);
 
 // Auto-load the shipped example (the (2,3,7) alternating-subgroup patch).
-currentWords = parseFile(exampleRaw).words;
+currentWords = parseWordFile(exampleRaw, 3).words;
 rebuild();

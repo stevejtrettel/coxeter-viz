@@ -166,7 +166,7 @@ chain). No three.js (2D-system law).
 |---|---|
 | `types.ts` | `TilingStyle`: the base layers (parity even/odd, edge bands, vertex disks — rgba, alpha 0 hides; widths/radii intrinsic; `maxFolds`) + the three optional FIELD PROGRAMS `coset` / `star` / `regions` (previous section) |
 | `shader.ts` | the GLSL sources (bufferless fullscreen triangle; the fold + coloring fragment pipeline), `MAX_WALLS`/`MAX_VERTS` = 16 |
-| `uniforms.ts` | the pure CPU side, all float64-tested: chart ids, κ-trig thresholds, packing, `foldPoint` (the float64 reference fold), `footOnWall`, `geodesicThrough`, `hashHue` (the shared coset-hue convention), `regionSignRows` |
+| `uniforms.ts` | the pure CPU side, all float64-tested: chart ids, κ-trig thresholds, packing, `foldPoint` (the float64 reference fold), `footOnWall` (re-exports `Hyperplane.foot`, R4-lib), `geodesicThrough`, `hashHue` (the shared coset-hue convention), `regionSignRows` |
 | `TilingShader.ts` | the class: `setPolygon(RealizedPolygon)` · `setChart(Model)` (flat 2D charts only, throws otherwise) · `draw(camera, style)` (immediate mode, all uniforms every call; Camera in device px) · `dispose()` |
 | `layer.ts` | `tilingLayer(poly, model, style)`: the field as a render `RasterLayer` for PNG export (fresh disposed shader per render; export-only seam) |
 | `vector.ts` | the field's VECTOR TWIN for SVG (next section): `fieldScene`, `coverageRadius`, `mergeFieldPaths` |

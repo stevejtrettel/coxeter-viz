@@ -79,15 +79,17 @@ export function packVec3s(vs: readonly Vec[], max: number): Float32Array {
   return out;
 }
 
-/** The perpendicular foot of p on the wall: normalize(p − ⟨p,c⟩·Jc), κ-uniform. */
+/**
+ * The perpendicular foot of p on the wall — the geometry primitive
+ * `Hyperplane.foot` (moved to `src/geometry`); re-exported here because the
+ * fold/region machinery below and the coset field use it.
+ */
 export function footOnWall(
   geom: Geometry<Point2, Isometry2>,
   p: Point2,
   wall: Hyperplane,
 ): Point2 {
-  const s = wall.side(p);
-  const jc = wall.pole;
-  return geom.normalize(vec3(p[0] - s * jc[0], p[1] - s * jc[1], p[2] - s * jc[2]));
+  return wall.foot(geom, p);
 }
 
 /** The unit covector of the geodesic through two points (cross convention). */
