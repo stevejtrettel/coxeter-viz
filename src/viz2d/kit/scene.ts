@@ -38,13 +38,15 @@ export const fieldTileId = (word: number[]): string => `field:tile:${wordId(word
 /**
  * The chart's own image region ("the geometry itself"): filled + rimmed disk
  * for the CPU picture, rim-only when a GPU field draws the fill beneath.
+ * `fill` overrides the house domain grey (P3: the figure document's
+ * `domain.fill`).
  */
-export function domainItem(filled = true): DomainItem {
+export function domainItem(filled = true, fill: string = GREY.domain): DomainItem {
   const rim = { color: GREY.rim, widthPx: 1.25 };
   return {
     id: 'domain',
     kind: 'domain',
-    style: filled ? { fill: { color: GREY.domain }, rim } : { rim },
+    style: filled ? { fill: { color: fill }, rim } : { rim },
   };
 }
 

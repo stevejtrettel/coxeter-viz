@@ -53,16 +53,31 @@ export interface RealizedGroup {
 }
 
 /**
- * Realize a cyclic Coxeter polygon end to end: `polygonSpec` → `solvePolygon`
- * → `groupFromPolygon` → chart. `opts.geometry` forces the geometry (else
- * inferred); `opts.model` overrides the default chart.
+ * Realize a spec end to end: `solvePolygon` → `groupFromPolygon` → chart.
+ * The spec-shaped entry (P3): the inference layer (`classifyCoxeterMatrix`)
+ * hands the app a `RealizationSpec` directly. `opts.model` overrides the
+ * default chart.
+ */
+export function realizeSpec(spec: RealizationSpec, opts?: { model?: Model<Point2> }): RealizedGroup {
+  const poly = solvePolygon(spec);
+  const group = groupFromPolygon(poly);
+  return {
+    kind: spec.geometry,
+    poly,
+    group,
+    model: opts?.model ?? defaultModel(spec.geometry),
+    r0: poly.inradius,
+  };
+}
+
+/**
+ * Realize a cyclic Coxeter polygon end to end: `polygonSpec` → `realizeSpec`.
+ * `opts.geometry` forces the geometry (else inferred); `opts.model` overrides
+ * the default chart.
  */
 export function realizePolygon(
   orders: number[],
   opts?: { geometry?: GeometryKind; model?: Model<Point2> },
 ): RealizedGroup {
-  const kind = opts?.geometry ?? classifyPolygon(orders);
-  const poly = solvePolygon(polygonSpec(orders, kind));
-  const group = groupFromPolygon(poly);
-  return { kind, poly, group, model: opts?.model ?? defaultModel(kind), r0: poly.inradius };
+  return realizeSpec(polygonSpec(orders, opts?.geometry), { model: opts?.model });
 }
