@@ -16,11 +16,17 @@ package drives it through a pure group-theoretic seam.
 The user is a mathematician (professor). Correctness and clean,
 close-to-the-math abstractions matter more than feature count.
 
-## Status (2026-07-06 — CURRENT STATE; the full increment-by-increment history lives in PLAN.md §5)
+## Status (2026-07-10 — CURRENT STATE; the full increment-by-increment history lives in PLAN.md §5)
 
 **The 2D program is COMPLETE and instrument-grade. Milestones 1 and 3 are
-closed. Next: the user's hands-on pass of §5.7/§5.8, then either the scoped
-GPU-globe v1 or Milestone 2 (3D) planning — fresh session either way.**
+closed. Milestone 4 — THE PRODUCT LAYER — is PLANNED and SIGNED OFF
+(2026-07-10, PLAN.md §7): the Coxeter-matrix inference layer, the figure
+document (schema v0.1), `render(container, figure)`, SVG/PNG/HTML exports,
+the Vite bundle, and the Python package (Plotly pattern; `coxeter-viz` /
+`coxeter_viz`), in increments P0–P9. 2D only — 3D waits until the 2D
+product story is done (user ruling). Next work item: P0 (the schema/app
+READMEs as specs), fresh session. Still also pending: the user's hands-on
+pass of §5.7/§5.8; GPU-globe v1 stays parked.**
 
 What exists, layer by layer (each folder README is its spec; PLAN § given):
 - **math / geometry / models / polytope / coxeter** — the substrate: own
@@ -33,15 +39,17 @@ What exists, layer by layer (each folder README is its spec; PLAN § given):
   `chamberDiameter`, `cayleyGraph`, `subgroup`), word lists
   (`elements`/`tilesFor`/`cosetIndex`/hulls), `wythoff.ts` (uniform tilings:
   ringed seed by the 3×3 solve, faces = dihedral orbits hulled).
-- **render2d** (§5.3.1 V0–V3+P, §5.6 T3) — scene → PathList → Canvas painter
+- **viz2d/render** (§5.3.1 V0–V3+P, §5.6 T3; §5.9 split the 781-line
+  `scene.ts` into `style`/`cull`/`wallclip`/`dash`/`honesty`/`item` + the
+  builder) — scene → PathList → Canvas painter
   + `svg.ts` + `png.ts` (`RasterLayer` k× compositor: scale the CAMERA, so
   k× re-renders, never upsamples); intrinsic-width strokes, dashes, joins,
   domain items, fill honesty, pre-cull; interaction (zoom/pan/double-bisector
   drag/hitTest).
-- **sphereview** (§5.3.2) — the perspective-globe instrument, CPU only
+- **viz2d/sphere** (§5.3.2) — the perspective-globe instrument, CPU only
   (drag/zoom/SVG/dashed hidden lines). No GPU path (see the 2026-07-06
   globe discussion in the session record / parked list below).
-- **tilingshader** (§5.6, §5.8) — the GPU field: per-pixel folding
+- **viz2d/shader** (§5.6, §5.8) — the GPU field: per-pixel folding
   `p ← p − 2⟨p,c⟩·Jc` in canonical coordinates (κ-branch-free, n-gon
   MAX_WALLS 16), all five flat charts, parity/edge/vertex layers, plus the
   FIELD PROGRAMS: `coset` (M⁻¹-accumulated anchor image hashed by the
@@ -49,6 +57,16 @@ What exists, layer by layer (each folder README is its spec; PLAN § given):
   uniform edge nets), `regions` (Wythoff face types); and the VECTOR TWIN
   for SVG (`fieldScene` + ADAPTIVE `coverageRadius` — intrinsic-radius
   coverage from ε px, no per-group depth constants — + `mergeFieldPaths`).
+- **viz2d/kit** (§5.9) — the picturing toolkit (NO math): `realize`
+  (spec→group→model), `scene` (item builders + the `tile:`/`cay:`/`wall:` id
+  scheme + parity/coset/hue color maps), `camera` (fit + tipped view),
+  `field` (`fieldStyle` + coset/star/regions assembly), `palette`. All viz
+  math lives here or in the library core (`Hyperplane.foot`, `cayleyBall`,
+  `dihedralWords`/`parabolicFixedPoint`/`parseWord*`).
+- **demos/shared** (§5.9) — the demo harness (composable primitives, no
+  mount-functions): `pageShell`/`canvas2d`/`layerStack`/`sizeStack`/
+  `rafScheduler`/`button`/`checkbox`/`textInput`/`kSelect`/`downloadBlob`/
+  `downloadSvg`/`exportSizeLabel`. Every 2D demo reads *data → scene → mount*.
 
 Demos (`npm run dev <name>`): `group` (Milestone 1), `wordlists` (M3),
 `wordfile` (M3.5 + GPU field + exports), `tilingshader` (the field
@@ -70,7 +88,7 @@ demo conversion to an adapter module (available whenever); a polygon
 class/type (deferred until non-convex regions become first-class); the
 Tits/ShortLex automaton and the spherical hull policy (PLAN §6).
 
-Working facts: 392 tests / 15 files, strict typecheck; the house
+Working facts: 428 tests / 17 files, strict typecheck; the house
 verification pattern is exact spherical pins (orders, Euler counts) +
 headless-Chrome pixel-coincidence screenshots; `shader.glsl` at the repo
 root is the user's untracked reference shader (nothing survives verbatim).
@@ -126,9 +144,17 @@ The parent systems being married (and cleaned up) in this rewrite:
   first as the module's spec.
 - Dependency direction is law:
   math → geometry → models → polytope → coxeter → group → {2D viz | 3D viz} → app.
-  The two visualization systems are TOTALLY SEPARATE: 2D (render2d +
-  sphereview + tilingshader, complete) has no three.js; 3D (not yet built)
-  will be built on three.js and gets its own plan before any code.
+  The two visualization systems are TOTALLY SEPARATE: 2D lives under
+  `src/viz2d/` — `render/` (the flat-chart core + shared seams), `sphere/`
+  (the perspective globe), `shader/` (the GPU field), and `kit/` (the
+  picturing toolkit: group data → `Scene`/`Camera`/`TilingStyle`, no math) —
+  and has no three.js; 3D (not yet built) will be built on three.js and gets
+  its own plan before any code. **All viz math lives in the library core or
+  `kit/`; the demos (`demos/*` + the `demos/shared` harness) are thin —
+  data → scene → mount, no math inline.** The consolidation reorg is
+  PLAN.md §5.9 (renamed render2d→viz2d/render, sphereview→viz2d/sphere,
+  tilingshader→viz2d/shader; historical §5.3.1 etc. labels keep the old
+  names).
 - Don't create branches or commit unless asked. Commit messages end with the
   `Co-Authored-By: Claude` line.
 

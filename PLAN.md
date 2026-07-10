@@ -1345,8 +1345,8 @@ SVG). Verification per increment: headless GPU-vs-CPU coincidence.
 
 ### 5.9 — the 2D consolidation reorg (user-directed 2026-07-06)
 
-**Status: R0–R3 DONE and green (392 tests + typecheck); R4 REPLANNED
-library-first 2026-07-06, awaiting go.** The 2D program (§5.3.1 render2d
+**Status: COMPLETE 2026-07-06 — R0–R5 all DONE, green (428 tests +
+typecheck), every increment closed on a hands-on visual pass.** The 2D program (§5.3.1 render2d
 V0–V3 + polish, §5.3.2 sphereview, §5.6 tilingshader, §5.7–5.8 field
 programs) is feature-complete but has accreted three seams the user wants
 cleaned so the code is "modular, clean, and close to the math." A review
@@ -1429,9 +1429,21 @@ the gallery demos (render2d/sphereview/tilingshader) adopting
 `realize`/`palette` — DONE, approved hands-on 2026-07-06 (no spec/anchor/
 rotation math left inline in any demo; tilings' inline Cayley-ball adjacency
 → `cayleyBall`; cosets' anchor block → `parabolicFixedPoint`) · **R5**
-`demos/shared/` harness (own README spec, approved first) + migrate demos to
-data→scene→mount (gate: green + hands-on). Milestone 2 (3D) stays queued
-after.
+`demos/shared/` composable primitives (user ruling: NOT mount-functions —
+`pageShell`/`canvas2d`/`layerStack`/`sizeStack`/`rafScheduler`/`button`/
+`checkbox`/`textInput`/`kSelect`/`statusText`/`downloadBlob`/`downloadSvg`/
+`exportSizeLabel`) + the pure-helper test; all nine demos migrated in two
+batches (galleries · field demos), each approved hands-on — DONE. Every 2D
+demo now reads *data → scene → mount* with zero page-shell/rAF/download/DPR/
+stack boilerplate and no math inline.
+
+**Outcome.** `src/viz2d/{render,sphere,shader,kit}` under one umbrella; the
+781-line `render/scene.ts` split into eight focused modules + shared
+`item.ts`; the math pushed down to the library core (`Hyperplane.foot`,
+`cayleyBall`, `dihedralWords`/`parabolicFixedPoint`/`parseWord*`); the `kit/`
+picturing toolkit; the `demos/shared` harness. Demo line totals fell ~30%
+(e.g. wordfile 490→340, tilings 462→291). 428 tests / 17 files, strict
+typecheck. Milestone 2 (3D) stays queued after.
 
 ### Milestones cut vertically, not horizontally
 
@@ -1467,8 +1479,8 @@ tile/Cayley coloring by word lists).
 - **When the reactive Params/View harness comes in**, and what the demo UI
   is — likely our own (lil-gui judged ugly; it was deliberately left out of
   the dependencies).
-- **Names**: repo, pip package, JS import (candidates: coxeter-viz, wythoff,
-  kaleidoscope — check availability).
+- ~~**Names**: repo, pip package, JS import~~ — **RESOLVED 2026-07-10
+  (user): `coxeter-viz`** (repo + pip name; Python import `coxeter_viz`).
 - **Perspective sphere view — stage 2 and beyond** (stage 1 is planned and
   in flight: §5.3.2). Remaining, parked:
   - *Dashed back-side strokes*: a StrokeStyle dash field (types amendment) +
@@ -1494,3 +1506,213 @@ tile/Cayley coloring by word lists).
   repos; parked, default OUT. The Phase 1b aliases already mark the duality
   at every signature; if enforcement is ever wanted, alias → brand is a
   small mechanical upgrade evaluated on its own.
+
+## 7. Milestone 4 — the product layer (planned 2026-07-10, collaboratively)
+
+**Status: PLANNED and SIGNED OFF (user, 2026-07-10). No code yet; P0 is
+the next work item.** This is the
+missing outer shell from `coxeter-viz-DESIGN.md` (schema, `render()`,
+bundle, Python), re-planned against the system as actually built. **2D only
+(user ruling): 3D is refused politely and extended later; nothing here
+builds for it speculatively beyond a version field and dimension-agnostic
+op names.**
+
+### 7.1 Session decisions (all user, 2026-07-10)
+
+1. **The public seam is the Coxeter matrix.** Python sends abstract group
+   data only (matrix, word lists, generator-index sets); JS owns all
+   geometry. The inference layer (§4, "deliberately later") is now due.
+2. **Three output types, all first-class**: pixel (PNG via the GPU shader
+   at k× — bigger is genuinely more detailed), vector (SVG via the path
+   pipeline), live (self-contained HTML).
+3. **The paint convention is invisible to users**: shader for live + PNG,
+   vector compute for SVG. No user-facing knob required (an expert override
+   may exist but must never be needed).
+4. **A headless-browser dependency is acceptable** for Python PNG export.
+   (SVG is browser-free in principle — `svg.ts` is pure strings.)
+5. **The saved HTML is the instrument itself** — the animation/illustration,
+   not a wrapper around it. Download buttons optional, not required.
+6. **Live v1 = pan/zoom only.** Parked with provenance: isometry-of-the-
+   space navigation ("will probably replace the ambient pan/zoom"), and a
+   UI-description language — both explicitly later.
+7. **Extent default = the metric ball** (`tessellateBall`/`orbitBall` —
+   group-independent coverage); word-length depth is the expert knob.
+   (Spherical groups are finite and simply exhaust.)
+8. **All eight ops from the start** (§7.4).
+9. **Acceptance criterion = geometric realizability, not irreducibility**
+   — (2,2,m) is a perfectly good spherical triangle and is accepted.
+10. **Refusals are classification VALUES, not throws** — a refusal is an
+    answer Python can report, carrying its mathematical reason.
+11. **One figure per document.** Collections = a Python loop over files.
+    The one-HTML-many-groups dropdown gallery is parked.
+12. **Plotly pattern confirmed**: monorepo, the Python wheel vendors the
+    compiled bundle, no separate npm publish.
+13. **The January schema machinery is cut for v1**: template/binding/style
+    split, `$ref`/`$load`, `.jsonl` bindings — all additive later; v1 is a
+    flat figure document. The parent's `space: "H2"|"H3"` field is
+    explicitly NOT copied — geometry is inferred, never declared.
+14. **Name resolved: `coxeter-viz`** (repo + pip; import `coxeter_viz`).
+
+### 7.2 Architecture: two new layers + one new coxeter module
+
+The dependency law extends (2D viz unchanged):
+
+```
+math → geometry → models → polytope → coxeter → group → viz2d → schema → app
+                                                                          ↑ demos
+```
+
+- **`coxeter/matrix.ts`** — the INFERENCE LAYER (lives with spec/validate):
+  `classifyCoxeterMatrix(M)` → `{ kind: 'polygon', spec }` (a
+  `RealizationSpec`) or `{ kind: 'refused', reason, detail }`. Exact
+  arithmetic where the existing trichotomy is exact.
+- **`src/schema/`** — the FIGURE DOCUMENT: types, parse, validate,
+  `version`. Pure data + validation, no DOM, no rendering. (Named
+  "figure", NOT "scene" — `viz2d` already owns `Scene`, and the collision
+  would be permanent.) Semantic validation delegates to `coxeter/matrix`.
+- **`src/app/`** — `render(container, figure)`: figure → inference →
+  realize → `kit/` assembly → the painters; plus the export functions
+  (`figureToSvg`, `figureToPng`) and the HTML exporter. The only layer
+  that touches the DOM by design.
+- **`python/coxeter_viz/`** — the thin builder (one method per op, each
+  appending one dict), `save()` dispatching on extension, `_static/viewer.js`
+  vendored at build time.
+
+### 7.3 The inference layer (2D)
+
+Acceptance rule: **the graph of finite entries of M is a single n-cycle
+through all n generators** (n = 3: all entries finite — K₃ IS the
+3-cycle). Then cyclic order = the cycle, decorations = the finite entries,
+geometry = the existing exact trichotomy (`classifyPolygon`), and the
+output is a `RealizationSpec` that `validatePolygon` accepts by
+construction. The taxonomy, exhaustively:
+
+| matrix class | verdict |
+|---|---|
+| not a Coxeter matrix (asymmetric, bad diagonal, entries < 2 other than the −1 sentinel) | refused: `invalid-matrix` |
+| rank < 3 | refused: `rank-too-small` (rank 2 = dihedral; its chamber is a wedge, not a compact polygon) |
+| n = 3, some entry ∞ | refused: `non-compact` (ideal vertex — v1 rule, matches `validatePolygon`) |
+| finite graph = n-cycle | **accepted: polygon** (S/E/H by the trichotomy) |
+| finite graph disconnected | refused: `free-product` — blocks with NO relation between them (all ∞); walls in different blocks never meet; the detail NAMES the blocks. *(Corrected at P0: an earlier draft said `reducible`, the wrong notion — order-2 entries are finite-graph EDGES, so direct-product reducibles like (2,2,m) have a connected finite graph and are accepted per ruling 9; disconnection of the finite graph means a free product.)* |
+| finite graph connected, not an n-cycle (chords, trees, n > 3 with excess finite entries) | refused: `not-2d` — with the honest sub-case where detectable (rank ≥ 4 all-finite ⇒ "a 3D or higher group — not yet implemented") |
+
+Tests: acceptance across all three geometries including (2,2,m); one test
+per refusal class; the accepted path round-trips through
+`validatePolygon` + the solver.
+
+### 7.4 The figure document (schema v0.1)
+
+**Sign-off note (user, 2026-07-10): this table is NOT permanent** — it is
+the natural first case, the vocabulary of what is implemented today, and
+it will evolve as the system grows. The `version` field is the honesty
+mechanism for that evolution.
+
+```jsonc
+{
+  "version": "0.1",
+  "group": { "coxeterMatrix": [[1,2,7],[2,1,3],[7,3,1]] },  // geometry inferred
+  "model": "auto",             // auto = the conformal chart of the inferred geometry
+  "layers": [
+    { "type": "tessellation", "extent": { "ball": 4.0 },
+      "color": { "map": "parity" } },
+    { "type": "walls", "width": 0.05 },
+    { "type": "cayley", "extent": { "ball": 3.0 } }
+  ]
+}
+```
+
+The op vocabulary — one row per op, each with its WORD SEMANTICS pinned
+(the design-doc rule: every word-driven op states what a word maps to):
+
+| op | arguments | semantics |
+|---|---|---|
+| `domain` | fill style | the fundamental chamber |
+| `walls` | width, per-generator colors | the mirrors of the generators |
+| `tessellation` | extent, color map | the orbit of the chamber; one tile per element |
+| `cayley` | extent, node/edge style | the dual graph: vertices = the orbit of the incenter, edges {g, g·Rᵢ} colored by generator |
+| `tiles` | word list, style | word w ↦ THE TILE w·(FD) — any spelling of an element hits its one tile |
+| `hull` | word list, style | the convex hull of the base-point images w·x₀ (straight chart), with its Gauss–Bonnet area |
+| `cosets` | subgroup (generator indices), extent, palette | left cosets of the parabolic W_S, one color per coset (the shared `hashHue` law) |
+| `uniform` | rings, palette | the Wythoff tiling of the ringed seed; faces colored by dihedral-orbit type |
+
+Pinned conventions:
+
+- **extent** = `{ "ball": r }` (default) or `{ "depth": n }` (expert).
+- **color maps** v0.1: `parity`, `hue`, constant. (`cosets` carries its own
+  coloring; explicit per-word colors are additive later.)
+- **model** values: `auto` | `poincare` | `klein` | `cartesian` |
+  `gnomonic` | `stereographic`. `auto` = conformal chart (Poincaré / the
+  plane / stereographic). The perspective globe is NOT a v0.1 model (it is
+  not a `Model`; parked).
+- **camera**: the document is canonically camera-free; v0.1 renders with
+  the `kit/camera` auto-fit. Live pan/zoom mutates the view only, never
+  the document. An explicit camera field is additive later.
+- **words** are lists of generator indices, applied left to right — the
+  one indexing law, unchanged.
+- The document validates structurally in `schema/`, semantically through
+  the inference layer; every failure is a value with a reason (ruling 10).
+
+### 7.5 Exports and the bundle
+
+- **SVG**: figure → `buildPathList` → `toSvg` (or `fieldScene` + the
+  vector twin for field-painted layers) — pure strings end to end.
+- **PNG**: figure → the `RasterLayer` stack → `renderPng` at k× (the
+  camera is scaled, never the pixels): the shader re-folds per pixel.
+- **HTML**: one self-contained file — the tree-shaken `viewer.js` (Vite
+  library mode, `scripts/build-bundle`) + the figure JSON inlined in a
+  template. Opening it = the live instrument.
+- **Python `save(path)`** dispatches on extension: `.html` writes the
+  template directly (no browser anywhere); `.png` drives a headless
+  browser (Playwright) that loads the same bundle and calls the same
+  `figureToPng` — one rendering truth for screen and paper, and the same
+  mechanism as the house pixel-coincidence tests. `.svg` default: the same
+  headless mechanism (one dependency, zero drift); a pure-Node fast path
+  is possible later since the SVG pipeline is DOM-free. **Decision point
+  at P8**, default as stated. Playwright ships as an optional extra
+  (`pip install coxeter-viz[export]`) so HTML-only users never download a
+  browser — confirm at P7/P8.
+
+### 7.6 Increments (each green-gated, README-first, hands-on checkpoints)
+
+- **P0** — this entry + `src/schema/README.md` + `src/app/README.md`
+  written as specs (the §7.4 vocabulary IS the schema README's core);
+  `coxeter/README.md` gains the inference section. No code.
+  **CHECKPOINT: user signs off on the vocabulary as written.**
+- **P1** — `coxeter/matrix.ts` per §7.3, with the full refusal taxonomy +
+  tests.
+- **P2** — `src/schema/`: figure types + parse/validate (+ P1
+  semantically); hand-written fixture figures covering all eight ops.
+- **P3** — `src/app/render` for domain/walls/tessellation/cayley through
+  `kit/`; a `figure` demo that loads fixture JSON (the dev harness for
+  the whole product layer, per the design doc's "test with hand-written
+  scenes, no Python"). **CHECKPOINT: first figure rendered from JSON.**
+- **P4** — the remaining ops (tiles, hull, cosets, uniform) + the paint
+  convention wiring (field layers live).
+- **P5** — `figureToSvg` / `figureToPng` assembled from the existing
+  exporters; exposed on the rendered page for headless driving.
+- **P6** — the bundle (`viewer.js`) + the HTML exporter.
+  **CHECKPOINT: first saved HTML opened, panned, zoomed.**
+- **P7** — `python/coxeter_viz/`: the builder (one method per op, 1:1
+  with §7.4), `save('.html')`, packaging (wheel vendors the bundle).
+- **P8** — `save('.png')` / `save('.svg')` via Playwright; k× scale
+  argument; the §7.5 decision point. **CHECKPOINT: first Python-produced
+  PNG.**
+- **P9** — verification hardening: golden SVG fixtures, GPU/CPU
+  pixel-coincidence on figure renders, matrix→picture pins (spherical
+  orders / Euler counts); README + CLAUDE.md status updates.
+
+### 7.7 Parked in this session (with provenance)
+
+- **Isometry-space navigation** replacing ambient pan/zoom (user,
+  2026-07-10 — "soon"); **a UI-description language** (user — "later on").
+- **The dropdown gallery** (one HTML, N groups live) and the
+  template/binding/`$ref`/`$load` machinery — additive on top of the flat
+  document (a template is a figure with holes).
+- **Download buttons on the saved page** — optional per the user; decide
+  at P6 by taste, zero architectural weight.
+- **The perspective globe as a figure model**; **explicit camera field**;
+  **explicit per-word colors** — all additive schema growth.
+- **All of 3D** — Milestone 2 machinery (Route-A inference: dual graph +
+  Steinitz + Andreev; the survey of the parent's built Route-B solver is
+  in the 2026-07-10 session record) waits until the 2D product story is
+  complete (user ruling).

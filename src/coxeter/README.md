@@ -80,3 +80,41 @@ bundle: geometry instance, walls (`Hyperplane`s), chamber (`Polytope`),
 gram, inradius, diagnostics. The origin is a canonical interior point
 (equidistant from all walls) — the natural Cayley-graph base point for
 Phase 4.
+
+## The inference layer (`matrix.ts`) — Coxeter matrix → spec (PLAN §7.3, increment P1)
+
+The step above the spec: from the **abstract group alone** — the Coxeter
+matrix, the public/Python seam — to a `RealizationSpec`, or a refusal that
+says why not. A `CoxeterMatrix` is symmetric integer, `M_ii = 1`, entries
+≥ 2 with **−1 the sentinel for ∞** (JSON-safe). `classifyCoxeterMatrix(M)`
+returns a **value, never a throw** (a refusal is an answer Python reports):
+
+```ts
+type MatrixClassification =
+  | { kind: 'polygon'; spec: RealizationSpec }
+  | { kind: 'refused'; reason: RefusalReason; detail: string };
+```
+
+**Acceptance rule**: the graph of *finite* entries (edges where
+`2 ≤ M_ij < ∞`) is a single n-cycle through all n generators (n = 3: all
+entries finite — K₃ IS the 3-cycle). Then cyclic order = the cycle,
+decorations = the finite entries, geometry = the exact trichotomy
+(`classifyPolygon`), and the emitted spec passes `validatePolygon` by
+construction. **Geometric realizability, not irreducibility, is the
+criterion** (user ruling 2026-07-10): (2,2,m) — reducible as A₁ × I₂(m) —
+is a perfectly good compact spherical triangle and is accepted.
+
+The refusal taxonomy, exhaustively:
+
+| reason | class of matrix |
+|---|---|
+| `invalid-matrix` | not a Coxeter matrix: asymmetric, bad diagonal, entries < 2 other than the −1 sentinel, non-integer |
+| `rank-too-small` | rank ≤ 2: the chamber is a point/halfplane/wedge, not a compact polygon (digons/lunes refused per house rule) |
+| `non-compact` | n = 3 with an ∞ entry: an ideal (or hyperideal) vertex — deferred in v1, matching `validatePolygon` |
+| `free-product` | the finite graph is disconnected: blocks of generators with NO relation between them (all ∞) — walls in different blocks never meet; no compact chamber. The detail names the blocks. (Not to be confused with direct-product reducibility, which has order-2 entries — finite — and is accepted when realizable.) |
+| `not-2d` | finite graph connected but not the n-cycle (chords, trees, n ≥ 4 with excess finite entries). Where detectable, the detail is honest: rank ≥ 4 all-finite ⇒ "a 3D (or higher) group — not yet implemented." |
+
+Tests: acceptance across all three geometries including (2,2,m); the
+accepted path round-trips `validatePolygon` + `solvePolygon`; one test per
+refusal reason; n > 3 polygons (e.g. the right-angled pentagon: C₅ of 2s,
+∞ elsewhere) accepted and solved.

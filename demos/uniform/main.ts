@@ -29,6 +29,10 @@ import { realizePolygon } from '@/viz2d/kit/realize';
 import { domainItem, polygonItem } from '@/viz2d/kit/scene';
 import { blankStyle, regionsField, rgba, starBands, starField } from '@/viz2d/kit/field';
 import { TYPE_COLORS } from '@/viz2d/kit/palette';
+import {
+  PAD, button, checkbox, downloadBlob, downloadSvg, dpr, exportSizeLabel,
+  kSelect as buildKSelect, layerStack, pageShell, rafScheduler, sizeStack, statusText, textInput,
+} from '../shared';
 
 /** §5.8 D3: the uniform tiling as a FIELD PROGRAM — regions + seed star. */
 function uniformGpuStyle(state: State, rings: boolean[]): TilingStyle {
@@ -81,27 +85,13 @@ function uniformScene(state: State, rings: boolean[], radius: number): { scene: 
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent =
-  'uniform / C3 — Wythoff uniform tilings · (p,q,r) infers the geometry · rings pick the seed · faces colored by type';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 8px';
-document.body.appendChild(heading);
+const heading = pageShell(
+  'uniform / C3 — Wythoff uniform tilings · (p,q,r) infers the geometry · rings pick the seed · faces colored by type',
+);
 
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
-const smallBtn = (label: string): HTMLButtonElement => {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.style.cssText =
-    'font-size:11px;padding:2px 9px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer';
-  return b;
-};
-const ordersInput = document.createElement('input');
-ordersInput.value = '2, 3, 7';
-ordersInput.style.cssText =
-  'width:110px;font:13px ui-monospace,monospace;padding:5px 8px;border:1px solid #ccc;border-radius:4px;background:#fff';
+const ordersInput = textInput('2, 3, 7', 110);
 const ringBoxes = [0, 1, 2].map((i) => {
   const lab = document.createElement('label');
   lab.style.cssText = 'font-size:12px;color:#555;display:inline-flex;gap:2px;align-items:center';
@@ -112,47 +102,26 @@ const ringBoxes = [0, 1, 2].map((i) => {
   controls.appendChild(lab);
   return box;
 });
-const gpuWrap = document.createElement('label');
-gpuWrap.style.cssText = 'font-size:12px;color:#555;display:inline-flex;gap:4px;align-items:center';
-const gpuBox = document.createElement('input');
-gpuBox.type = 'checkbox';
-gpuBox.checked = true;
-gpuWrap.append(gpuBox, document.createTextNode('GPU'));
+const { label: gpuWrap, input: gpuBox } = checkbox('GPU', true);
 controls.appendChild(gpuWrap);
-const svgBtn = smallBtn('SVG');
-const pngBtn = smallBtn('PNG');
-const kSelect = document.createElement('select');
-kSelect.style.cssText = 'font-size:12px;padding:2px;border:1px solid #ccc;border-radius:3px;background:#fff';
-for (const k of [1, 2, 4, 8]) {
-  const opt = document.createElement('option');
-  opt.value = String(k);
-  opt.textContent = `${k}×`;
-  kSelect.appendChild(opt);
-}
-kSelect.value = '2';
+const svgBtn = button('SVG');
+const pngBtn = button('PNG');
+const kSelect = buildKSelect();
 const pxLabel = document.createElement('span');
 pxLabel.style.cssText = 'font-size:11px;color:#999';
-const status = document.createElement('span');
-status.style.cssText = 'font-size:12px;color:#777';
+const status = statusText();
 controls.prepend(ordersInput);
 controls.append(svgBtn, pngBtn, kSelect, pxLabel, status);
 document.body.appendChild(controls);
 
 // The layer stack (§5.8): GPU field under the transparent named canvas.
-const stack = document.createElement('div');
-stack.style.cssText = 'position:relative;background:#fff;border-radius:4px';
-const glCanvas = document.createElement('canvas');
-glCanvas.style.cssText = 'position:absolute;inset:0';
-const canvas = document.createElement('canvas');
-canvas.style.cssText = 'position:absolute;inset:0';
-stack.append(glCanvas, canvas);
+const { stack, glCanvas, canvas } = layerStack();
 document.body.appendChild(stack);
 const shader = new TilingShader(glCanvas);
 
 let currentSize = 0;
 function updatePxLabel(): void {
-  const d = Math.round(currentSize * Number(kSelect.value));
-  pxLabel.textContent = currentSize ? `${d} × ${d} px (${((d * d) / 1e6).toFixed(1)} MP)` : '';
+  pxLabel.textContent = exportSizeLabel(currentSize, Number(kSelect.value));
 }
 
 let detach: (() => void) | null = null;
@@ -177,19 +146,8 @@ function rebuild(): void {
     260,
     Math.min(760, window.innerWidth - 2 * PAD, window.innerHeight - 2 * PAD - headH),
   );
-  const dpr = window.devicePixelRatio || 1;
-  for (const c of [glCanvas, canvas]) {
-    c.width = size * dpr;
-    c.height = size * dpr;
-    c.style.width = `${size}px`;
-    c.style.height = `${size}px`;
-  }
-  stack.style.width = `${size}px`;
-  stack.style.height = `${size}px`;
-  glCanvas.style.display = gpuBox.checked ? 'block' : 'none';
-  const g = canvas.getContext('2d');
-  if (!g) return;
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const d = dpr();
+  const g = sizeStack({ stack, glCanvas, canvas }, size, d, gpuBox.checked);
   currentSize = size;
   updatePxLabel();
 
@@ -228,38 +186,21 @@ function rebuild(): void {
   const draw = (): void => {
     if (gpuStyle) {
       shader.draw(
-        { view: camera.view, scalePx: camera.scalePx * dpr, centerPx: [camera.centerPx[0] * dpr, camera.centerPx[1] * dpr] },
+        { view: camera.view, scalePx: camera.scalePx * d, centerPx: [camera.centerPx[0] * d, camera.centerPx[1] * d] },
         gpuStyle,
       );
     }
     g.clearRect(0, 0, size, size);
     paint(g, buildPathList(scene, ctx()), camera);
   };
-  let pending = false;
-  const schedule = (): void => {
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      draw();
-    });
-  };
+  const schedule = rafScheduler(draw);
   draw();
 
-  const download = (href: string, ext: string): void => {
-    const a = document.createElement('a');
-    a.href = href;
-    a.download = `uniform-${ordersInput.value.replace(/[^0-9]+/g, '-')}-${rings.map((r) => +r).join('')}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(href);
-  };
+  const stem = () => `uniform-${ordersInput.value.replace(/[^0-9]+/g, '-')}-${rings.map((r) => +r).join('')}`;
   svgBtn.onclick = () => {
     const radius = coverageRadius(state.group, state.model, camera, frame, EXPORT_EPSILON_PX);
     const paths = mergeFieldPaths(buildPathList(uniformScene(state, rings, radius).scene, ctx()));
-    download(
-      URL.createObjectURL(new Blob([toSvg(paths, camera, frame)], { type: 'image/svg+xml' })),
-      'svg',
-    );
+    downloadSvg(toSvg(paths, camera, frame), `${stem()}.svg`);
   };
   pngBtn.onclick = () => {
     const k = Number(kSelect.value);
@@ -267,7 +208,7 @@ function rebuild(): void {
     if (gpuStyle) layers.push(tilingLayer(state.poly, state.model, gpuStyle));
     layers.push(sceneLayer(scene, state.group.geom, state.model));
     void renderPng(layers, camera, frame, k, '#ffffff')
-      .then((blob) => download(URL.createObjectURL(blob), `${k}x.png`))
+      .then((blob) => downloadBlob(blob, `${stem()}-${k}x.png`))
       .catch((err: unknown) => {
         status.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
       });

@@ -32,6 +32,10 @@ import { realizePolygon } from '@/viz2d/kit/realize';
 import { cosetColor, domainItem, fieldTileId, hueColor, tilesToScene, wallItems } from '@/viz2d/kit/scene';
 import { cosetField, fieldStyle } from '@/viz2d/kit/field';
 import { GREY, WALL_COLORS } from '@/viz2d/kit/palette';
+import {
+  PAD, button, checkbox, downloadBlob, downloadSvg, dpr, exportSizeLabel,
+  kSelect as buildKSelect, layerStack, pageShell, rafScheduler, sizeStack, statusText, textInput,
+} from '../shared';
 
 const LIVE_EPSILON_PX = 3;
 const EXPORT_EPSILON_PX = 1.5;
@@ -108,27 +112,13 @@ function cosetScene(state: State, radius: number, withTiles: boolean): { scene: 
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent =
-  'cosets / C1 — color the tiling by LEFT cosets of the parabolic W_S · pick S below · a vertex dihedral colors its flowers';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 8px';
-document.body.appendChild(heading);
+const heading = pageShell(
+  'cosets / C1 — color the tiling by LEFT cosets of the parabolic W_S · pick S below · a vertex dihedral colors its flowers',
+);
 
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
-const smallBtn = (label: string): HTMLButtonElement => {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.style.cssText =
-    'font-size:11px;padding:2px 9px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer';
-  return b;
-};
-const ordersInput = document.createElement('input');
-ordersInput.value = '2, 3, 7';
-ordersInput.style.cssText =
-  'width:130px;font:13px ui-monospace,monospace;padding:5px 8px;border:1px solid #ccc;border-radius:4px;background:#fff';
+const ordersInput = textInput('2, 3, 7', 130);
 const sWrap = document.createElement('span');
 sWrap.style.cssText = 'display:inline-flex;gap:6px;align-items:center;font-size:12px;color:#555';
 let SBoxes: HTMLInputElement[] = [];
@@ -148,43 +138,23 @@ function rebuildSBoxes(n: number): void {
     return box;
   });
 }
-const svgBtn = smallBtn('SVG');
-const pngBtn = smallBtn('PNG');
-const kSelect = document.createElement('select');
-kSelect.style.cssText = 'font-size:12px;padding:2px;border:1px solid #ccc;border-radius:3px;background:#fff';
-for (const k of [1, 2, 4, 8]) {
-  const opt = document.createElement('option');
-  opt.value = String(k);
-  opt.textContent = `${k}×`;
-  kSelect.appendChild(opt);
-}
-kSelect.value = '2';
+const svgBtn = button('SVG');
+const pngBtn = button('PNG');
+const kSelect = buildKSelect();
 const pxLabel = document.createElement('span');
 pxLabel.style.cssText = 'font-size:11px;color:#999';
-const overlayWrap = document.createElement('label');
-overlayWrap.style.cssText = 'font-size:12px;color:#555;display:inline-flex;gap:4px;align-items:center';
-const overlayBox = document.createElement('input');
-overlayBox.type = 'checkbox';
-overlayWrap.append(overlayBox, document.createTextNode('CPU overlay (verify)'));
-const status = document.createElement('span');
-status.style.cssText = 'font-size:12px;color:#777';
+const { label: overlayWrap, input: overlayBox } = checkbox('CPU overlay (verify)', false);
+const status = statusText();
 controls.append(ordersInput, sWrap, overlayWrap, svgBtn, pngBtn, kSelect, pxLabel, status);
 document.body.appendChild(controls);
 
-const stack = document.createElement('div');
-stack.style.cssText = 'position:relative;background:#fff;border-radius:4px';
-const glCanvas = document.createElement('canvas');
-glCanvas.style.cssText = 'position:absolute;inset:0';
-const canvas = document.createElement('canvas');
-canvas.style.cssText = 'position:absolute;inset:0';
-stack.append(glCanvas, canvas);
+const { stack, glCanvas, canvas } = layerStack();
 document.body.appendChild(stack);
 const shader = new TilingShader(glCanvas);
 
 let currentSize = 0;
 function updatePxLabel(): void {
-  const d = Math.round(currentSize * Number(kSelect.value));
-  pxLabel.textContent = currentSize ? `${d} × ${d} px (${((d * d) / 1e6).toFixed(1)} MP)` : '';
+  pxLabel.textContent = exportSizeLabel(currentSize, Number(kSelect.value));
 }
 
 let detach: (() => void) | null = null;
@@ -209,18 +179,8 @@ function rebuild(): void {
     260,
     Math.min(760, window.innerWidth - 2 * PAD, window.innerHeight - 2 * PAD - headH),
   );
-  const dpr = window.devicePixelRatio || 1;
-  for (const c of [glCanvas, canvas]) {
-    c.width = size * dpr;
-    c.height = size * dpr;
-    c.style.width = `${size}px`;
-    c.style.height = `${size}px`;
-  }
-  stack.style.width = `${size}px`;
-  stack.style.height = `${size}px`;
-  const g = canvas.getContext('2d');
-  if (!g) return;
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const d = dpr();
+  const g = sizeStack({ stack, glCanvas, canvas }, size, d, true);
   shader.setPolygon(state.poly);
   shader.setChart(state.model);
   currentSize = size;
@@ -251,37 +211,20 @@ function rebuild(): void {
   const ctx = () => ({ geom: state.group.geom, model: state.model, camera, size: frame });
   const draw = (): void => {
     shader.draw(
-      { view: camera.view, scalePx: camera.scalePx * dpr, centerPx: [camera.centerPx[0] * dpr, camera.centerPx[1] * dpr] },
+      { view: camera.view, scalePx: camera.scalePx * d, centerPx: [camera.centerPx[0] * d, camera.centerPx[1] * d] },
       gpuStyle,
     );
     g.clearRect(0, 0, size, size);
     paint(g, buildPathList(scene, ctx()), camera);
   };
-  let pending = false;
-  const schedule = (): void => {
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      draw();
-    });
-  };
+  const schedule = rafScheduler(draw);
   draw();
 
-  const download = (href: string, ext: string): void => {
-    const a = document.createElement('a');
-    a.href = href;
-    a.download = `cosets-${ordersInput.value.replace(/[^0-9]+/g, '-')}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(href);
-  };
+  const stem = () => `cosets-${ordersInput.value.replace(/[^0-9]+/g, '-')}`;
   svgBtn.onclick = () => {
     const radius = coverageRadius(state.group, state.model, camera, frame, EXPORT_EPSILON_PX);
     const paths = mergeFieldPaths(buildPathList(cosetScene(state, radius, true).scene, ctx()));
-    download(
-      URL.createObjectURL(new Blob([toSvg(paths, camera, frame)], { type: 'image/svg+xml' })),
-      'svg',
-    );
+    downloadSvg(toSvg(paths, camera, frame), `${stem()}.svg`);
   };
   pngBtn.onclick = () => {
     const k = Number(kSelect.value);
@@ -290,7 +233,7 @@ function rebuild(): void {
       sceneLayer(scene, state.group.geom, state.model),
     ];
     void renderPng(layers, camera, frame, k, '#ffffff')
-      .then((blob) => download(URL.createObjectURL(blob), `${k}x.png`))
+      .then((blob) => downloadBlob(blob, `${stem()}-${k}x.png`))
       .catch((err: unknown) => {
         status.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
       });

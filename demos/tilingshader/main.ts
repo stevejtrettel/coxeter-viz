@@ -27,6 +27,10 @@ import { tilingLayer } from '@/viz2d/shader/layer';
 import type { TilingStyle } from '@/viz2d/shader/types';
 import { realizePolygon } from '@/viz2d/kit/realize';
 import { tilesToScene } from '@/viz2d/kit/scene';
+import {
+  PAD, button, checkbox, downloadBlob, dpr, exportSizeLabel,
+  kSelect as buildKSelect, layerStack, pageShell, rafScheduler, sizeStack, statusText, textInput,
+} from '../shared';
 
 // The reference shader's palette, kept: blue tiles, cream edges, ember vertices.
 const EVEN: [number, number, number, number] = [0.55, 0.7, 0.85, 1];
@@ -62,31 +66,20 @@ function realize(orders: [number, number, number]): State {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent =
-  'tilingshader / T2 — the GPU tiling field · orders (p,q,r) infer the geometry · overlay = the CPU painter on the same camera';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 8px';
-document.body.appendChild(heading);
+const heading = pageShell(
+  'tilingshader / T2 — the GPU tiling field · orders (p,q,r) infer the geometry · overlay = the CPU painter on the same camera',
+);
 
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
-const ordersInput = document.createElement('input');
-ordersInput.value = '2, 3, 7';
-ordersInput.style.cssText =
-  'width:90px;font:13px ui-monospace,monospace;padding:5px 8px;border:1px solid #ccc;border-radius:4px;background:#fff';
+const ordersInput = textInput('2, 3, 7', 90);
 const chartSelect = document.createElement('select');
 chartSelect.style.cssText = 'font-size:12px;padding:4px;border:1px solid #ccc;border-radius:4px;background:#fff';
+/** A checkbox appended to the controls bar, returning its input. */
 const toggle = (label: string, checked: boolean): HTMLInputElement => {
-  const wrap = document.createElement('label');
-  wrap.style.cssText = 'font-size:12px;color:#555;display:inline-flex;gap:4px;align-items:center';
-  const box = document.createElement('input');
-  box.type = 'checkbox';
-  box.checked = checked;
-  wrap.append(box, document.createTextNode(label));
-  controls.appendChild(wrap);
-  return box;
+  const { label: el, input } = checkbox(label, checked);
+  controls.appendChild(el);
+  return input;
 };
 const slider = (label: string, value: number): HTMLInputElement => {
   const wrap = document.createElement('label');
@@ -107,36 +100,18 @@ const edgeSlider = slider('width', 25);
 const vertsBox = toggle('vertices', true);
 const vertSlider = slider('radius', 30);
 const overlayBox = toggle('CPU overlay (verify)', false);
-const pngBtn = document.createElement('button');
-pngBtn.textContent = 'PNG';
-pngBtn.style.cssText =
-  'font-size:11px;padding:2px 9px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer';
-const kSelect = document.createElement('select');
-kSelect.style.cssText = 'font-size:12px;padding:2px;border:1px solid #ccc;border-radius:3px;background:#fff';
-for (const k of [1, 2, 4, 8]) {
-  const opt = document.createElement('option');
-  opt.value = String(k);
-  opt.textContent = `${k}×`;
-  kSelect.appendChild(opt);
-}
-kSelect.value = '2';
+const pngBtn = button('PNG');
+const kSelect = buildKSelect();
 const pxLabel = document.createElement('span');
 pxLabel.style.cssText = 'font-size:11px;color:#999';
 controls.append(pngBtn, kSelect, pxLabel);
-const status = document.createElement('span');
-status.style.cssText = 'font-size:12px;color:#777';
+const status = statusText();
 controls.appendChild(status);
 document.body.appendChild(controls);
 
 // The layer stack: WebGL field below, transparent Canvas2D overlay on top;
 // interaction listens on the top canvas (PLAN §5.6, "layer stack").
-const stack = document.createElement('div');
-stack.style.cssText = 'position:relative';
-const glCanvas = document.createElement('canvas');
-const overlayCanvas = document.createElement('canvas');
-glCanvas.style.cssText = 'position:absolute;inset:0;background:#fff;border-radius:4px';
-overlayCanvas.style.cssText = 'position:absolute;inset:0';
-stack.append(glCanvas, overlayCanvas);
+const { stack, glCanvas, canvas: overlayCanvas } = layerStack();
 document.body.appendChild(stack);
 
 const shader = new TilingShader(glCanvas);
@@ -164,10 +139,7 @@ let currentSize = 0;
 
 /** The k-selector's honest price tag: exact export dimensions + megapixels. */
 function updatePxLabel(): void {
-  const d = Math.round(currentSize * Number(kSelect.value));
-  pxLabel.textContent = currentSize
-    ? `${d} × ${d} px (${((d * d) / 1e6).toFixed(1)} MP)`
-    : '';
+  pxLabel.textContent = exportSizeLabel(currentSize, Number(kSelect.value));
 }
 
 function rebuild(): void {
@@ -207,18 +179,8 @@ function rebuild(): void {
     260,
     Math.min(760, window.innerWidth - 2 * PAD, window.innerHeight - 2 * PAD - headH),
   );
-  const dpr = window.devicePixelRatio || 1;
-  for (const c of [glCanvas, overlayCanvas]) {
-    c.width = size * dpr;
-    c.height = size * dpr;
-    c.style.width = `${size}px`;
-    c.style.height = `${size}px`;
-  }
-  stack.style.width = `${size}px`;
-  stack.style.height = `${size}px`;
-  const g = overlayCanvas.getContext('2d');
-  if (!g) return;
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const d = dpr();
+  const g = sizeStack({ stack, glCanvas, canvas: overlayCanvas }, size, d, true);
 
   // One camera, CSS px (the house convention); the GPU gets it in backing px.
   let camera: Camera = {
@@ -229,7 +191,7 @@ function rebuild(): void {
 
   const draw = (): void => {
     shader.draw(
-      { view: camera.view, scalePx: camera.scalePx * dpr, centerPx: [camera.centerPx[0] * dpr, camera.centerPx[1] * dpr] },
+      { view: camera.view, scalePx: camera.scalePx * d, centerPx: [camera.centerPx[0] * d, camera.centerPx[1] * d] },
       tilingStyle(state.r0),
     );
     g.clearRect(0, 0, size, size);
@@ -243,15 +205,7 @@ function rebuild(): void {
       paint(g, paths, camera);
     }
   };
-  let pending = false;
-  const schedule = (): void => {
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      draw();
-    });
-  };
+  const schedule = rafScheduler(draw);
   draw();
   redraw = schedule;
   currentSize = size;
@@ -262,13 +216,9 @@ function rebuild(): void {
     const layers: RasterLayer[] = [tilingLayer(state.poly, model, tilingStyle(state.r0))];
     if (overlayBox.checked) layers.push(sceneLayer(state.overlay, state.poly.geom, model));
     void renderPng(layers, camera, { widthPx: size, heightPx: size }, k)
-      .then((blob) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}-${model.name}-${k}x.png`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      })
+      .then((blob) =>
+        downloadBlob(blob, `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}-${model.name}-${k}x.png`),
+      )
       .catch((err: unknown) => {
         status.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
       });

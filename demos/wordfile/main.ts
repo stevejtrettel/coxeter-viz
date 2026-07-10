@@ -28,6 +28,10 @@ import { realizePolygon } from '@/viz2d/kit/realize';
 import { domainItem, parityColor, polygonItem, tilesToScene, wallItems } from '@/viz2d/kit/scene';
 import { fieldStyle } from '@/viz2d/kit/field';
 import { GEN_COLORS, GREY, HOVER, HULL, HULL_TILES, TILE } from '@/viz2d/kit/palette';
+import {
+  PAD, button, checkbox, downloadBlob, downloadSvg, dpr, exportSizeLabel,
+  kSelect as buildKSelect, layerStack, pageShell, rafScheduler, sizeStack, statusText, textInput,
+} from '../shared';
 // The example ships with the demo and auto-loads through the SAME parser a
 // picked file goes through.
 import exampleRaw from './example-words.json?raw';
@@ -134,80 +138,45 @@ function realize(
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-const PAD = 20;
-document.body.style.cssText = `margin:0;padding:${PAD}px;background:#f7f5f0;font-family:system-ui,sans-serif;color:#222`;
-const heading = document.createElement('h2');
-heading.textContent = 'wordfile / M3.5 — a tiling from a word-list file · orders (p,q,r) infer the geometry';
-heading.style.cssText = 'font-weight:600;font-size:16px;margin:0 0 8px';
-document.body.appendChild(heading);
+const heading = pageShell('wordfile / M3.5 — a tiling from a word-list file · orders (p,q,r) infer the geometry');
 
 const controls = document.createElement('div');
 controls.style.cssText = 'display:flex;gap:10px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap';
-const ordersInput = document.createElement('input');
-ordersInput.value = '2, 3, 7';
-ordersInput.style.cssText =
-  'width:90px;font:13px ui-monospace,monospace;padding:5px 8px;border:1px solid #ccc;border-radius:4px;background:#fff';
+const ordersInput = textInput('2, 3, 7', 90);
 const fileInput = document.createElement('input');
 fileInput.type = 'file';
 fileInput.accept = '.json,.txt,.jsonl,text/plain,application/json';
 fileInput.style.cssText = 'font-size:12px';
-const sampleBtn = document.createElement('button');
-sampleBtn.textContent = 'sample list';
-sampleBtn.style.cssText =
-  'font-size:11px;padding:2px 9px;color:#666;background:#fff;border:1px solid #ccc;border-radius:3px;cursor:pointer';
-const saveBtn = document.createElement('button');
-saveBtn.textContent = 'SVG';
-saveBtn.style.cssText = sampleBtn.style.cssText;
-const status = document.createElement('span');
-status.style.cssText = 'font-size:12px;color:#777';
-const hullToggle = (label: string, checked: boolean): HTMLInputElement => {
-  const wrap = document.createElement('label');
-  wrap.style.cssText = 'font-size:12px;color:#555;display:inline-flex;gap:4px;align-items:center';
-  const box = document.createElement('input');
-  box.type = 'checkbox';
-  box.checked = checked;
-  wrap.append(box, document.createTextNode(label));
-  controls.appendChild(wrap);
-  return box;
+const sampleBtn = button('sample list');
+const saveBtn = button('SVG');
+const status = statusText();
+/** A checkbox appended to the controls bar, returning its input. */
+const toggle = (label: string, checked: boolean): HTMLInputElement => {
+  const { label: el, input } = checkbox(label, checked);
+  controls.appendChild(el);
+  return input;
 };
-const pngBtn = document.createElement('button');
-pngBtn.textContent = 'PNG';
-pngBtn.style.cssText = sampleBtn.style.cssText;
-const kSelect = document.createElement('select');
-kSelect.style.cssText = 'font-size:12px;padding:2px;border:1px solid #ccc;border-radius:3px;background:#fff';
-for (const k of [1, 2, 4, 8]) {
-  const opt = document.createElement('option');
-  opt.value = String(k);
-  opt.textContent = `${k}×`;
-  kSelect.appendChild(opt);
-}
-kSelect.value = '2';
+const pngBtn = button('PNG');
+const kSelect = buildKSelect();
 const pxLabel = document.createElement('span');
 pxLabel.style.cssText = 'font-size:11px;color:#999';
 controls.append(ordersInput, fileInput, sampleBtn, saveBtn, pngBtn, kSelect, pxLabel);
-const hullCentersBox = hullToggle('hull of centers', true);
-const hullTilesBox = hullToggle('hull of tiles', true);
-const gpuBox = hullToggle('GPU field', true);
+const hullCentersBox = toggle('hull of centers', true);
+const hullTilesBox = toggle('hull of tiles', true);
+const gpuBox = toggle('GPU field', true);
 controls.appendChild(status);
 document.body.appendChild(controls);
 
 // The layer stack (§5.6 T4): the GPU field UNDER the transparent Canvas2D
 // that carries every named element; one controller on the top canvas.
-const stack = document.createElement('div');
-stack.style.cssText = 'position:relative;background:#fff;border-radius:4px';
-const glCanvas = document.createElement('canvas');
-glCanvas.style.cssText = 'position:absolute;inset:0';
-const canvas = document.createElement('canvas');
-canvas.style.cssText = 'position:absolute;inset:0';
-stack.append(glCanvas, canvas);
+const { stack, glCanvas, canvas } = layerStack();
 document.body.appendChild(stack);
 const shader = new TilingShader(glCanvas);
 
 let currentSize = 0;
 /** The k-selector's price tag: exact export dimensions + megapixels. */
 function updatePxLabel(): void {
-  const d = Math.round(currentSize * Number(kSelect.value));
-  pxLabel.textContent = currentSize ? `${d} × ${d} px (${((d * d) / 1e6).toFixed(1)} MP)` : '';
+  pxLabel.textContent = exportSizeLabel(currentSize, Number(kSelect.value));
 }
 
 // The ball of (2,3,7) words to depth 6 — an alternative built-in list.
@@ -247,19 +216,8 @@ function rebuild(): void {
     260,
     Math.min(760, window.innerWidth - 2 * PAD, window.innerHeight - 2 * PAD - headH),
   );
-  const dpr = window.devicePixelRatio || 1;
-  for (const c of [glCanvas, canvas]) {
-    c.width = size * dpr;
-    c.height = size * dpr;
-    c.style.width = `${size}px`;
-    c.style.height = `${size}px`;
-  }
-  stack.style.width = `${size}px`;
-  stack.style.height = `${size}px`;
-  glCanvas.style.display = gpuBox.checked ? 'block' : 'none';
-  const g = canvas.getContext('2d');
-  if (!g) return;
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const d = dpr();
+  const g = sizeStack({ stack, glCanvas, canvas }, size, d, gpuBox.checked);
   if (gpuBox.checked) {
     shader.setPolygon(state.poly);
     shader.setChart(state.model);
@@ -300,22 +258,14 @@ function rebuild(): void {
   const draw = (): void => {
     if (gpuBox.checked) {
       shader.draw(
-        { view: camera.view, scalePx: camera.scalePx * dpr, centerPx: [camera.centerPx[0] * dpr, camera.centerPx[1] * dpr] },
+        { view: camera.view, scalePx: camera.scalePx * d, centerPx: [camera.centerPx[0] * d, camera.centerPx[1] * d] },
         fieldStyle(state.r0),
       );
     }
     g.clearRect(0, 0, size, size);
     paint(g, build(), camera);
   };
-  let pending = false;
-  const schedule = (): void => {
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      draw();
-    });
-  };
+  const schedule = rafScheduler(draw);
 
   draw();
   // SVG: with the field on, prepend its VECTOR TWIN (tilingshader/vector.ts)
@@ -328,13 +278,7 @@ function rebuild(): void {
       ? [...fieldScene(state.group, fieldStyle(state.r0), { radius }, 20000), ...state.scene]
       : state.scene;
     const paths = mergeFieldPaths(buildPathList(exportScene, ctx()));
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(
-      new Blob([toSvg(paths, camera, { widthPx: size, heightPx: size })], { type: 'image/svg+xml' }),
-    );
-    a.download = `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}.svg`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadSvg(toSvg(paths, camera, frame), `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}.svg`);
   };
   // PNG: the k× compositor (render2d/png.ts) — the GPU field re-evaluates
   // per pixel, the vector layer re-samples; SVG above stays vector-only.
@@ -344,13 +288,7 @@ function rebuild(): void {
     if (gpuBox.checked) layers.push(tilingLayer(state.poly, state.model, fieldStyle(state.r0)));
     layers.push(sceneLayer(state.scene, state.group.geom, state.model));
     void renderPng(layers, camera, { widthPx: size, heightPx: size }, k, '#ffffff')
-      .then((blob) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}-${k}x.png`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      })
+      .then((blob) => downloadBlob(blob, `tiling-${ordersInput.value.replace(/[^0-9]+/g, '-')}-${k}x.png`))
       .catch((err: unknown) => {
         status.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`;
       });
