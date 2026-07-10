@@ -1,0 +1,8 @@
+{
+  "version": "0.1",
+  "group": { "coxeterMatrix": [[1, 2, 4], [2, 1, 4], [4, 4, 1]] },
+  "layers": [
+    { "type": "tessellation", "extent": { "ball": 3.0 }, "color": { "map": "parity" }, "opacity": 0.35 },
+    { "type": "cayley", "extent": { "ball": 3.0 }, "node": { "size": 0.11 }, "edge": { "width": 0.06 } }
+  ]
+}

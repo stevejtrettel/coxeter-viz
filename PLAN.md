@@ -1591,10 +1591,10 @@ construction. The taxonomy, exhaustively:
 |---|---|
 | not a Coxeter matrix (asymmetric, bad diagonal, entries < 2 other than the −1 sentinel) | refused: `invalid-matrix` |
 | rank < 3 | refused: `rank-too-small` (rank 2 = dihedral; its chamber is a wedge, not a compact polygon) |
-| n = 3, some entry ∞ | refused: `non-compact` (ideal vertex — v1 rule, matches `validatePolygon`) |
+| finite graph an open chain (connected, degrees ≤ 2, not closed) | refused: `non-compact` — a genuinely 2D chamber with an ideal/open end, deferred in v1. *(Refined at P1: subsumes the "n = 3 with ∞" row — the ideal-vertex triangle IS the 3-chain; trees with branching are `not-2d`, chains are `non-compact`.)* |
 | finite graph = n-cycle | **accepted: polygon** (S/E/H by the trichotomy) |
 | finite graph disconnected | refused: `free-product` — blocks with NO relation between them (all ∞); walls in different blocks never meet; the detail NAMES the blocks. *(Corrected at P0: an earlier draft said `reducible`, the wrong notion — order-2 entries are finite-graph EDGES, so direct-product reducibles like (2,2,m) have a connected finite graph and are accepted per ruling 9; disconnection of the finite graph means a free product.)* |
-| finite graph connected, not an n-cycle (chords, trees, n > 3 with excess finite entries) | refused: `not-2d` — with the honest sub-case where detectable (rank ≥ 4 all-finite ⇒ "a 3D or higher group — not yet implemented") |
+| finite graph connected, some wall meeting ≥ 3 others (chords, branching) | refused: `not-2d` — with the honest sub-case where detectable (rank ≥ 4 all-finite ⇒ "dimension ≥ 3 — not yet implemented") |
 
 Tests: acceptance across all three geometries including (2,2,m); one test
 per refusal class; the accepted path round-trips through
@@ -1677,11 +1677,17 @@ Pinned conventions:
 - **P0** — this entry + `src/schema/README.md` + `src/app/README.md`
   written as specs (the §7.4 vocabulary IS the schema README's core);
   `coxeter/README.md` gains the inference section. No code.
-  **CHECKPOINT: user signs off on the vocabulary as written.**
+  **CHECKPOINT: user signs off on the vocabulary as written.** — DONE
+  2026-07-10; the user chose to continue in-session (a hands-on read of
+  the two new READMEs remains open).
 - **P1** — `coxeter/matrix.ts` per §7.3, with the full refusal taxonomy +
-  tests.
+  tests. — DONE 2026-07-10 (green, +11 tests; the chain/branch refinement
+  recorded in §7.3 and the coxeter README).
 - **P2** — `src/schema/`: figure types + parse/validate (+ P1
-  semantically); hand-written fixture figures covering all eight ops.
+  semantically); hand-written fixture figures covering all eight ops. —
+  DONE 2026-07-10 (green, +14 tests, 453 total; six fixture documents
+  cover all eight ops; unknown fields/ops are PROBLEMS, so a typo like
+  `"colour"` or `"tesselation"` can never silently drop).
 - **P3** — `src/app/render` for domain/walls/tessellation/cayley through
   `kit/`; a `figure` demo that loads fixture JSON (the dev harness for
   the whole product layer, per the design doc's "test with hand-written

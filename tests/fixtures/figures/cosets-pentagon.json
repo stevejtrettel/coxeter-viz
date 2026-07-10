@@ -1,0 +1,16 @@
+{
+  "version": "0.1",
+  "group": {
+    "coxeterMatrix": [
+      [1, 2, -1, -1, 2],
+      [2, 1, 2, -1, -1],
+      [-1, 2, 1, 2, -1],
+      [-1, -1, 2, 1, 2],
+      [2, -1, -1, 2, 1]
+    ]
+  },
+  "layers": [
+    { "type": "cosets", "subgroup": [1, 2], "extent": { "ball": 4.0 } },
+    { "type": "walls", "width": 0.04 }
+  ]
+}

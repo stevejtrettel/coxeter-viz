@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GeometryKind } from '@/geometry/types';
 import { classifyPolygon, validatePolygon, type RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
+import { classifyCoxeterMatrix, type RefusalReason } from '@/coxeter/matrix';
 
 /** Spec for the polygon with walls 0…n−1 in index order and orders[k] between walls k, k+1. */
 function polygonSpec(geometry: GeometryKind, orders: number[]): RealizationSpec {
@@ -152,5 +153,133 @@ describe('the inscribed-circle solver', () => {
     // adjacent pairs are orthogonal
     expect(r.gram[2][0]).toBeCloseTo(0, 9);
     expect(r.gram[0][3]).toBeCloseTo(0, 9);
+  });
+});
+
+describe('the inference layer: Coxeter matrix → spec (matrix.ts, PLAN §7.3)', () => {
+  /** The (a,b,c) triangle: orders a = s₀s₁, b = s₁s₂, c = s₂s₀. */
+  const tri = (a: number, b: number, c: number): number[][] => [
+    [1, a, c],
+    [a, 1, b],
+    [c, b, 1],
+  ];
+
+  const acceptedSpec = (M: number[][]): RealizationSpec => {
+    const r = classifyCoxeterMatrix(M);
+    if (r.kind !== 'polygon') throw new Error(`expected a polygon, got ${JSON.stringify(r)}`);
+    return r.spec;
+  };
+  const refusal = (M: number[][], reason: RefusalReason): string => {
+    const r = classifyCoxeterMatrix(M);
+    expect(r.kind).toBe('refused');
+    if (r.kind !== 'refused') return '';
+    expect(r.reason).toBe(reason);
+    return r.detail;
+  };
+
+  it.each([
+    [2, 3, 7, 'hyperbolic'],
+    [2, 4, 4, 'euclidean'],
+    [2, 3, 5, 'spherical'],
+    // reducible A₁ × I₂(5): geometric realizability, not irreducibility, is the criterion
+    [2, 2, 5, 'spherical'],
+  ] as [number, number, number, GeometryKind][])(
+    'accepts the (%i,%i,%i) triangle as %s, and the spec solves',
+    (a, b, c, kind) => {
+      const spec = acceptedSpec(tri(a, b, c));
+      expect(spec.geometry).toBe(kind);
+      expect(() => solvePolygon(spec)).not.toThrow();
+    },
+  );
+
+  it('accepts the right-angled pentagon (a cycle of 2s, ∞ elsewhere) and solves it', () => {
+    const M = Array.from({ length: 5 }, (_, i) =>
+      Array.from({ length: 5 }, (_, j) =>
+        i === j ? 1 : (j - i + 5) % 5 === 1 || (i - j + 5) % 5 === 1 ? 2 : -1,
+      ),
+    );
+    const spec = acceptedSpec(M);
+    expect(spec.geometry).toBe('hyperbolic');
+    const r = solvePolygon(spec);
+    expect(r.chamber.vertices).toHaveLength(5);
+  });
+
+  it('reads a scrambled cycle off the matrix (generator indexing is load-bearing)', () => {
+    // the square with cyclic wall order 0,2,1,3: finite entries exactly on that cycle
+    const M = [
+      [1, -1, 2, 2],
+      [-1, 1, 2, 2],
+      [2, 2, 1, -1],
+      [2, 2, -1, 1],
+    ];
+    const spec = acceptedSpec(M);
+    expect(spec.geometry).toBe('euclidean');
+    expect(spec.combinatorics.cyclicOrder).toEqual([0, 2, 1, 3]);
+    expect(() => validatePolygon(spec)).not.toThrow();
+  });
+
+  it('refuses non-Coxeter-matrices as a value (invalid-matrix), one detail per defect', () => {
+    refusal([[1, 3], [3, 1, 2]] as unknown as number[][], 'invalid-matrix'); // not square
+    refusal([[1, 3, 2], [2, 1, 4], [2, 4, 1]], 'invalid-matrix'); // asymmetric
+    refusal([[2, 3, 2], [3, 1, 4], [2, 4, 1]], 'invalid-matrix'); // diagonal ≠ 1
+    refusal(tri(1, 3, 4), 'invalid-matrix'); // off-diagonal order 1
+    refusal(tri(0, 3, 4), 'invalid-matrix'); // 0 is not the ∞ sentinel
+    refusal([[1, 2.5, 2], [2.5, 1, 3], [2, 3, 1]], 'invalid-matrix'); // non-integer
+  });
+
+  it('refuses rank ≤ 2 (a half-space / a wedge is not a compact polygon)', () => {
+    refusal([[1]], 'rank-too-small');
+    refusal([[1, 7], [7, 1]], 'rank-too-small');
+  });
+
+  it('refuses open chains as non-compact (the n = 3 case is the ideal-vertex triangle)', () => {
+    refusal(tri(2, 3, -1), 'non-compact');
+    refusal(
+      [
+        [1, 3, -1, -1],
+        [3, 1, 3, -1],
+        [-1, 3, 1, 3],
+        [-1, -1, 3, 1],
+      ],
+      'non-compact',
+    );
+  });
+
+  it('refuses a disconnected finite graph as a free product, naming the blocks', () => {
+    const detail = refusal(
+      [
+        [1, 3, -1, -1],
+        [3, 1, -1, -1],
+        [-1, -1, 1, 5],
+        [-1, -1, 5, 1],
+      ],
+      'free-product',
+    );
+    expect(detail).toMatch(/\{0,1\}/);
+    expect(detail).toMatch(/\{2,3\}/);
+    refusal(tri(-1, -1, -1), 'free-product'); // Z₂ ∗ Z₂ ∗ Z₂ — three blocks
+  });
+
+  it('refuses not-2d: all-finite rank 4 is honestly "dimension ≥ 3"; a chord breaks the polygon', () => {
+    const detail = refusal(
+      [
+        [1, 3, 2, 2],
+        [3, 1, 3, 2],
+        [2, 3, 1, 3],
+        [2, 2, 3, 1],
+      ],
+      'not-2d',
+    );
+    expect(detail).toMatch(/dimension ≥ 3/);
+    // the square's cycle plus the chord (0,2): wall 0 meets three others
+    refusal(
+      [
+        [1, 2, 2, 2],
+        [2, 1, 2, -1],
+        [2, 2, 1, 2],
+        [2, -1, 2, 1],
+      ],
+      'not-2d',
+    );
   });
 });

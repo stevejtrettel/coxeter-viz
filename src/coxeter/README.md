@@ -110,9 +110,9 @@ The refusal taxonomy, exhaustively:
 |---|---|
 | `invalid-matrix` | not a Coxeter matrix: asymmetric, bad diagonal, entries < 2 other than the −1 sentinel, non-integer |
 | `rank-too-small` | rank ≤ 2: the chamber is a point/halfplane/wedge, not a compact polygon (digons/lunes refused per house rule) |
-| `non-compact` | n = 3 with an ∞ entry: an ideal (or hyperideal) vertex — deferred in v1, matching `validatePolygon` |
+| `non-compact` | the finite graph is an **open chain** (connected, every degree ≤ 2, not closed): a genuinely 2D chamber with an ideal/open end — deferred in v1, matching `validatePolygon`. n = 3 with an ∞ entry (the ideal-vertex triangle) is exactly the 3-chain. |
 | `free-product` | the finite graph is disconnected: blocks of generators with NO relation between them (all ∞) — walls in different blocks never meet; no compact chamber. The detail names the blocks. (Not to be confused with direct-product reducibility, which has order-2 entries — finite — and is accepted when realizable.) |
-| `not-2d` | finite graph connected but not the n-cycle (chords, trees, n ≥ 4 with excess finite entries). Where detectable, the detail is honest: rank ≥ 4 all-finite ⇒ "a 3D (or higher) group — not yet implemented." |
+| `not-2d` | some wall carries finite orders with ≥ 3 others (chords, branching) — a polygon wall meets exactly its two neighbors. Rank ≥ 4 all-finite ⇒ the detail is honest: "dimension ≥ 3 — not yet implemented." |
 
 Tests: acceptance across all three geometries including (2,2,m); the
 accepted path round-trips `validatePolygon` + `solvePolygon`; one test per
