@@ -1738,6 +1738,14 @@ Pinned conventions:
   ruling). Verified: sample pages generated exactly the Python way
   (`dist/samples/*.html`) render from `file://` in headless Chrome, GPU
   field included. Checkpoint awaits the user's double-click.
+- **Cleanup pass (2026-07-10, user-directed, between P6 and P7)** — the
+  dead `pending` diagnostics removed (all ops wired); `truncated: true`
+  diagnostic when an enumeration hits the MAX_TILES cap (no silent caps);
+  the extent-resolution ternary unified (`byExtent`); the
+  `push(items, alsoOverlay = !takesField)` default-arg trick replaced by
+  an explicit `fieldPaintsThisLayer`; fixture loading shared via
+  `tests/helpers.ts`; CLAUDE.md status brought current. Left by ruling:
+  `validate.ts` stays one cohesive function until op growth hurts.
 - **P7** — `python/coxeter_viz/`: the builder (one method per op, 1:1
   with §7.4), `save('.html')`, packaging (wheel vendors the bundle).
 - **P8** — `save('.png')` / `save('.svg')` via Playwright; k× scale
@@ -1758,6 +1766,11 @@ Pinned conventions:
   at P6 by taste, zero architectural weight.
 - **The perspective globe as a figure model**; **explicit camera field**;
   **explicit per-word colors** — all additive schema growth.
+- **A document-level `background` field** (PNG background is an EXPORT
+  option today, transparent by default — user confirmed 2026-07-10;
+  whether background belongs to the figure's identity is deferred).
+- **Touch-device access to the saved page's export corner** (hover-only
+  in v1 — user accepted 2026-07-10).
 - **All of 3D** — Milestone 2 machinery (Route-A inference: dual graph +
   Steinitz + Andreev; the survey of the parent's built Route-B solver is
   in the 2026-07-10 session record) waits until the 2D product story is

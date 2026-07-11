@@ -1,7 +1,7 @@
 /**
  * Shared test scaffolding: the six geometry cells in one table, a seeded rng,
- * and random points/tangents built through exp — so every test sweeps all
- * geometries and both dimensions.
+ * random points/tangents built through exp — so every test sweeps all
+ * geometries and both dimensions — and the figure-document fixtures.
  */
 
 import { addScaled, scale, type Vec } from '@/math/vec';
@@ -107,4 +107,23 @@ export function isometryResidual(geom: Geometry<Vec, Mat>, g: Mat): number {
   const gtJg = matMul(matTranspose(g), matMul(J, g));
   for (let i = 0; i < n * n; i++) res = Math.max(res, Math.abs(gtJg[i] - J[i]));
   return res;
+}
+
+// ── Figure-document fixtures (tests/fixtures/figures/*.json) ────────────────
+
+const figureModules = import.meta.glob('./fixtures/figures/*.json', {
+  eager: true,
+  import: 'default',
+}) as Record<string, unknown>;
+
+/** [filename, document] for every figure fixture on disk. */
+export const figureFixtures: [string, unknown][] = Object.entries(figureModules).map(
+  ([path, doc]) => [path.split('/').pop()!, doc],
+);
+
+/** One fixture document by filename, e.g. figureFixture('tessellation.json'). */
+export function figureFixture(name: string): unknown {
+  const hit = figureFixtures.find(([n]) => n === name);
+  if (!hit) throw new Error(`no figure fixture ${name}`);
+  return hit[1];
 }

@@ -73,7 +73,7 @@ function show(name: string): void {
   const d = result.handle.diagnostics;
   status.textContent =
     `${d.geometry} · ${d.tileCount} tiles · ${d.cayleyNodeCount} Cayley nodes` +
-    (d.pending.length > 0 ? ` · pending (P4): ${d.pending.join(', ')}` : '');
+    (d.truncated ? ' · TRUNCATED at the enumeration cap' : '');
 }
 
 const stem = (): string => select.value.replace(/\.json$/, '').replace(/[^a-z0-9-]+/gi, '-');

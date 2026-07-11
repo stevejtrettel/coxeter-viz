@@ -4,22 +4,14 @@ import { figureToSvg } from '@/app/export';
 import { checkFigure } from '@/schema/validate';
 import type { Figure } from '@/schema/types';
 import type { ViewSize } from '@/viz2d/render/types';
-
-const fixtureModules = import.meta.glob('./fixtures/figures/*.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, unknown>;
+import { figureFixture } from './helpers';
 
 const checked = (doc: unknown): Figure => {
   const r = checkFigure(doc);
   if (!r.ok) throw new Error(`fixture does not validate: ${JSON.stringify(r.problems)}`);
   return r.figure;
 };
-const fixture = (name: string): Figure => {
-  const entry = Object.entries(fixtureModules).find(([p]) => p.endsWith(`/${name}`));
-  if (!entry) throw new Error(`no fixture ${name}`);
-  return checked(entry[1]);
-};
+const fixture = (name: string): Figure => checked(figureFixture(name));
 
 const SIZE: ViewSize = { widthPx: 800, heightPx: 800 };
 
@@ -27,8 +19,8 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
   it('assembles the (2,3,7) tessellation fixture: tiles + walls, camera auto-fit', () => {
     const a = assemble(fixture('tessellation.json'), SIZE);
     expect(a.diagnostics.geometry).toBe('hyperbolic');
-    expect(a.diagnostics.pending).toEqual([]);
     expect(a.diagnostics.tileCount).toBeGreaterThan(50);
+    expect(a.diagnostics.truncated).toBe(false); // well under the enumeration cap
     const ids = a.scene.map((i) => i.id);
     expect(ids.filter((id) => id.startsWith('tile:'))).toHaveLength(a.diagnostics.tileCount);
     expect(ids).toContain('wall:0');
@@ -49,7 +41,6 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
 
   it('assembles tiles + hull (P4): named tiles, hull polygon, Gauss–Bonnet area', () => {
     const a = assemble(fixture('tiles-hull.json'), SIZE);
-    expect(a.diagnostics.pending).toEqual([]);
     const ids = a.scene.map((i) => i.id);
     expect(ids).toContain('list:1:e'); // the identity's tile in the words list (layer 1)
     expect(ids).toContain('list:1:1.2.1');
@@ -63,7 +54,6 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
 
   it('assembles cosets (P4): tiles hued by the SHARED hashHue of the anchor image', () => {
     const a = assemble(fixture('cosets-pentagon.json'), SIZE);
-    expect(a.diagnostics.pending).toEqual([]);
     expect(a.diagnostics.field).toBe(true); // cosets is field-paintable
     expect(a.field?.coset).toBeDefined();
     expect(a.overlay).not.toBeNull();
@@ -78,7 +68,6 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
 
   it('assembles uniform (P4): Wythoff cells colored by type, regions field program', () => {
     const a = assemble(fixture('uniform.json'), SIZE);
-    expect(a.diagnostics.pending).toEqual([]);
     expect(a.diagnostics.uniformCellCount).toBeGreaterThan(5);
     expect(a.field?.regions).toBeDefined();
     // (2,3,5) ringed at node 0: the DODECAHEDRON — 12 pentagonal faces
@@ -126,7 +115,7 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
   });
 
   it('figureToSvg (P5): a raw document → an SVG string, pure, same ids', () => {
-    const raw = Object.entries(fixtureModules).find(([p]) => p.endsWith('/tessellation.json'))![1];
+    const raw = figureFixture('tessellation.json');
     const r = figureToSvg(raw);
     expect(r.ok).toBe(true);
     const svg = r.ok ? r.value : '';
@@ -136,7 +125,7 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
   });
 
   it('figureToSvg merges the field programs&apos; vector twins (cosets → one path per hue)', () => {
-    const raw = Object.entries(fixtureModules).find(([p]) => p.endsWith('/cosets-pentagon.json'))![1];
+    const raw = figureFixture('cosets-pentagon.json');
     const r = figureToSvg(raw);
     expect(r.ok).toBe(true);
     const svg = r.ok ? r.value : '';

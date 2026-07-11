@@ -66,8 +66,8 @@ export interface RenderDiagnostics {
   hullAreas: number[];
   /** Whether the document has a field-paintable layer (GPU when available). */
   field: boolean;
-  /** Ops in the document not yet implemented at this increment. */
-  pending: Layer['type'][];
+  /** True when an enumeration hit the safety cap: the picture is incomplete (no silent caps). */
+  truncated: boolean;
 }
 
 export interface Assembled {
@@ -130,11 +130,25 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
         : coverageRadius(rg.group, rg.model, camera, size, opts?.epsilonPx ?? COVER_EPSILON_PX);
     return frameRadius;
   };
-  const ballOf = (extent?: Extent): number => (extent && 'ball' in extent ? extent.ball : coverRadius());
-  const tilesFor = (extent?: Extent): Tile<Point2, Isometry2>[] =>
+  let truncated = false;
+  /** No silent caps: an enumeration at MAX_TILES means the picture is incomplete. */
+  const noteCap = (count: number): void => {
+    if (count >= MAX_TILES) truncated = true;
+  };
+  /** Resolve an extent: word depth, metric ball, or omitted = cover the frame. */
+  const byExtent = <T>(extent: Extent | undefined, byDepth: (n: number) => T, byBall: (r: number) => T): T =>
     extent && 'depth' in extent
-      ? rg.group.tessellate(extent.depth, MAX_TILES)
-      : rg.group.tessellateBall(ballOf(extent), MAX_TILES);
+      ? byDepth(extent.depth)
+      : byBall(extent && 'ball' in extent ? extent.ball : coverRadius());
+  const tilesFor = (extent?: Extent): Tile<Point2, Isometry2>[] => {
+    const tiles = byExtent(
+      extent,
+      (n) => rg.group.tessellate(n, MAX_TILES),
+      (r) => rg.group.tessellateBall(r, MAX_TILES),
+    );
+    noteCap(tiles.length);
+    return tiles;
+  };
 
   const tileColor = (spec: ColorSpec | undefined): ((t: Tile<Point2, Isometry2>) => string) => {
     if (spec && 'constant' in spec) return () => spec.constant;
@@ -187,7 +201,6 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
   const scene: SceneItem[] = [];
   const overlayItems: SceneItem[] = [];
   let field: TilingStyle | null = null;
-  const pending: Layer['type'][] = [];
   let tileCount = 0;
   let cayleyNodeCount = 0;
   let uniformCellCount = 0;
@@ -196,11 +209,12 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
   figure.layers.forEach((layer, li) => {
     // The first field-paintable layer becomes THE field; its CPU items stay
     // in `scene` (SVG/fallback) but leave the overlay.
-    const takesField = field === null ? fieldFor(layer) : null;
-    if (takesField) field = takesField;
-    const push = (items: SceneItem[], alsoOverlay = !takesField): void => {
+    const layerField = field === null ? fieldFor(layer) : null;
+    if (layerField !== null) field = layerField;
+    const fieldPaintsThisLayer = layerField !== null;
+    const push = (items: SceneItem[]): void => {
       scene.push(...items);
-      if (alsoOverlay) overlayItems.push(...items);
+      if (!fieldPaintsThisLayer) overlayItems.push(...items);
     };
 
     switch (layer.type) {
@@ -227,7 +241,7 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
         push(tilesToScene(tiles, styleOf));
         // GPU parity cannot single out the identity; keep the fd tile honest
         // on top (the house "fd always orange" ruling).
-        if (takesField && !(layer.color && ('constant' in layer.color || layer.color.map === 'hue'))) {
+        if (fieldPaintsThisLayer && !(layer.color && ('constant' in layer.color || layer.color.map === 'hue'))) {
           overlayItems.push(
             polygonItem(rg.poly.chamber, { fill: { color: TILE.identity, opacity } }, 'tile:e'),
           );
@@ -235,10 +249,12 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
         break;
       }
       case 'cayley': {
-        const graph =
-          layer.extent && 'depth' in layer.extent
-            ? rg.group.cayleyGraph(layer.extent.depth, MAX_TILES)
-            : rg.group.cayleyBall(ballOf(layer.extent), MAX_TILES);
+        const graph = byExtent(
+          layer.extent,
+          (n) => rg.group.cayleyGraph(n, MAX_TILES),
+          (r) => rg.group.cayleyBall(r, MAX_TILES),
+        );
+        noteCap(graph.nodes.length);
         cayleyNodeCount += graph.nodes.length;
         push(
           cayleyScene(rg.group, graph, {
@@ -303,6 +319,7 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
         const colors = layer.palette ?? [...TYPE_COLORS];
         const rings = [0, 1, 2].map((i) => layer.rings.includes(i));
         const cells = uniformCells(rg.group, rg.poly, rings, coverRadius(), MAX_TILES);
+        noteCap(cells.length);
         uniformCellCount += cells.length;
         push(
           cells.map((c, k) =>
@@ -334,7 +351,7 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
       uniformCellCount,
       hullAreas,
       field: field !== null,
-      pending,
+      truncated,
     },
   };
 }

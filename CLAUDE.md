@@ -19,14 +19,18 @@ close-to-the-math abstractions matter more than feature count.
 ## Status (2026-07-10 — CURRENT STATE; the full increment-by-increment history lives in PLAN.md §5)
 
 **The 2D program is COMPLETE and instrument-grade. Milestones 1 and 3 are
-closed. Milestone 4 — THE PRODUCT LAYER — is PLANNED and SIGNED OFF
-(2026-07-10, PLAN.md §7): the Coxeter-matrix inference layer, the figure
-document (schema v0.1), `render(container, figure)`, SVG/PNG/HTML exports,
-the Vite bundle, and the Python package (Plotly pattern; `coxeter-viz` /
-`coxeter_viz`), in increments P0–P9. 2D only — 3D waits until the 2D
-product story is done (user ruling). Next work item: P0 (the schema/app
-READMEs as specs), fresh session. Still also pending: the user's hands-on
-pass of §5.7/§5.8; GPU-globe v1 stays parked.**
+closed. Milestone 4 — THE PRODUCT LAYER (PLAN.md §7) — is BUILT THROUGH
+P6 (all on 2026-07-10): the inference layer (`coxeter/matrix.ts`), the
+figure document (schema v0.1 with `title`, refusals as values),
+`render(container, figure)` + all eight ops + the GPU field with CPU
+fallback (`src/app/`), `figureToSvg`/`figureToPng` (k× shader PNGs),
+`npm run build:bundle` → `dist/lib/viewer.js` (66 kB IIFE) +
+`template.html` (the two files Python vendors), self-contained HTML
+instruments (`dist/samples/`), and the `figure` demo as the product dev
+harness. Next: P7 (the Python package `coxeter_viz`: builder + save
+'.html'), then P8 (save '.png'/'.svg' via headless Chromium), P9
+(verification hardening). 2D only — 3D waits (user ruling). Still also
+pending: the user's hands-on pass of §5.7/§5.8; GPU-globe v1 parked.**
 
 What exists, layer by layer (each folder README is its spec; PLAN § given):
 - **math / geometry / models / polytope / coxeter** — the substrate: own
@@ -68,12 +72,13 @@ What exists, layer by layer (each folder README is its spec; PLAN § given):
   `rafScheduler`/`button`/`checkbox`/`textInput`/`kSelect`/`downloadBlob`/
   `downloadSvg`/`exportSizeLabel`. Every 2D demo reads *data → scene → mount*.
 
-Demos (`npm run dev <name>`): `group` (Milestone 1), `wordlists` (M3),
-`wordfile` (M3.5 + GPU field + exports), `tilingshader` (the field
-instrument + CPU-overlay verifier), `tilings` (any polygon; fd always
-orange, word list red on top; cayley checkbox), `cosets` (parabolic coset
-field), `uniform` (Wythoff rings), `render2d`/`sphereview` (system demos),
-`hello` (throwaway).
+Demos (`npm run dev <name>`): `figure` (the PRODUCT dev harness: fixture
+documents through `render()`, `?doc=` deep links, SVG/PNG buttons),
+`group` (Milestone 1), `wordlists` (M3), `wordfile` (M3.5 + GPU field +
+exports), `tilingshader` (the field instrument + CPU-overlay verifier),
+`tilings` (any polygon; fd always orange, word list red on top; cayley
+checkbox), `cosets` (parabolic coset field), `uniform` (Wythoff rings),
+`render2d`/`sphereview` (system demos), `hello` (throwaway).
 
 **Pending the user's hands-on pass**: §5.7 (cosets / tilings-cayley /
 uniform) and §5.8 (field programs). Queued aesthetic rulings: the fd tile
@@ -88,7 +93,7 @@ demo conversion to an adapter module (available whenever); a polygon
 class/type (deferred until non-convex regions become first-class); the
 Tits/ShortLex automaton and the spherical hull policy (PLAN §6).
 
-Working facts: 428 tests / 17 files, strict typecheck; the house
+Working facts: 472 tests / 20 files, strict typecheck; the house
 verification pattern is exact spherical pins (orders, Euler counts) +
 headless-Chrome pixel-coincidence screenshots; `shader.glsl` at the repo
 root is the user's untracked reference shader (nothing survives verbatim).

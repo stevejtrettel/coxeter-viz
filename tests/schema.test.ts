@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkFigure } from '@/schema/validate';
 import type { Figure } from '@/schema/types';
-
-const fixtureModules = import.meta.glob('./fixtures/figures/*.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, unknown>;
-const fixtures: [string, unknown][] = Object.entries(fixtureModules).map(([path, doc]) => [
-  path.split('/').pop()!,
-  doc,
-]);
+import { figureFixtures as fixtures } from './helpers';
 
 const accepted = (raw: unknown): Figure => {
   const r = checkFigure(raw);
