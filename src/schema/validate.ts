@@ -1,4 +1,5 @@
 import { classifyCoxeterMatrix, type CoxeterMatrix } from '@/coxeter/matrix';
+import type { RealizationSpec } from '@/coxeter/spec';
 import type { GeometryKind } from '@/geometry/types';
 import type { FigureCheck, FigureProblem, Layer, ModelName } from './types';
 
@@ -30,7 +31,7 @@ const OP_FIELDS: Record<Layer['type'], readonly string[]> = {
   cayley: ['extent', 'node', 'edge'],
   tiles: ['words', 'fill'],
   hull: ['words', 'fill', 'stroke'],
-  cosets: ['subgroup', 'extent', 'palette'],
+  cosets: ['subgroup', 'extent'],
   uniform: ['rings', 'palette'],
 };
 
@@ -57,6 +58,7 @@ export function checkFigure(raw: unknown): FigureCheck {
   // — the group, through the inference layer —
   let rank = 0;
   let geometry: GeometryKind | undefined;
+  let spec: RealizationSpec | undefined;
   if (!isRecord(raw.group) || raw.group.coxeterMatrix === undefined) {
     bad('group', 'required: { "coxeterMatrix": [[…]] } (−1 the sentinel for ∞).');
   } else {
@@ -64,7 +66,10 @@ export function checkFigure(raw: unknown): FigureCheck {
     if (Array.isArray(M)) rank = M.length;
     const cls = classifyCoxeterMatrix(M as CoxeterMatrix);
     if (cls.kind === 'refused') bad('group.coxeterMatrix', `${cls.reason}: ${cls.detail}`);
-    else geometry = cls.spec.geometry;
+    else {
+      spec = cls.spec;
+      geometry = spec.geometry;
+    }
   }
 
   // — the model —
@@ -196,14 +201,48 @@ export function checkFigure(raw: unknown): FigureCheck {
           if (l.fill !== undefined) checkColor(l.fill, `${p}.fill`);
           if (l.stroke !== undefined) checkColor(l.stroke, `${p}.stroke`);
           break;
-        case 'cosets':
+        case 'cosets': {
           checkGeneratorSet(l.subgroup, `${p}.subgroup`, 'subgroup');
           if (l.extent !== undefined) checkExtent(l.extent, `${p}.extent`);
-          if (l.palette !== undefined) checkStringArray(l.palette, `${p}.palette`, 'palette');
+          // The coset coloring hangs on a W_S-fixed anchor: ∅ / one
+          // generator / a MEETING pair (a chamber vertex). Anything else is
+          // infinite or anchorless in 2D — refused with the reason.
+          const S = l.subgroup;
+          if (
+            spec !== undefined &&
+            Array.isArray(S) &&
+            S.every((g) => Number.isInteger(g) && g >= 0 && g < rank) &&
+            new Set(S).size === S.length
+          ) {
+            if (S.length > 2) {
+              bad(
+                `${p}.subgroup`,
+                `the coset coloring needs a W_S-fixed anchor (S = ∅, one generator, or a meeting pair); |S| = ${S.length} has none.`,
+              );
+            } else if (S.length === 2) {
+              const [a, b] = [Math.min(S[0], S[1]), Math.max(S[0], S[1])];
+              const meets = spec.decorations.some(
+                (d) => Math.min(d.walls[0], d.walls[1]) === a && Math.max(d.walls[0], d.walls[1]) === b,
+              );
+              if (!meets) {
+                bad(
+                  `${p}.subgroup`,
+                  `walls ${a} and ${b} do not meet (order ∞): the parabolic ⟨s${a},s${b}⟩ is infinite — its cosets have no drawing.`,
+                );
+              }
+            }
+          }
           break;
+        }
         case 'uniform':
           checkGeneratorSet(l.rings, `${p}.rings`, 'rings');
           if (l.palette !== undefined) checkStringArray(l.palette, `${p}.palette`, 'palette');
+          if (spec !== undefined && rank !== 3) {
+            bad(`${p}`, `the Wythoff construction needs a triangle chamber (rank 3); this group has rank ${rank}.`);
+          }
+          if (Array.isArray(l.rings) && l.rings.length === 0) {
+            bad(`${p}.rings`, 'at least one ring (an unringed diagram pins the seed to nothing).');
+          }
           break;
       }
     });

@@ -3,18 +3,23 @@ import type { FigureProblem } from '@/schema/types';
 import { buildPathList } from '@/viz2d/render/scene';
 import { paint } from '@/viz2d/render/canvas';
 import { attachInteraction, modelUnprojector } from '@/viz2d/render/interact';
-import type { ViewSize } from '@/viz2d/render/types';
+import { scaleCamera } from '@/viz2d/render/png';
+import { TilingShader } from '@/viz2d/shader/TilingShader';
+import type { Scene, ViewSize } from '@/viz2d/render/types';
 import { assemble, type RenderDiagnostics } from './assemble';
 
 /**
  * The single public entry point (README): a figure document in, a living
- * picture out. Validates (problems are VALUES, never throws on input),
- * assembles once (canonical content is camera-free), mounts a DPR-aware
- * canvas, paints, and attaches the house pan/zoom (drag = isometry drag,
- * wheel = zoom about the cursor). v0.1 live = pan/zoom only.
+ * picture out. Validates (problems are VALUES — bad input never throws,
+ * and a mathematical refusal downstream, e.g. a spherical hull beyond a
+ * hemisphere, is caught and surfaced the same way), assembles once
+ * (canonical content is camera-free), mounts the layer stack, paints, and
+ * attaches the house pan/zoom. v0.1 live = pan/zoom only.
  *
- * P3: the vector painter only; the GPU field joins at P4, exports (`svg`,
- * `png`) at P5.
+ * The paint convention (P4): when the document has a field-paintable layer
+ * a WebGL2 canvas paints it per pixel UNDER the vector canvas (arbitrary
+ * depth, live); the CPU paints `overlay` on top. No WebGL2 → the complete
+ * CPU scene, silently. Exports (`svg`, `png`) land at P5.
  */
 
 export interface RenderHandle {
@@ -33,20 +38,50 @@ export function render(container: HTMLElement, figure: unknown): RenderResult {
   const widthPx = container.clientWidth || 800;
   const heightPx = container.clientHeight || widthPx;
   const size: ViewSize = { widthPx, heightPx };
-  const asm = assemble(checked.figure, size);
-  const { geom } = asm.realized.group;
 
+  let asm;
+  try {
+    asm = assemble(checked.figure, size);
+  } catch (e) {
+    // a mathematical refusal from the library (hemisphere hulls, …)
+    return { ok: false, problems: [{ path: '', problem: e instanceof Error ? e.message : String(e) }] };
+  }
+  const { geom } = asm.realized.group;
   const dpr = window.devicePixelRatio || 1;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(widthPx * dpr);
-  canvas.height = Math.round(heightPx * dpr);
-  canvas.style.width = `${widthPx}px`;
-  canvas.style.height = `${heightPx}px`;
-  canvas.style.display = 'block';
-  container.appendChild(canvas);
+
+  const stack = document.createElement('div');
+  stack.style.cssText = `position:relative;width:${widthPx}px;height:${heightPx}px`;
+  container.appendChild(stack);
+
+  const makeCanvas = (): HTMLCanvasElement => {
+    const c = document.createElement('canvas');
+    c.width = Math.round(widthPx * dpr);
+    c.height = Math.round(heightPx * dpr);
+    c.style.cssText = `position:absolute;left:0;top:0;width:${widthPx}px;height:${heightPx}px`;
+    stack.appendChild(c);
+    return c;
+  };
+
+  // The GPU field, UNDER the vector canvas — created only when the document
+  // asks for one AND WebGL2 exists; otherwise the CPU paints everything.
+  let shader: TilingShader | null = null;
+  if (asm.field !== null) {
+    const glCanvas = makeCanvas();
+    try {
+      shader = new TilingShader(glCanvas);
+      shader.setPolygon(asm.realized.poly);
+      shader.setChart(asm.realized.model);
+    } catch {
+      shader = null;
+      glCanvas.remove();
+    }
+  }
+  const cpuScene: Scene = shader !== null && asm.overlay !== null ? asm.overlay : asm.scene;
+
+  const canvas = makeCanvas();
   const g = canvas.getContext('2d');
   if (!g) {
-    canvas.remove();
+    stack.remove();
     return { ok: false, problems: [{ path: '', problem: '2D canvas context unavailable.' }] };
   }
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -55,14 +90,9 @@ export function render(container: HTMLElement, figure: unknown): RenderResult {
   let raf = 0;
   const repaint = (): void => {
     raf = 0;
+    if (shader !== null && asm.field !== null) shader.draw(scaleCamera(camera, dpr), asm.field);
     g.clearRect(0, 0, widthPx, heightPx);
-    const paths = buildPathList(asm.scene, {
-      geom,
-      model: asm.realized.model,
-      camera,
-      size,
-    });
-    paint(g, paths, camera);
+    paint(g, buildPathList(cpuScene, { geom, model: asm.realized.model, camera, size }), camera);
   };
   const schedule = (): void => {
     if (raf === 0) raf = requestAnimationFrame(repaint);
@@ -86,7 +116,8 @@ export function render(container: HTMLElement, figure: unknown): RenderResult {
       dispose(): void {
         if (raf !== 0) cancelAnimationFrame(raf);
         interaction.dispose();
-        canvas.remove();
+        shader?.dispose();
+        stack.remove();
       },
     },
   };

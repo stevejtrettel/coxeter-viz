@@ -52,14 +52,22 @@ export interface HullLayer {
 }
 export interface CosetsLayer {
   type: 'cosets';
-  /** Generator indices of the parabolic W_S; left cosets get one color each. */
+  /**
+   * Generator indices of the parabolic W_S; left cosets get one color each
+   * through the SHARED hashHue law (CPU/SVG/GPU agree bit-exactly — there
+   * is no palette knob, by design). S must admit a W_S-fixed anchor:
+   * ∅, one generator, or a meeting pair (else W_S is infinite / anchorless
+   * and validation refuses).
+   */
   subgroup: number[];
   extent?: Extent;
-  palette?: string[];
 }
 export interface UniformLayer {
   type: 'uniform';
-  /** Ringed generator indices — the Wythoff seed; faces colored by type. */
+  /**
+   * Ringed generator indices (≥ 1) — the Wythoff seed; faces colored by
+   * type. Triangle chambers (rank 3) only.
+   */
   rings: number[];
   palette?: string[];
 }

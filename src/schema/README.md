@@ -59,8 +59,8 @@ Words are lists of generator indices applied **left to right** (`[i₀,…,i_k]`
 | `cayley` | `extent`, `node {size, color}`, `edge {width}` | the dual graph: vertices = the orbit of the incenter, edges `{g, g·Rᵢ}` colored by generator |
 | `tiles` | **`words`**, `fill` | word w ↦ THE TILE w·(FD) — any spelling of an element hits its one tile |
 | `hull` | **`words`**, `fill`, `stroke` | the convex hull of the base-point images w·x₀ (straight chart); its Gauss–Bonnet area is reported in render diagnostics |
-| `cosets` | **`subgroup`** (generator indices), `extent`, `palette` | left cosets of the parabolic W_S, one color per coset (the shared `hashHue` law — CPU/SVG/GPU agree bit-exactly) |
-| `uniform` | **`rings`** (generator indices), `palette` | the Wythoff tiling of the ringed seed; faces colored by dihedral-orbit type |
+| `cosets` | **`subgroup`** (generator indices), `extent` | left cosets of the parabolic W_S, one color per coset through the shared `hashHue` law (CPU/SVG/GPU agree bit-exactly; no palette knob, by design). S must admit a W_S-fixed anchor — ∅, one generator, or a MEETING pair — else W_S is infinite/anchorless and validation refuses. |
+| `uniform` | **`rings`** (≥ 1 generator indices), `palette` | the Wythoff tiling of the ringed seed; faces colored by dihedral-orbit type, edged by the seed-star net. Triangle chambers (rank 3) only. |
 
 ## Pinned conventions
 

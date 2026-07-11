@@ -22,7 +22,7 @@ documents.set('REFUSED: ideal triangle (2,3,∞)', {
   layers: [{ type: 'tessellation' }],
 });
 
-pageShell('figure — render(container, figure) · P3: domain / walls / tessellation / cayley');
+pageShell('figure — render(container, figure) · all eight ops, GPU field live');
 
 const row = document.createElement('div');
 row.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:8px';
@@ -74,4 +74,6 @@ function show(name: string): void {
 }
 
 select.onchange = () => show(select.value);
+const requested = new URLSearchParams(location.search).get('doc');
+if (requested && documents.has(requested)) select.value = requested;
 show(select.value);

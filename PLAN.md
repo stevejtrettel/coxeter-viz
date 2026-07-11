@@ -1691,9 +1691,29 @@ Pinned conventions:
 - **P3** — `src/app/render` for domain/walls/tessellation/cayley through
   `kit/`; a `figure` demo that loads fixture JSON (the dev harness for
   the whole product layer, per the design doc's "test with hand-written
-  scenes, no Python"). **CHECKPOINT: first figure rendered from JSON.**
+  scenes, no Python"). **CHECKPOINT: first figure rendered from JSON.** —
+  BUILT 2026-07-10 (green, 459 tests / 19 files): `kit/realizeSpec` +
+  `domainItem` fill; `app/assemble` (pure: checked figure → scene/camera,
+  pictorial defaults, cover-the-frame extent via `coverageRadius`,
+  spherical exhausts, unwired ops → `pending`) + `app/render` (DPR canvas,
+  pan/zoom, repaint; refusals as values); the `figure` demo (fixture menu
+  + `?doc=` deep link + a deliberately refused document). Verified by
+  headless-Chrome screenshots (E² Cayley, H² tessellation, the refusal
+  report). Checkpoint awaits the user's hands-on pass.
 - **P4** — the remaining ops (tiles, hull, cosets, uniform) + the paint
-  convention wiring (field layers live).
+  convention wiring (field layers live). — DONE 2026-07-10 (green, 464
+  tests): all eight ops assemble; `assemble` returns `scene` (complete
+  CPU picture — the SVG story) + `overlay`/`field` (the first
+  field-paintable layer takes the GPU; parity keeps the fd tile honest on
+  top); `render` mounts the GL-under-vector stack with silent CPU
+  fallback; runtime mathematical refusals (hemisphere hulls) surface as
+  problem values. Semantic rulings folded into the schema: cosets LOST
+  its palette (the shared hashHue law IS the coloring) and requires an
+  anchored parabolic (∅ / one / a meeting pair — infinite W_S refuses at
+  validation); uniform requires rank 3 + ≥ 1 ring, and its field is
+  regions + the seed-star edge net (a one-type tiling is a constant
+  field without it). Verified by headless screenshots (pentagon coset
+  field, the dodecahedron, tiles+hull over the parity field).
 - **P5** — `figureToSvg` / `figureToPng` assembled from the existing
   exporters; exposed on the rendered page for headless driving.
 - **P6** — the bundle (`viewer.js`) + the HTML exporter.

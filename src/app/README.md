@@ -33,6 +33,11 @@ that is what SVG serializes. Three ops additionally have a **field**
 representation (the GPU tiling shader): `tessellation` (parity/edge
 layers), `cosets` (the coset program), `uniform` (the regions program).
 
+One field per figure: the FIRST field-paintable layer in document order
+takes the GPU; any later field-paintable layer renders as paths. (No
+WebGL2 → the complete CPU scene, silently.) Extent bounds the ENUMERATED
+picture; the field paints to pixel resolution at arbitrary depth.
+
 | output | painter |
 |---|---|
 | live | field where it exists, paths on top (the demos' layer stack) |

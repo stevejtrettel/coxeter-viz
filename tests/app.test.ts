@@ -46,10 +46,57 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
     expect(ids.some((id) => id.startsWith('cayedge:'))).toBe(true);
   });
 
-  it('collects unwired ops as pending — assembly never throws on a checked document', () => {
+  it('assembles tiles + hull (P4): named tiles, hull polygon, Gauss–Bonnet area', () => {
     const a = assemble(fixture('tiles-hull.json'), SIZE);
-    expect(a.diagnostics.pending).toEqual(['tiles', 'hull']);
-    expect(a.diagnostics.tileCount).toBeGreaterThan(0); // the depth-10 tessellation still assembled
+    expect(a.diagnostics.pending).toEqual([]);
+    const ids = a.scene.map((i) => i.id);
+    expect(ids).toContain('list:1:e'); // the identity's tile in the words list (layer 1)
+    expect(ids).toContain('list:1:1.2.1');
+    expect(ids).toContain('hull:2');
+    expect(a.diagnostics.hullAreas).toHaveLength(1);
+    expect(a.diagnostics.hullAreas[0]).toBeGreaterThan(0);
+    // (2,3,7): the hull of the ⟨s₁,s₂⟩ orbit of x₀ is a hexagon
+    const hull = a.scene.find((i) => i.id === 'hull:2');
+    expect(hull && hull.kind === 'polygon' && hull.vertices.length).toBe(6);
+  });
+
+  it('assembles cosets (P4): tiles hued by the SHARED hashHue of the anchor image', () => {
+    const a = assemble(fixture('cosets-pentagon.json'), SIZE);
+    expect(a.diagnostics.pending).toEqual([]);
+    expect(a.diagnostics.field).toBe(true); // cosets is field-paintable
+    expect(a.field?.coset).toBeDefined();
+    expect(a.overlay).not.toBeNull();
+    // cosets of ⟨s₁,s₂⟩ (order 4): tiles in one coset share one color
+    const tiles = a.scene.filter((i) => i.kind === 'polygon' && i.id.startsWith('tile:'));
+    expect(tiles.length).toBeGreaterThan(10);
+    const colors = new Set(tiles.map((t) => t.kind === 'polygon' && t.style.fill?.color));
+    expect(colors.size).toBeLessThan(tiles.length); // strictly fewer colors than tiles
+    expect(colors.size).toBeGreaterThan(2);
+  });
+
+  it('assembles uniform (P4): Wythoff cells colored by type, regions field program', () => {
+    const a = assemble(fixture('uniform.json'), SIZE);
+    expect(a.diagnostics.pending).toEqual([]);
+    expect(a.diagnostics.uniformCellCount).toBeGreaterThan(5);
+    expect(a.field?.regions).toBeDefined();
+    // (2,3,5) ringed at node 0: the DODECAHEDRON — 12 pentagonal faces
+    const cells = a.scene.filter((i) => i.id.startsWith('uniform:'));
+    expect(cells).toHaveLength(12);
+    for (const c of cells) expect(c.kind === 'polygon' && c.vertices.length).toBe(5);
+  });
+
+  it('the first field-paintable layer takes the GPU; the overlay drops its items', () => {
+    const a = assemble(fixture('tessellation.json'), SIZE);
+    expect(a.diagnostics.field).toBe(true);
+    expect(a.field).not.toBeNull();
+    expect(a.overlay).not.toBeNull();
+    // overlay: no tile items (the field paints them), but the fd stays honest
+    const overlayIds = (a.overlay ?? []).map((i) => i.id);
+    expect(overlayIds).toContain('tile:e');
+    expect(overlayIds.filter((id) => id.startsWith('tile:'))).toHaveLength(1);
+    expect(overlayIds).toContain('wall:0'); // non-field layers stay in the overlay
+    // the full scene still carries every tile — the SVG story
+    expect(a.scene.filter((i) => i.id.startsWith('tile:')).length).toBe(a.diagnostics.tileCount);
   });
 
   it('an omitted extent covers the frame (the adaptive coverage radius)', () => {

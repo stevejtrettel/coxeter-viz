@@ -1,4 +1,4 @@
-import type { GeometryKind, Point2 } from '@/geometry/types';
+import type { GeometryKind, Isometry2, Point2 } from '@/geometry/types';
 import type { Model } from '@/models/types';
 import { Poincare2 } from '@/models/poincare';
 import { Klein2 } from '@/models/klein';
@@ -7,27 +7,44 @@ import { Gnomonic2 } from '@/models/gnomonic';
 import { Stereographic2 } from '@/models/stereographic';
 import { classifyCoxeterMatrix } from '@/coxeter/matrix';
 import type { Tile } from '@/group/CoxeterGroup';
-import type { Isometry2 } from '@/geometry/types';
+import { wordId } from '@/group/CoxeterGroup';
+import { hullOfWords, parabolicFixedPoint } from '@/group/wordlists';
+import { uniformCells, wythoffPoint } from '@/group/wythoff';
+import { polygonArea } from '@/polytope/measure';
 import type { Camera, RegionStyle, Scene, SceneItem, ViewSize } from '@/viz2d/render/types';
 import { coverageRadius } from '@/viz2d/shader/vector';
 import { hashHue } from '@/viz2d/shader/uniforms';
+import type { TilingStyle } from '@/viz2d/shader/types';
 import { defaultModel, realizeSpec, type RealizedGroup } from '@/viz2d/kit/realize';
-import { cayleyScene, domainItem, hueColor, parityColor, tilesToScene, wallItems } from '@/viz2d/kit/scene';
+import {
+  cayleyScene,
+  domainItem,
+  hueColor,
+  parityColor,
+  polygonItem,
+  tilesToScene,
+  wallItems,
+} from '@/viz2d/kit/scene';
+import { blankStyle, cosetField, fieldStyle, regionsField, rgba, starBands, starField } from '@/viz2d/kit/field';
 import { fitToDomain } from '@/viz2d/kit/camera';
-import { TILE, WALL_COLORS } from '@/viz2d/kit/palette';
+import { HULL, LIST, TILE, TYPE_COLORS, WALL_COLORS } from '@/viz2d/kit/palette';
 import type { ColorSpec, Extent, Figure, Layer, ModelName } from '@/schema/types';
 
 /**
  * Assembly (README): a CHECKED figure document → the realized group, the
- * CPU `Scene`, and the auto-fit `Camera` — pure (no DOM), unit-testable,
- * the shared front half of `render`, `figureToSvg`, and `figureToPng`.
- * This layer owns the PICTORIAL defaults (house palette, widths, the
- * cover-the-frame extent); everything mathematical arrives already
- * computed from the library.
+ * CPU `Scene`(s), the auto-fit `Camera`, and — when the document carries a
+ * field-paintable layer — the GPU `TilingStyle`. Pure (no DOM),
+ * unit-testable, the shared front half of `render`, `figureToSvg`, and
+ * `figureToPng`. This layer owns the PICTORIAL defaults; everything
+ * mathematical arrives already computed from the library.
  *
- * P3 wires domain / walls / tessellation / cayley; the remaining ops
- * (tiles, hull, cosets, uniform) are collected in `pending` until P4 —
- * assembly never throws on a checked document.
+ * The paint convention (P4): tessellation / cosets / uniform have a FIELD
+ * representation. The FIRST such layer in the document is painted by the
+ * GPU live (and in PNG); `overlay` is the CPU scene with that layer's
+ * items removed (domain rim-only) for painting on top. `scene` is always
+ * the complete CPU picture — the SVG story and the no-WebGL fallback.
+ * Extent bounds the ENUMERATED (CPU/vector) picture; the field paints to
+ * pixel resolution at arbitrary depth — that is its point.
  */
 
 /** The safety cap on any single enumeration (the demos' shared constant). */
@@ -36,17 +53,30 @@ const MAX_TILES = 20_000;
 /** ε px for the cover-the-frame default extent (the live convention). */
 const COVER_EPSILON_PX = 3;
 
+/** The uniform tiling's edge-net brown (the house §5.8 D3 dressing). */
+const UNIFORM_EDGE = '#5a4f3f';
+
 export interface RenderDiagnostics {
   geometry: GeometryKind;
   tileCount: number;
   cayleyNodeCount: number;
+  uniformCellCount: number;
+  /** Gauss–Bonnet areas of the document's hull layers, in document order. */
+  hullAreas: number[];
+  /** Whether the document has a field-paintable layer (GPU when available). */
+  field: boolean;
   /** Ops in the document not yet implemented at this increment. */
   pending: Layer['type'][];
 }
 
 export interface Assembled {
   realized: RealizedGroup;
+  /** The complete CPU scene: SVG export and the no-WebGL fallback. */
   scene: Scene;
+  /** The CPU items painted OVER the field (null when no field layer). */
+  overlay: Scene | null;
+  /** The GPU program for the first field-paintable layer (null when none). */
+  field: TilingStyle | null;
   camera: Camera;
   diagnostics: RenderDiagnostics;
 }
@@ -90,10 +120,11 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
       rg.kind === 'spherical' ? Math.PI : coverageRadius(rg.group, rg.model, camera, size, COVER_EPSILON_PX);
     return frameRadius;
   };
+  const ballOf = (extent?: Extent): number => (extent && 'ball' in extent ? extent.ball : coverRadius());
   const tilesFor = (extent?: Extent): Tile<Point2, Isometry2>[] =>
     extent && 'depth' in extent
       ? rg.group.tessellate(extent.depth, MAX_TILES)
-      : rg.group.tessellateBall(extent && 'ball' in extent ? extent.ball : coverRadius(), MAX_TILES);
+      : rg.group.tessellateBall(ballOf(extent), MAX_TILES);
 
   const tileColor = (spec: ColorSpec | undefined): ((t: Tile<Point2, Isometry2>) => string) => {
     if (spec && 'constant' in spec) return () => spec.constant;
@@ -105,19 +136,71 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
     return (t) => parityColor(t.word, TILE);
   };
 
-  const items: SceneItem[] = [];
+  /** The field program for a field-paintable layer (the paint convention). */
+  const fieldFor = (layer: Layer): TilingStyle | null => {
+    switch (layer.type) {
+      case 'tessellation': {
+        const a = layer.opacity ?? 0.9;
+        if (layer.color && 'constant' in layer.color) {
+          const c = rgba(layer.color.constant, a);
+          return { ...blankStyle(), even: c, odd: c };
+        }
+        if (layer.color && layer.color.map === 'hue') {
+          return cosetField(blankStyle(), rg.group.basePoint);
+        }
+        return { ...blankStyle(), even: rgba(TILE.even, a), odd: rgba(TILE.odd, a) };
+      }
+      case 'cosets':
+        return cosetField(fieldStyle(rg.r0), parabolicFixedPoint(rg.group, layer.subgroup)!);
+      case 'uniform': {
+        // The house §5.8 D3 assembly: region fills + the seed-anchored star
+        // (the tiling's edge net) — without the star, a one-type tiling
+        // reads as a constant field.
+        const colors = layer.palette ?? [...TYPE_COLORS];
+        const rings = [0, 1, 2].map((i) => layer.rings.includes(i));
+        const seed = wythoffPoint(rg.poly, rings);
+        return regionsField(
+          starField(blankStyle(), {
+            anchor: seed,
+            halfWidth: 0.01 * rg.r0,
+            bands: starBands(rg.poly.walls, () => rgba(UNIFORM_EDGE, 0.75)),
+          }),
+          seed,
+          colors.map((c) => rgba(c, 1)),
+        );
+      }
+      default:
+        return null;
+    }
+  };
+
+  const scene: SceneItem[] = [];
+  const overlayItems: SceneItem[] = [];
+  let field: TilingStyle | null = null;
   const pending: Layer['type'][] = [];
   let tileCount = 0;
   let cayleyNodeCount = 0;
+  let uniformCellCount = 0;
+  const hullAreas: number[] = [];
 
-  for (const layer of figure.layers) {
+  figure.layers.forEach((layer, li) => {
+    // The first field-paintable layer becomes THE field; its CPU items stay
+    // in `scene` (SVG/fallback) but leave the overlay.
+    const takesField = field === null ? fieldFor(layer) : null;
+    if (takesField) field = takesField;
+    const push = (items: SceneItem[], alsoOverlay = !takesField): void => {
+      scene.push(...items);
+      if (alsoOverlay) overlayItems.push(...items);
+    };
+
     switch (layer.type) {
       case 'domain':
-        items.push(domainItem(true, layer.fill));
+        scene.push(domainItem(true, layer.fill));
+        overlayItems.push(domainItem(false)); // the field paints the fill beneath
         break;
       case 'walls':
-        items.push(
-          ...wallItems(rg.poly.walls, (i) => ({
+        push(
+          wallItems(rg.poly.walls, (i) => ({
             color: layer.colors?.[i] ?? WALL_COLORS[i % WALL_COLORS.length],
             width: (layer.width ?? 0.05) * rg.r0,
           })),
@@ -131,20 +214,24 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
         const styleOf = (t: Tile<Point2, Isometry2>): RegionStyle => ({
           fill: { color: colorOf(t), opacity },
         });
-        items.push(...tilesToScene(tiles, styleOf));
+        push(tilesToScene(tiles, styleOf));
+        // GPU parity cannot single out the identity; keep the fd tile honest
+        // on top (the house "fd always orange" ruling).
+        if (takesField && !(layer.color && ('constant' in layer.color || layer.color.map === 'hue'))) {
+          overlayItems.push(
+            polygonItem(rg.poly.chamber, { fill: { color: TILE.identity, opacity } }, 'tile:e'),
+          );
+        }
         break;
       }
       case 'cayley': {
         const graph =
           layer.extent && 'depth' in layer.extent
             ? rg.group.cayleyGraph(layer.extent.depth, MAX_TILES)
-            : rg.group.cayleyBall(
-                layer.extent && 'ball' in layer.extent ? layer.extent.ball : coverRadius(),
-                MAX_TILES,
-              );
+            : rg.group.cayleyBall(ballOf(layer.extent), MAX_TILES);
         cayleyNodeCount += graph.nodes.length;
-        items.push(
-          ...cayleyScene(rg.group, graph, {
+        push(
+          cayleyScene(rg.group, graph, {
             edge: (g) => ({
               color: WALL_COLORS[g % WALL_COLORS.length],
               width: (layer.edge?.width ?? 0.06) * rg.r0,
@@ -157,15 +244,83 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
         );
         break;
       }
-      default:
-        pending.push(layer.type);
+      case 'tiles': {
+        const tiles = rg.group.tilesFor(layer.words);
+        push(
+          tilesToScene(
+            tiles,
+            () => ({ fill: { color: layer.fill ?? LIST } }),
+            (w) => `list:${li}:${wordId(w)}`,
+          ),
+        );
+        break;
+      }
+      case 'hull': {
+        // The design-doc semantics: the hull of the BASE-POINT images w·x₀.
+        // Spherical hulls beyond a hemisphere throw (the house refusal);
+        // render() surfaces that as a problem value.
+        const hull = hullOfWords(rg.group, layer.words);
+        hullAreas.push(polygonArea(geom, hull.vertices));
+        push([
+          polygonItem(
+            hull,
+            {
+              fill: { color: layer.fill ?? HULL, opacity: layer.fill ? 0.85 : 0.35 },
+              edge: layer.stroke ? { color: layer.stroke, width: 0.03 * rg.r0 } : undefined,
+            },
+            `hull:${li}`,
+          ),
+        ]);
+        break;
+      }
+      case 'cosets': {
+        // Validation guarantees the anchor exists (∅ / one / a meeting pair).
+        const anchor = parabolicFixedPoint(rg.group, layer.subgroup)!;
+        const tiles = tilesFor(layer.extent);
+        tileCount += tiles.length;
+        push(
+          tilesToScene(tiles, (t) => ({
+            fill: { color: hueColor(hashHue(geom.apply(t.element, anchor))) },
+          })),
+        );
+        break;
+      }
+      case 'uniform': {
+        const colors = layer.palette ?? [...TYPE_COLORS];
+        const rings = [0, 1, 2].map((i) => layer.rings.includes(i));
+        const cells = uniformCells(rg.group, rg.poly, rings, coverRadius(), MAX_TILES);
+        uniformCellCount += cells.length;
+        push(
+          cells.map((c, k) =>
+            polygonItem(
+              c.polytope,
+              {
+                fill: { color: colors[c.type % colors.length] },
+                edge: { color: UNIFORM_EDGE, width: 0.02 * rg.r0, opacity: 0.75 },
+              },
+              `uniform:${c.type}:${k}`,
+            ),
+          ),
+        );
+        break;
+      }
     }
-  }
+  });
 
   return {
     realized: rg,
-    scene: items,
+    scene,
+    overlay: field !== null ? overlayItems : null,
+    field,
     camera,
-    diagnostics: { geometry: rg.kind, tileCount, cayleyNodeCount, pending },
+    diagnostics: {
+      geometry: rg.kind,
+      tileCount,
+      cayleyNodeCount,
+      uniformCellCount,
+      hullAreas,
+      field: field !== null,
+      pending,
+    },
   };
 }

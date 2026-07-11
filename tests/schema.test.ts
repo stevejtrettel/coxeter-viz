@@ -106,4 +106,38 @@ describe('the figure document (schema/, PLAN §7.4)', () => {
     const doc = { ...base(), layers: [{ type: 'walls', colors: ['#fff'] }] };
     expect(problemsOf(doc).join('\n')).toMatch(/expected 3, got 1/);
   });
+
+  it('cosets: the parabolic must admit a W_S-fixed anchor', () => {
+    // the right-angled pentagon: walls 0 and 2 do not meet — ⟨s₀,s₂⟩ is infinite
+    const pentagon = [
+      [1, 2, -1, -1, 2],
+      [2, 1, 2, -1, -1],
+      [-1, 2, 1, 2, -1],
+      [-1, -1, 2, 1, 2],
+      [2, -1, -1, 2, 1],
+    ];
+    const nonMeeting = { version: '0.1', group: { coxeterMatrix: pentagon }, layers: [{ type: 'cosets', subgroup: [0, 2] }] };
+    expect(problemsOf(nonMeeting).join('\n')).toMatch(/do not meet.*infinite/);
+
+    const tooMany = { ...base(), layers: [{ type: 'cosets', subgroup: [0, 1, 2] }] };
+    expect(problemsOf(tooMany).join('\n')).toMatch(/anchor/);
+
+    const meeting = { version: '0.1', group: { coxeterMatrix: pentagon }, layers: [{ type: 'cosets', subgroup: [1, 2] }] };
+    expect(checkFigure(meeting).ok).toBe(true);
+  });
+
+  it('uniform: triangle chambers only, and at least one ring', () => {
+    const pentagon = [
+      [1, 2, -1, -1, 2],
+      [2, 1, 2, -1, -1],
+      [-1, 2, 1, 2, -1],
+      [-1, -1, 2, 1, 2],
+      [2, -1, -1, 2, 1],
+    ];
+    const wrongRank = { version: '0.1', group: { coxeterMatrix: pentagon }, layers: [{ type: 'uniform', rings: [0] }] };
+    expect(problemsOf(wrongRank).join('\n')).toMatch(/triangle chamber.*rank 5/);
+
+    const noRings = { ...base(), layers: [{ type: 'uniform', rings: [] }] };
+    expect(problemsOf(noRings).join('\n')).toMatch(/at least one ring/);
+  });
 });
