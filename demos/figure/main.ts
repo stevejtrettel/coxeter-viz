@@ -5,7 +5,7 @@
  * Includes a deliberately refused document to show problems-as-values.
  */
 
-import { pageShell, statusText } from '../shared';
+import { button, downloadBlob, downloadSvg, exportSizeLabel, kSelect, pageShell, statusText } from '../shared';
 import { render, type RenderHandle } from '@/app/render';
 
 const fixtureModules = import.meta.glob('../../tests/fixtures/figures/*.json', {
@@ -34,8 +34,11 @@ for (const name of documents.keys()) {
   opt.textContent = name;
   select.appendChild(opt);
 }
+const svgBtn = button('SVG');
+const pngBtn = button('PNG');
+const kSel = kSelect();
 const status = statusText();
-row.append(select, status);
+row.append(select, svgBtn, pngBtn, kSel, status);
 document.body.appendChild(row);
 
 const layout = document.createElement('div');
@@ -72,6 +75,16 @@ function show(name: string): void {
     `${d.geometry} · ${d.tileCount} tiles · ${d.cayleyNodeCount} Cayley nodes` +
     (d.pending.length > 0 ? ` · pending (P4): ${d.pending.join(', ')}` : '');
 }
+
+const stem = (): string => select.value.replace(/\.json$/, '').replace(/[^a-z0-9-]+/gi, '-');
+svgBtn.onclick = () => {
+  if (handle) downloadSvg(handle.svg(), `${stem()}.svg`);
+};
+pngBtn.onclick = () => {
+  const k = Number(kSel.value);
+  void handle?.png(k).then((blob) => downloadBlob(blob, `${stem()}@${k}x.png`));
+  status.textContent = exportSizeLabel(800, k);
+};
 
 select.onchange = () => show(select.value);
 const requested = new URLSearchParams(location.search).get('doc');

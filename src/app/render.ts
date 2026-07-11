@@ -7,6 +7,7 @@ import { scaleCamera } from '@/viz2d/render/png';
 import { TilingShader } from '@/viz2d/shader/TilingShader';
 import type { Scene, ViewSize } from '@/viz2d/render/types';
 import { assemble, type RenderDiagnostics } from './assemble';
+import { EXPORT_EPSILON_PX, pngFromAssembled, svgFromAssembled } from './export';
 
 /**
  * The single public entry point (README): a figure document in, a living
@@ -24,6 +25,10 @@ import { assemble, type RenderDiagnostics } from './assemble';
 
 export interface RenderHandle {
   diagnostics: RenderDiagnostics;
+  /** The picture AS PANNED/ZOOMED, re-assembled at export depth (ε 1.5 px). */
+  svg(): string;
+  /** k× resolution through the compositor: the field re-folds per pixel. */
+  png(k: number, background?: string): Promise<Blob>;
   dispose(): void;
 }
 
@@ -109,10 +114,17 @@ export function render(container: HTMLElement, figure: unknown): RenderResult {
   });
   repaint();
 
+  // Exports re-assemble at the CURRENT camera and the export ε, so omitted
+  // extents cover the panned/zoomed frame at print depth.
+  const exportAssembled = (): typeof asm =>
+    assemble(checked.figure, size, { camera, epsilonPx: EXPORT_EPSILON_PX });
+
   return {
     ok: true,
     handle: {
       diagnostics: asm.diagnostics,
+      svg: () => svgFromAssembled(exportAssembled(), size),
+      png: (k, background) => pngFromAssembled(exportAssembled(), size, k, background),
       dispose(): void {
         if (raf !== 0) cancelAnimationFrame(raf);
         interaction.dispose();

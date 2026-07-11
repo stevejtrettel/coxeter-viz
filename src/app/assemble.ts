@@ -19,6 +19,7 @@ import { defaultModel, realizeSpec, type RealizedGroup } from '@/viz2d/kit/reali
 import {
   cayleyScene,
   domainItem,
+  fieldTileId,
   hueColor,
   parityColor,
   polygonItem,
@@ -98,7 +99,14 @@ function modelFor(name: ModelName, kind: GeometryKind): Model<Point2> {
   }
 }
 
-export function assemble(figure: Figure, size: ViewSize): Assembled {
+export interface AssembleOptions {
+  /** Use this camera (a live pan/zoom state) instead of the auto-fit one. */
+  camera?: Camera;
+  /** Coverage ε px for omitted extents: 3 live (default), 1.5 for exports. */
+  epsilonPx?: number;
+}
+
+export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions): Assembled {
   const cls = classifyCoxeterMatrix(figure.group.coxeterMatrix);
   if (cls.kind === 'refused') {
     // checkFigure guarantees acceptance; reaching this is a bug, not bad input.
@@ -107,7 +115,7 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
   const rg = realizeSpec(cls.spec, { model: modelFor(figure.model, cls.spec.geometry) });
   const geom = rg.group.geom;
 
-  const camera: Camera = {
+  const camera: Camera = opts?.camera ?? {
     view: geom.identity(),
     scalePx: fitToDomain(rg.model, rg.kind, rg.r0, Math.min(size.widthPx, size.heightPx)),
     centerPx: [size.widthPx / 2, size.heightPx / 2],
@@ -117,7 +125,9 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
   let frameRadius: number | undefined;
   const coverRadius = (): number => {
     frameRadius ??=
-      rg.kind === 'spherical' ? Math.PI : coverageRadius(rg.group, rg.model, camera, size, COVER_EPSILON_PX);
+      rg.kind === 'spherical'
+        ? Math.PI
+        : coverageRadius(rg.group, rg.model, camera, size, opts?.epsilonPx ?? COVER_EPSILON_PX);
     return frameRadius;
   };
   const ballOf = (extent?: Extent): number => (extent && 'ball' in extent ? extent.ball : coverRadius());
@@ -275,13 +285,17 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
       }
       case 'cosets': {
         // Validation guarantees the anchor exists (∅ / one / a meeting pair).
+        // The tiles are the FIELD's vector twin, so they carry `field:tile:`
+        // ids — mergeFieldPaths coalesces same-hue cosets in the SVG.
         const anchor = parabolicFixedPoint(rg.group, layer.subgroup)!;
         const tiles = tilesFor(layer.extent);
         tileCount += tiles.length;
         push(
-          tilesToScene(tiles, (t) => ({
-            fill: { color: hueColor(hashHue(geom.apply(t.element, anchor))) },
-          })),
+          tilesToScene(
+            tiles,
+            (t) => ({ fill: { color: hueColor(hashHue(geom.apply(t.element, anchor))) } }),
+            fieldTileId,
+          ),
         );
         break;
       }
@@ -298,7 +312,7 @@ export function assemble(figure: Figure, size: ViewSize): Assembled {
                 fill: { color: colors[c.type % colors.length] },
                 edge: { color: UNIFORM_EDGE, width: 0.02 * rg.r0, opacity: 0.75 },
               },
-              `uniform:${c.type}:${k}`,
+              `field:tile:${c.type}:${k}`, // the field's vector twin (house id)
             ),
           ),
         );

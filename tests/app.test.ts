@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assemble } from '@/app/assemble';
+import { figureToSvg } from '@/app/export';
 import { checkFigure } from '@/schema/validate';
 import type { Figure } from '@/schema/types';
 import type { ViewSize } from '@/viz2d/render/types';
@@ -66,8 +67,9 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
     expect(a.diagnostics.field).toBe(true); // cosets is field-paintable
     expect(a.field?.coset).toBeDefined();
     expect(a.overlay).not.toBeNull();
-    // cosets of ⟨s₁,s₂⟩ (order 4): tiles in one coset share one color
-    const tiles = a.scene.filter((i) => i.kind === 'polygon' && i.id.startsWith('tile:'));
+    // cosets of ⟨s₁,s₂⟩ (order 4): tiles in one coset share one color;
+    // they are the field's vector twin, so they carry field:tile: ids
+    const tiles = a.scene.filter((i) => i.kind === 'polygon' && i.id.startsWith('field:tile:'));
     expect(tiles.length).toBeGreaterThan(10);
     const colors = new Set(tiles.map((t) => t.kind === 'polygon' && t.style.fill?.color));
     expect(colors.size).toBeLessThan(tiles.length); // strictly fewer colors than tiles
@@ -80,7 +82,7 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
     expect(a.diagnostics.uniformCellCount).toBeGreaterThan(5);
     expect(a.field?.regions).toBeDefined();
     // (2,3,5) ringed at node 0: the DODECAHEDRON — 12 pentagonal faces
-    const cells = a.scene.filter((i) => i.id.startsWith('uniform:'));
+    const cells = a.scene.filter((i) => i.id.startsWith('field:tile:'));
     expect(cells).toHaveLength(12);
     for (const c of cells) expect(c.kind === 'polygon' && c.vertices.length).toBe(5);
   });
@@ -121,6 +123,31 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
       SIZE,
     );
     expect(a.diagnostics.tileCount).toBe(120);
+  });
+
+  it('figureToSvg (P5): a raw document → an SVG string, pure, same ids', () => {
+    const raw = Object.entries(fixtureModules).find(([p]) => p.endsWith('/tessellation.json'))![1];
+    const r = figureToSvg(raw);
+    expect(r.ok).toBe(true);
+    const svg = r.ok ? r.value : '';
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('data-id="wall:0"');
+    expect(svg).toContain('data-id="tile:e"');
+  });
+
+  it('figureToSvg merges the field programs&apos; vector twins (cosets → one path per hue)', () => {
+    const raw = Object.entries(fixtureModules).find(([p]) => p.endsWith('/cosets-pentagon.json'))![1];
+    const r = figureToSvg(raw);
+    expect(r.ok).toBe(true);
+    const svg = r.ok ? r.value : '';
+    expect(svg).toContain('data-id="field:tiles:0"'); // merged by color
+    expect(svg).not.toContain('data-id="field:tile:e"'); // no per-tile paths survive
+  });
+
+  it('figureToSvg returns problems as values on a bad document', () => {
+    const r = figureToSvg({ version: '9.9' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problems.length).toBeGreaterThan(0);
   });
 
   it('honors the domain fill and a constant tile color', () => {
