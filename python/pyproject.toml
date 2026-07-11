@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "coxeter-viz"
+version = "0.1.0"
+description = "Pictures of Coxeter groups from abstract group data — tessellations, Cayley graphs, coset colorings — as live HTML, SVG, and shader-rendered PNG."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Steve Trettel" }]
+keywords = ["coxeter", "hyperbolic", "tessellation", "visualization", "geometry"]
+dependencies = []
+
+[project.optional-dependencies]
+export = ["playwright>=1.40"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coxeter_viz"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1744,8 +1744,14 @@ Pinned conventions:
   the extent-resolution ternary unified (`byExtent`); the
   `push(items, alsoOverlay = !takesField)` default-arg trick replaced by
   an explicit `fieldPaintsThisLayer`; fixture loading shared via
-  `tests/helpers.ts`; CLAUDE.md status brought current. Left by ruling:
-  `validate.ts` stays one cohesive function until op growth hurts.
+  `tests/helpers.ts`; CLAUDE.md status brought current; the P6 sample
+  generator promoted to `scripts/make-samples.mjs` (`npm run samples`) —
+  the executable specification of Python's `save('.html')`. Left by
+  ruling: `validate.ts` stays one cohesive function until op growth
+  hurts; the `three` dependency STAYS (user, 2026-07-10: "there will
+  likely be more three.js soon unless we spin up our own 3D library") and
+  `demos/hello` + `tests/smoke.test.ts` stay with it (hello is three's
+  one live import — the canary).
 - **P7** — `python/coxeter_viz/`: the builder (one method per op, 1:1
   with §7.4), `save('.html')`, packaging (wheel vendors the bundle).
 - **P8** — `save('.png')` / `save('.svg')` via Playwright; k× scale
@@ -1775,3 +1781,70 @@ Pinned conventions:
   Steinitz + Andreev; the survey of the parent's built Route-B solver is
   in the 2026-07-10 session record) waits until the 2D product story is
   complete (user ruling).
+
+### 7.8 The Python package — detailed plan (2026-07-11, collaborative)
+
+**Decisions (all user, 2026-07-11):** MIT license (repo gains `LICENSE`);
+Python ≥ 3.10; Playwright as the OPTIONAL extra
+`pip install "coxeter-viz[export]"` (HTML-only users never download a
+browser); exports RAISE `CoxeterVizError` listing the problems, and
+`fig.check()` exists for pre-flight in loops (P8). Vendored files are
+COMMITTED (recommendation adopted: the repo stays self-contained and
+`pip install git+…#subdirectory=python` just works — the realistic
+pre-PyPI channel; reversible).
+
+**The headline of the install story: JavaScript is NOT a dependency of
+the installed package — it is two static files inside the wheel.** No
+consumer ever has node/npm. The three paths:
+
+1. *Consumer*: `pip install coxeter-viz` → `save('.html')` works
+   immediately, pure stdlib, offline. `pip install "coxeter-viz[export]"`
+   + `playwright install chromium` (one-time; Playwright manages its own
+   browser, needs no system Chrome) → `.png`/`.svg`.
+2. *Developer (this repo)*: `npm run build:bundle` now ALSO vendors
+   `viewer.js` + `template.html` into `python/src/coxeter_viz/_static/`;
+   `pip install -e "python/[export]"`. The editable install reads
+   `_static/` from the tree, so after any TS change `build:bundle` alone
+   refreshes what Python serves.
+3. *Wheel*: `npm run build:bundle && (cd python && python -m build)`;
+   a loud error (never a silent empty wheel) if `_static/viewer.js` is
+   missing.
+
+**Layout**: `python/{pyproject.toml (hatchling), README.md,
+src/coxeter_viz/{__init__.py, figure.py, _html.py, _export.py (P8),
+_static/}, tests/}`.
+
+**The builder** (`cx.figure(M, title=?, model=?)` → `Figure`): one method
+per §7.4 op, each appends ONE dict and returns `self` (chainable);
+`document()` returns the JSON-able dict (the escape hatch and the test
+seam). Conventions: extent as `ball=` XOR `depth=` keywords (both →
+`TypeError`; neither → cover-the-frame); `color="parity"|"hue"` are maps,
+any other string a constant; words/subgroup/rings are ints, coerced via
+`operator.index` (numpy ints pass, floats refuse — structural coercion,
+not validation); **Python does no mathematics and no semantic
+validation** — the engine owns truth; a refused matrix saved as HTML
+shows the problems report when opened, and P8 exports raise.
+
+**Cross-language pin (the load-bearing test)**: the Python builder
+reproduces every fixture document EXACTLY —
+`cx.figure(…)….document() == json.load(tests/fixtures/figures/*.json)` —
+so the two languages cannot drift on the contract. Plus pytest mirrors of
+the html.test.ts pins (escaping, `$`-literalness; Python `str.replace`
+has no `$` semantics, pinned anyway).
+
+**Increments**: **P7a** — LICENSE, packaging, vendoring wiring, builder,
+`document()`, `save('.html')`, the fixture-equality tests.
+CHECKPOINT: the user `pip install -e python/` and saves a page from a
+Python prompt. — BUILT 2026-07-11: `LICENSE` (MIT); `python/` per the
+layout above (hatchling; `_export.py` is a P8 stub whose message is the
+install hint); `build:bundle` vendors into `_static/` (committed); 17
+pytest green on a uv-managed CPython 3.12 (`uv venv --python 3.12
+python/.venv` — the system python3 is 3.9, BELOW our floor), including
+all six cross-language fixture pins (+ a completeness test: a fixture
+without a pin fails) and the escaping/$-literalness mirrors; verified
+end-to-end (a Python one-liner saved a working (2,3,7) page, screenshot
+from file://). Checkpoint awaits the user's own prompt. **P7b = P8** —
+`_export.py` (Playwright drives the P6 `window.coxeterViz` global; PNG
+bytes ferried as base64), `save('.png', scale=, background=)` /
+`save('.svg')`, `fig.check()`, `CoxeterVizError`. CHECKPOINT: the first
+Python-produced 4× shader PNG.

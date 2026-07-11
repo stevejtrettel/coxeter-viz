@@ -27,10 +27,14 @@ fallback (`src/app/`), `figureToSvg`/`figureToPng` (k× shader PNGs),
 `npm run build:bundle` → `dist/lib/viewer.js` (66 kB IIFE) +
 `template.html` (the two files Python vendors), self-contained HTML
 instruments (`dist/samples/`), and the `figure` demo as the product dev
-harness. Next: P7 (the Python package `coxeter_viz`: builder + save
-'.html'), then P8 (save '.png'/'.svg' via headless Chromium), P9
-(verification hardening). 2D only — 3D waits (user ruling). Still also
-pending: the user's hands-on pass of §5.7/§5.8; GPU-globe v1 parked.**
+harness. P7a (2026-07-11, PLAN §7.8): the PYTHON PACKAGE `python/` —
+`cx.figure(M)` builder (one method per op, cross-language fixture pins),
+`save('.html')` pure-stdlib, MIT, Python ≥ 3.10 (dev env: uv-managed
+3.12 in `python/.venv`; system python3 is 3.9), `build:bundle` vendors
+`_static/` (committed). Next: P8 (save '.png'/'.svg' + `check()` via
+Playwright `[export]` extra), then P9 (verification hardening). 2D only
+— 3D waits (user ruling). Still also pending: the user's hands-on pass
+of §5.7/§5.8; GPU-globe v1 parked.**
 
 What exists, layer by layer (each folder README is its spec; PLAN § given):
 - **math / geometry / models / polytope / coxeter** — the substrate: own
