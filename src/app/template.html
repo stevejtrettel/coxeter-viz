@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>__COXETER_VIZ_TITLE__</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #ffffff; overflow: hidden; }
+    #figure { width: 100%; height: 100%; }
+    #problems {
+      font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #a03030; padding: 20px; white-space: pre-wrap;
+    }
+    /* The export corner: invisible until the pointer visits the page. */
+    #exports {
+      position: fixed; right: 12px; top: 12px; display: flex; gap: 6px;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    body:hover #exports { opacity: 1; }
+    #exports button {
+      font: 12px system-ui, sans-serif; padding: 4px 10px; cursor: pointer;
+      color: #444; background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #ccc; border-radius: 4px;
+    }
+    #exports button:hover { background: #f2f0ea; }
+  </style>
+</head>
+<body>
+  <div id="figure"></div>
+  <div id="exports" hidden>
+    <button id="dl-svg" type="button">SVG</button>
+    <button id="dl-png" type="button">PNG 4&times;</button>
+  </div>
+  <script>/*__COXETER_VIZ_BUNDLE__*/</script>
+  <script>
+    (function () {
+      'use strict';
+      var FIGURE = "__COXETER_VIZ_FIGURE__";
+      var container = document.getElementById('figure');
+      var exportsBox = document.getElementById('exports');
+      var handle = null;
+
+      function mount() {
+        if (handle) handle.dispose();
+        handle = null;
+        container.textContent = '';
+        var result = coxeterViz.render(container, FIGURE);
+        if (!result.ok) {
+          var pre = document.createElement('pre');
+          pre.id = 'problems';
+          pre.textContent = result.problems
+            .map(function (p) { return (p.path || '(document)') + '\n  ' + p.problem; })
+            .join('\n\n');
+          container.appendChild(pre);
+          exportsBox.hidden = true;
+          return;
+        }
+        handle = result.handle;
+        exportsBox.hidden = false;
+      }
+      mount();
+
+      var resizeTimer;
+      window.addEventListener('resize', function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(mount, 150);
+      });
+
+      var stem = (document.title || 'figure').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'figure';
+      function download(name, blob) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+      }
+      document.getElementById('dl-svg').addEventListener('click', function () {
+        if (handle) download(stem + '.svg', new Blob([handle.svg()], { type: 'image/svg+xml' }));
+      });
+      document.getElementById('dl-png').addEventListener('click', function () {
+        if (handle) handle.png(4).then(function (blob) { download(stem + '@4x.png', blob); });
+      });
+    })();
+  </script>
+</body>
+</html>

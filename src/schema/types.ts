@@ -84,6 +84,8 @@ export type Layer =
 
 export interface Figure {
   version: '0.1';
+  /** Optional display title: the saved page's browser-tab title, export filenames. */
+  title?: string;
   group: { coxeterMatrix: CoxeterMatrix };
   model: ModelName; // defaulted to 'auto' by checkFigure
   layers: Layer[];

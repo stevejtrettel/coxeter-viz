@@ -34,6 +34,8 @@ Position in the dependency law:
 }
 ```
 
+- **`title`** — optional display title: the saved page's browser-tab title
+  and export filenames (user ruling 2026-07-10).
 - **`group.coxeterMatrix`** — the symmetric integer matrix, `M_ii = 1`,
   `M_ij` = the order of `sᵢsⱼ`, **−1 the sentinel for ∞** (JSON has no
   `Infinity`). Row/column order IS the generator indexing — load-bearing,

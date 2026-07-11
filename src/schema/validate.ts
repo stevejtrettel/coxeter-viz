@@ -48,11 +48,15 @@ export function checkFigure(raw: unknown): FigureCheck {
     return { ok: false, problems: [{ path: '', problem: 'a figure document is a JSON object.' }] };
   }
   for (const key of Object.keys(raw)) {
-    if (!['version', 'group', 'model', 'layers'].includes(key)) bad(key, 'unknown field.');
+    if (!['version', 'title', 'group', 'model', 'layers'].includes(key)) bad(key, 'unknown field.');
   }
 
   if (raw.version !== '0.1') {
     bad('version', `unknown version ${JSON.stringify(raw.version)}; this engine reads "0.1".`);
+  }
+
+  if (raw.title !== undefined && (typeof raw.title !== 'string' || raw.title.length === 0)) {
+    bad('title', 'a title is a non-empty string.');
   }
 
   // — the group, through the inference layer —
@@ -253,6 +257,7 @@ export function checkFigure(raw: unknown): FigureCheck {
     ok: true,
     figure: {
       version: '0.1',
+      ...(raw.title !== undefined ? { title: raw.title as string } : {}),
       group: { coxeterMatrix: (raw.group as { coxeterMatrix: CoxeterMatrix }).coxeterMatrix },
       model,
       layers: raw.layers as Layer[],

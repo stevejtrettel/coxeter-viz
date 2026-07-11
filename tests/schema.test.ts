@@ -54,6 +54,14 @@ describe('the figure document (schema/, PLAN §7.4)', () => {
     expect(accepted(base()).model).toBe('auto');
   });
 
+  it('carries an optional title through (and refuses a non-string one)', () => {
+    const fig = accepted({ ...base(), title: 'my tiling' });
+    expect(fig.title).toBe('my tiling');
+    expect(accepted(fig)).toEqual(fig); // round-trips
+    expect(accepted(base()).title).toBeUndefined();
+    expect(problemsOf({ ...base(), title: 7 }).join('\n')).toMatch(/title/);
+  });
+
   it('refuses an unknown version as a problem, not a crash', () => {
     const doc = { ...base(), version: '9.9' };
     expect(problemsOf(doc).join('\n')).toMatch(/version/);

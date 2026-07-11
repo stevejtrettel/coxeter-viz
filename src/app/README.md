@@ -64,10 +64,16 @@ interface RenderHandle {
 - **`render`** (P3–P4): mounts the canvas/GPU layer stack (the
   `demos/shared` primitives), attaches pan/zoom (v0.1 live = pan/zoom
   only — user ruling; isometry navigation is parked), paints.
-- **`figureToSvg(figure): string`** (P5): pure end to end — figure →
-  `buildPathList` → `toSvg`, no DOM anywhere (usable headless as-is).
-- **`figureToPng(figure, k): Promise<Blob>`** (P5): the `RasterLayer`
-  stack; needs a real canvas/WebGL2 context by nature.
+- **`figureToSvg(figure, opts?): ExportResult<string>`** (P5): pure end to
+  end — figure → `buildPathList` → `mergeFieldPaths` → `toSvg`, no DOM
+  anywhere (usable headless as-is). Value-typed like everything else:
+  problems, never throws. `opts` = size / a live camera / (PNG) background.
+- **`figureToPng(figure, k, opts?): Promise<ExportResult<Blob>>`** (P5):
+  the `RasterLayer` stack (field under vector overlay) through the k×
+  compositor; needs a real canvas/WebGL2 context by nature.
+- Exports assemble at the EXPORT ε (1.5 px vs 3 live), and the handle's
+  `svg()`/`png(k)` re-assemble at the CURRENT camera — a panned/zoomed
+  instrument exports exactly what it shows, at print depth.
 - **`selfContainedHtml(figure): string`** (P6): ONE file — the tree-shaken
   `viewer.js` bundle + the figure JSON inlined in a template. Opening it
   IS the instrument: full-viewport, live pan/zoom, the animation/

@@ -1715,9 +1715,29 @@ Pinned conventions:
   field without it). Verified by headless screenshots (pentagon coset
   field, the dodecahedron, tiles+hull over the parity field).
 - **P5** — `figureToSvg` / `figureToPng` assembled from the existing
-  exporters; exposed on the rendered page for headless driving.
+  exporters; exposed on the rendered page for headless driving. — DONE
+  2026-07-10 (green, 467 tests): `app/export.ts` (value-typed, raw
+  document in; SVG pure strings + `mergeFieldPaths` on the field twins —
+  cosets/uniform CPU stand-ins now carry the house `field:tile:` ids so
+  same-hue paths coalesce; PNG = field-under-vector `RasterLayer` stack
+  at k×); `RenderHandle.svg()/png(k)` re-assemble at the CURRENT camera
+  and the export ε 1.5 px; the `figure` demo grew SVG/PNG/k× buttons.
+  The `window.coxeterViz` global lands with the bundle entry (P6).
 - **P6** — the bundle (`viewer.js`) + the HTML exporter.
-  **CHECKPOINT: first saved HTML opened, panned, zoomed.**
+  **CHECKPOINT: first saved HTML opened, panned, zoomed.** — BUILT
+  2026-07-10 (green, 472 tests): `npm run build:bundle` → Vite library
+  mode, IIFE, `dist/lib/viewer.js` (65.9 kB, 23.9 kB gzip — ~13× under
+  the design-doc budget) + `dist/lib/template.html` beside it (the TWO
+  files Python vendors). `src/app/template.html` is the single source of
+  truth for the page — full-viewport, live pan/zoom, debounced resize
+  re-mount, hover-corner SVG / 4× PNG buttons (user rulings), problems
+  rendered as values; `selfContainedHtml(figure, viewerJs)` = three
+  function-form string replacements (title / quoted-figure token / bundle
+  comment token), `<`-escaped JSON so a hostile title cannot break out
+  (test-pinned). Schema v0.1 gained the optional `title` field (user
+  ruling). Verified: sample pages generated exactly the Python way
+  (`dist/samples/*.html`) render from `file://` in headless Chrome, GPU
+  field included. Checkpoint awaits the user's double-click.
 - **P7** — `python/coxeter_viz/`: the builder (one method per op, 1:1
   with §7.4), `save('.html')`, packaging (wheel vendors the bundle).
 - **P8** — `save('.png')` / `save('.svg')` via Playwright; k× scale
