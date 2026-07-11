@@ -31,10 +31,14 @@ harness. P7a (2026-07-11, PLAN §7.8): the PYTHON PACKAGE `python/` —
 `cx.figure(M)` builder (one method per op, cross-language fixture pins),
 `save('.html')` pure-stdlib, MIT, Python ≥ 3.10 (dev env: uv-managed
 3.12 in `python/.venv`; system python3 is 3.9), `build:bundle` vendors
-`_static/` (committed). Next: P8 (save '.png'/'.svg' + `check()` via
-Playwright `[export]` extra), then P9 (verification hardening). 2D only
-— 3D waits (user ruling). Still also pending: the user's hands-on pass
-of §5.7/§5.8; GPU-globe v1 parked.**
+`_static/` (committed). P8 (2026-07-11): `save('.png', scale=,
+background=)` / `save('.svg')` / `check()` via the Playwright `[export]`
+extra — a lazy shared browser, refusals raise `CoxeterVizError`, WebGL2
+confirmed headless; 23 pytest + 472 vitest green. THE WHOLE ARROW WORKS:
+Coxeter matrix in Python → live HTML / vector SVG / 4× shader PNG. Next:
+P9 (verification hardening: golden SVGs, GPU/CPU pixel-coincidence on
+figure renders, doc pass). 2D only — 3D waits (user ruling). Still also
+pending: the user's hands-on pass of §5.7/§5.8; GPU-globe v1 parked.**
 
 What exists, layer by layer (each folder README is its spec; PLAN § given):
 - **math / geometry / models / polytope / coxeter** — the substrate: own

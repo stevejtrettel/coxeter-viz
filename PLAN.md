@@ -1847,4 +1847,15 @@ from file://). Checkpoint awaits the user's own prompt. **P7b = P8** —
 `_export.py` (Playwright drives the P6 `window.coxeterViz` global; PNG
 bytes ferried as base64), `save('.png', scale=, background=)` /
 `save('.svg')`, `fig.check()`, `CoxeterVizError`. CHECKPOINT: the first
-Python-produced 4× shader PNG.
+Python-produced 4× shader PNG. — DONE 2026-07-11 (23 pytest green): the
+driver loads the bundle via `add_script_tag` (no HTML parsing of the JS;
+the bundle contains no `</script>`, checked), a LAZY MODULE-LEVEL
+BROWSER (a loop over 100 groups pays the ~1 s launch once — measured:
+2.6 s cold, 0.1 s reused), PNG bytes via FileReader→base64; refusals
+raise `CoxeterVizError` with every reason and the structured problems on
+`.problems`; `check()` runs the full pipeline at a 64 px frame so
+runtime refusals (hemisphere hulls) are caught too; SVG refuses
+scale/background (a vector is honest at any size). WebGL2 CONFIRMED in
+Playwright's headless Chromium (the shader PNG test would fail
+otherwise). Checkpoint artifact: pentagon-cosets at scale 4 (3200²,
+1.3 MB) saved from a Python loop, visually verified.
