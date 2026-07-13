@@ -13,7 +13,7 @@ It writes:         outputs/highlighted_tiling.png (4x shader) + .html (live)
 
 from pathlib import Path
 
-import coxeter_viz as cx
+import coxeter_groups as cx
 
 OUT = Path(__file__).resolve().parents[2] / "outputs"
 OUT.mkdir(exist_ok=True)

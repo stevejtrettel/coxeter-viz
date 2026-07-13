@@ -2,6 +2,7 @@ import type { Isometry2, Point2 } from '@/geometry/types';
 import type { Hyperplane } from '@/geometry/Hyperplane';
 import type { Polytope } from '@/polytope/Polytope';
 import { wordId, type CoxeterGroup, type Tile } from '@/group/CoxeterGroup';
+import { matrixKey } from '@/group/orbit';
 import type { CayleyGraph, CayleyNode } from '@/group/cayley';
 import type {
   DomainItem,
@@ -103,6 +104,64 @@ export function cayleyScene(
   graph.nodes.forEach((n, k) => {
     items.push({ id: cayId(n.word), kind: 'point', at: points[k], style: styleOf.node(n) });
   });
+  return items;
+}
+
+/**
+ * The panel type of each chamber edge: `edgeGen[k]` is the generator index i
+ * whose wall supports `chamber.edges[k]` (both endpoints lie on `walls[i]`).
+ * `transformPolytope` preserves the edge index order, so this one chamber-level
+ * map colors every tile's edges verbatim. Each edge lies on exactly one wall,
+ * so the argmin over incidence residual is unambiguous.
+ */
+export function edgeGenerators(
+  chamber: Polytope<Point2>,
+  walls: readonly Hyperplane[],
+): number[] {
+  return chamber.edges.map(([a, b]) => {
+    let best = 0;
+    let bestResidual = Infinity;
+    walls.forEach((wall, i) => {
+      const residual = Math.abs(wall.side(chamber.vertices[a])) + Math.abs(wall.side(chamber.vertices[b]));
+      if (residual < bestResidual) {
+        bestResidual = residual;
+        best = i;
+      }
+    });
+    return best;
+  });
+}
+
+/**
+ * The tiling's edges as generator-colored geodesic segments (the panel-type
+ * coloring): every tile contributes each of its edges, but the shared interior
+ * edge between g·F and g·s_i·F is emitted ONCE — deduped by the unordered
+ * element pair {g, g·R_i}. `styleOf(i)` colors the edge by its panel type i.
+ */
+export function tessellationEdgeItems(
+  group: CoxeterGroup<Point2, Isometry2>,
+  tiles: readonly Tile<Point2, Isometry2>[],
+  edgeGen: readonly number[],
+  styleOf: (generator: number) => StrokeStyle,
+): GeodesicItem[] {
+  const seen = new Set<string>();
+  const items: GeodesicItem[] = [];
+  for (const t of tiles) {
+    const kt = matrixKey(t.element);
+    t.polytope.edges.forEach(([a, b], k) => {
+      const i = edgeGen[k];
+      const kn = matrixKey(group.geom.compose(t.element, group.reflections[i]));
+      const key = kt < kn ? `${kt}|${kn}` : `${kn}|${kt}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push({
+        id: `tileedge:${wordId(t.word)}:${i}`,
+        kind: 'geodesic',
+        source: { type: 'segment', a: t.polytope.vertices[a], b: t.polytope.vertices[b] },
+        style: styleOf(i),
+      });
+    });
+  }
   return items;
 }
 

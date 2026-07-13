@@ -128,17 +128,32 @@ class Figure:
         depth: int | None = None,
         color: str | None = None,
         opacity: float | None = None,
+        edges: bool = False,
+        edge_width: float | None = None,
+        edge_colors: list[str] | None = None,
     ) -> "Figure":
         """The orbit of the chamber; one tile per element.
 
         color: 'parity' | 'hue' | any constant color string.
+
+        Set ``edges=True`` (or pass ``edge_width`` / ``edge_colors``) to stroke
+        the tiling's edges, colored by PANEL TYPE — the generator index each
+        edge is a translated mirror of. ``edge_colors[i]`` is generator i's
+        color (defaults to the house wall colors); ``edge_width`` is intrinsic,
+        × the inradius.
         """
+        edge = (
+            _clean({"width": edge_width, "colors": edge_colors})
+            if edges or edge_width is not None or edge_colors is not None
+            else None
+        )
         return self._layer(
             {
                 "type": "tessellation",
                 "extent": _extent(ball, depth),
                 "color": _color(color) if color is not None else None,
                 "opacity": opacity,
+                "edges": edge,
             }
         )
 
@@ -234,7 +249,7 @@ class Figure:
         import webbrowser
 
         with tempfile.NamedTemporaryFile(
-            "w", suffix=".html", prefix="coxeter-viz-", delete=False, encoding="utf-8"
+            "w", suffix=".html", prefix="coxeter-groups-", delete=False, encoding="utf-8"
         ) as f:
             f.write(_html.page(self._doc))
         webbrowser.open(f"file://{f.name}")

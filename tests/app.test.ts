@@ -90,6 +90,40 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
     expect(a.scene.filter((i) => i.id.startsWith('tile:')).length).toBe(a.diagnostics.tileCount);
   });
 
+  it('tessellation edges: panel-type coloring, one segment per shared edge', () => {
+    // (2,3,5) exhausts to 120 triangular tiles. Every edge is interior (the
+    // sphere is closed), so 120·3/2 = 180 distinct edges — the Cayley-edge
+    // count, the tiling-edge ↔ Cayley-edge bijection made concrete.
+    const a = assemble(
+      checked({
+        version: '0.1',
+        group: { coxeterMatrix: [[1, 2, 5], [2, 1, 3], [5, 3, 1]] },
+        layers: [
+          {
+            type: 'tessellation',
+            color: { map: 'parity' },
+            edges: { width: 0.03, colors: ['#111111', '#222222', '#333333'] },
+          },
+        ],
+      }),
+      SIZE,
+    );
+    const edges = a.scene.filter((i) => i.id.startsWith('tileedge:'));
+    expect(edges).toHaveLength(180); // deduped: each shared edge exactly once
+    expect(new Set(edges.map((e) => e.id)).size).toBe(180); // ids collision-free
+    // panel type i ↦ colors[i]; all three generators appear
+    const colors = new Set(edges.map((e) => e.kind === 'geodesic' && e.style.color));
+    expect(colors).toEqual(new Set(['#111111', '#222222', '#333333']));
+    // the id's trailing panel type must match the color it was given
+    for (const e of edges) {
+      const i = Number(e.id.slice(e.id.lastIndexOf(':') + 1));
+      expect(e.kind === 'geodesic' && e.style.color).toBe(['#111111', '#222222', '#333333'][i]);
+    }
+    // thin strokes ride on top of the GPU field: present in scene AND overlay
+    expect(a.diagnostics.field).toBe(true);
+    expect((a.overlay ?? []).filter((i) => i.id.startsWith('tileedge:'))).toHaveLength(180);
+  });
+
   it('an omitted extent covers the frame (the adaptive coverage radius)', () => {
     const a = assemble(
       checked({

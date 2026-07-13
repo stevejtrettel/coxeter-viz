@@ -46,12 +46,26 @@ matrix stays as the uniform discover-representation path): a FIRST-CLASS
 second presentation, not matrix sugar — `classifyPolygonOrders`
 (coxeter/matrix), one `classifyGroup` dispatch (schema/validate, reused
 by app/assemble), Python `cx.polygon([2,3,2,6,4,5])`, spec-identity pin
-against the hand-expanded matrix. **491 vitest / 20 files + 28 pytest.** THE WHOLE ARROW WORKS: Coxeter
+against the hand-expanded matrix. P11a (2026-07-13, PLAN §11): EDGE
+COLORING SHIPPED. `tessellation.edges` — stroke the tiling's edges by PANEL
+TYPE (the generator index each edge is a translated mirror of; deduped by
+the {g, g·R_i} element pair, one segment per shared edge = the
+tiling-edge↔Cayley-edge bijection, 180 for (2,3,5)); `edgeGenerators` +
+`tessellationEdgeItems` in viz2d/kit/scene, always drawn on top (scene AND
+overlay). Python: `tessellation(edges=, edge_width=, edge_colors=)`.
+**WORD-BAG ALGEBRA (invert/shift/…) — DESIGN IN PROGRESS (PLAN §11.3), NOT
+BUILT.** A first spike put `tiles.invert` + a live HTML `tiles.toggle`
+checkbox into the ENGINE; REVERTED 2026-07-13 after the collaborative
+ruling: invert/shift/union on word lists are RELABELING (reverse /
+concatenate), not group computation, so they belong on the PYTHON side as
+data-shaping commands (`cx.invert`, `cx.shift`, …) that produce word lists
+the DUMB drawer (`tiles`/`hull`, unchanged) consumes; the live in-browser
+toggle is parked as a separate interactivity concern. **492 vitest / 20 files + 29 pytest.** THE WHOLE ARROW WORKS: Coxeter
 matrix in Python → live HTML / vector SVG / k× shader PNG; ready to
 publish (`coxeter-viz` free on PyPI). Next: the user's second
 (consumer) repo; then Milestone 2 (3D) planning. 2D only — 3D waits
-(user ruling). Still pending: the user's hands-on pass of §5.7/§5.8;
-GPU-globe v1 parked.**
+(user ruling). Still pending: the user's hands-on pass of §5.7/§5.8 and of
+the P11a edges; the §11.3 word-bag design; GPU-globe v1 parked.**
 
 What exists, layer by layer (each folder README is its spec; PLAN § given):
 - **math / geometry / models / polytope / coxeter** — the substrate: own
@@ -118,7 +132,7 @@ demo conversion to an adapter module (available whenever); a polygon
 class/type (deferred until non-convex regions become first-class); the
 Tits/ShortLex automaton and the spherical hull policy (PLAN §6).
 
-Working facts: 491 vitest / 20 files + 28 pytest, strict typecheck; the house
+Working facts: 492 vitest / 20 files + 29 pytest, strict typecheck; the house
 verification pattern is exact spherical pins (orders, Euler counts) +
 headless-Chrome pixel-coincidence screenshots; `shader.glsl` at the repo
 root is the user's untracked reference shader (nothing survives verbatim).

@@ -1,4 +1,4 @@
-# coxeter-viz
+# coxeter-groups
 
 **Pictures of Coxeter groups, from abstract group data.**
 
@@ -13,7 +13,7 @@ thin builder that describes *what to draw* and writes the outputs. No
 node, no npm — the engine is two static files inside the wheel.
 
 ```python
-import coxeter_viz as cx
+import coxeter_groups as cx
 
 fig = cx.figure([[1, 2, 7],
                  [2, 1, 3],
@@ -27,7 +27,7 @@ fig.save("237.html")   # a self-contained live illustration: pan, zoom, download
 With the export extra —
 
 ```bash
-pip install "coxeter-viz[export]"
+pip install "coxeter-groups[export]"
 playwright install chromium        # one-time
 ```
 

@@ -4,7 +4,7 @@ Drives the vendored bundle's ``window.coxeterViz`` global in headless
 Chromium via Playwright — the SAME code paths as the live page and the
 repo's pixel-coincidence tests, so a Python-produced figure is
 pixel-identical to the instrument by construction. Ships as the OPTIONAL
-extra (``pip install "coxeter-viz[export]"``) so HTML-only users never
+extra (``pip install "coxeter-groups[export]"``) so HTML-only users never
 download a browser.
 
 The browser is a lazy module-level singleton (closed at exit): a research
@@ -25,7 +25,7 @@ from .figure import CoxeterVizError
 
 _INSTALL_HINT = (
     "PNG/SVG export runs the engine in headless Chromium. Install the extra:\n"
-    "    pip install 'coxeter-viz[export]'\n"
+    "    pip install 'coxeter-groups[export]'\n"
     "    playwright install chromium"
 )
 

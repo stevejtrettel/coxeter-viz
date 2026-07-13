@@ -32,7 +32,7 @@ const MODEL_GEOMETRY: Record<Exclude<ModelName, 'auto'>, GeometryKind> = {
 const OP_FIELDS: Record<Layer['type'], readonly string[]> = {
   domain: ['fill'],
   walls: ['width', 'colors'],
-  tessellation: ['extent', 'color', 'opacity'],
+  tessellation: ['extent', 'color', 'opacity', 'edges'],
   cayley: ['extent', 'node', 'edge'],
   tiles: ['words', 'fill'],
   hull: ['words', 'fill', 'stroke'],
@@ -209,6 +209,18 @@ export function checkFigure(raw: unknown): FigureCheck {
           if (l.color !== undefined) checkColorSpec(l.color, `${p}.color`);
           if (l.opacity !== undefined && (typeof l.opacity !== 'number' || !(l.opacity >= 0 && l.opacity <= 1))) {
             bad(`${p}.opacity`, 'opacity is a number in [0, 1].');
+          }
+          if (l.edges !== undefined) {
+            if (!isRecord(l.edges)) bad(`${p}.edges`, 'edge style is { "width"?, "colors"? }.');
+            else {
+              if (l.edges.width !== undefined) checkLength(l.edges.width, `${p}.edges.width`);
+              if (l.edges.colors !== undefined) {
+                checkStringArray(l.edges.colors, `${p}.edges.colors`, 'per-generator edge colors');
+                if (Array.isArray(l.edges.colors) && rank > 0 && l.edges.colors.length !== rank) {
+                  bad(`${p}.edges.colors`, `one color per generator: expected ${rank}, got ${l.edges.colors.length}.`);
+                }
+              }
+            }
           }
           break;
         case 'cayley':

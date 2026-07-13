@@ -1,8 +1,8 @@
-"""coxeter-viz: pictures of Coxeter groups from abstract group data.
+"""coxeter-groups: pictures of Coxeter groups from abstract group data.
 
 The public surface is two constructors and one class:
 
-    import coxeter_viz as cx
+    import coxeter_groups as cx
 
     # a 2D polygon by its vertex orders, in cyclic order (the default way):
     fig = cx.polygon([2, 3, 2, 6, 4, 5])
@@ -22,7 +22,7 @@ from importlib.metadata import PackageNotFoundError, version as _version
 from .figure import CoxeterVizError, Figure, figure, polygon
 
 try:
-    __version__ = _version("coxeter-viz")
+    __version__ = _version("coxeter-groups")
 except PackageNotFoundError:  # an uninstalled source tree
     __version__ = "0+unknown"
 

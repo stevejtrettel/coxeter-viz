@@ -3,8 +3,8 @@ escaping, the $-literalness — same guarantees, Python side."""
 
 from pathlib import Path
 
-import coxeter_viz as cx
-from coxeter_viz import _html
+import coxeter_groups as cx
+from coxeter_groups import _html
 
 
 def page_for(title: str | None = None) -> str:
@@ -38,7 +38,7 @@ def test_dollar_stays_literal():
 
 
 def test_default_title():
-    assert "<title>coxeter-viz</title>" in page_for()
+    assert "<title>coxeter-groups</title>" in page_for()
 
 
 def test_show_writes_a_temp_page_and_opens_it(monkeypatch):

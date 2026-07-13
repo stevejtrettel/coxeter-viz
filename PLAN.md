@@ -2135,3 +2135,224 @@ is even discovered).
   auto-flows into checkFigure round-trip, golden SVG, the figure demo
   menu, and the Python cross-language pin (the exhaustiveness test
   forces it).
+
+## 11. Edge coloring + the word-bag algebra (2026-07-13, collaborative)
+
+Two requests: (A) color tiling edges by generator, and (B) color word
+bags and their inverses/translates. A first fast spike built both into the
+engine; on reflection (§11.3) B was REVERTED — the word-bag algebra is
+Python-side relabeling, not engine work. A stays as built.
+
+### 11.1 Edge coloring — ruling + design (BUILT, kept)
+
+- **PANEL TYPE, per generator** (not true conjugacy classes). Every tiling
+  edge is a panel shared by `g·F` and `g·s_i·F`, and `i` is uniquely
+  determined by the edge (the Coxeter complex is type-balanced:
+  `g·wall_i = g·s_i·wall_i`). Its reflection is `g s_i g⁻¹`, conjugate to
+  `s_i`. `n` color classes, matching Cayley-edge / wall coloring. (When two
+  generators are conjugate the edge is conjugate to both, but its panel
+  type stays uniquely `i` — the well-defined thing to draw.)
+- **An OPTION ON `tessellation`**, not a new layer.
+- `tessellation.edges?: { width?, colors? }`. `colors[i]` per generator
+  (defaults to the house wall colors); `width × r₀`.
+  `edgeGenerators(chamber, walls)` computes the panel type of each chamber
+  edge once (argmin incidence residual — each edge lies on exactly one
+  wall); `transformPolytope` preserves edge index order, so the one map
+  colors every tile. `tessellationEdgeItems(group, tiles, edgeGen, styleOf)`
+  emits geodesic segments, the shared interior edge ONCE (deduped by the
+  unordered element pair `{g, g·R_i}`). Both in `viz2d/kit/scene`. The
+  strokes ride ON TOP of the fill — GPU-painted or not — so `assemble`
+  pushes them to BOTH `scene` and `overlay`. Drawn for the enumerated tiles
+  (like Cayley edges / walls; the GPU field still paints the fill to pixel
+  depth beneath). **Pin**: (2,3,5) exhausts to 120 tiles ⇒ 120·3/2 = 180
+  distinct edges, the tiling-edge↔Cayley-edge bijection; colors match the
+  id's trailing panel type; present in scene AND overlay.
+- **Python**: `tessellation(edges=, edge_width=, edge_colors=)` (mirrors
+  `walls`; `edges=True` alone ⇒ the defaulted `{}`).
+
+*Provenance note:* the design fork was first put to the user via a
+four-way AskUserQuestion; the edge rulings above survived, the word-bag
+ones (invert-as-a-`tiles`-flag, an HTML toggle) were later overturned in
+§11.3 — recorded so the reversal is legible.
+
+### 11.2 The word-bag spike — BUILT then REVERTED (2026-07-13)
+
+A first pass added `tiles.invert?: boolean` (assemble reversed the words)
+and `tiles.toggle?: boolean` + a live "Color inverses" checkbox in
+`template.html` (flip `invert` on a deep-cloned figure, re-`mount()`).
+Headless-verified working, then reverted whole after §11.3 — kept here only
+as the record of what was tried. The keeper insight it produced: **inverse =
+reverse the word** (generators are involutions), which is pure relabeling.
+
+### 11.3 The word-bag algebra — architecture (DESIGN IN PROGRESS, not built)
+
+**The ruling (user, 2026-07-13):** keep the visualizers DUMB. `invert`,
+`shift`, `union` on word lists are RELABELING — reverse, concatenate — not
+group computation (no matrix, no reflection, no multiplication table). So
+they do not belong in the engine and they do not violate "JS does no
+computation"; they are Python-side data-shaping that produces the word
+lists the dumb drawer already consumes.
+
+Settled so far:
+- **A "bag" is just a list of words** (`list[list[int]]`) — the exact thing
+  `tiles`/`hull` already take. No new type, no schema change, no engine
+  change.
+- **Commands are free functions** word-list → word-list: `cx.invert(bag)`
+  = reverse each word; `cx.shift(bag, by)` = `g·bag`, each word `w ↦ w ++
+  by` (left-multiply default; the `word()` left-to-right law makes this the
+  correct spelling of `g·E_w`); union = list `+` (the drawer dedups by
+  element, so duplicate spellings are harmless).
+- **The engine is UNCHANGED**: `tiles`/`hull` keep taking a word list; the
+  dedup-so-you-don't-double-paint is drawing hygiene, not user-facing group
+  computation.
+- **The live in-browser toggle is PARKED** as a separate interactivity
+  concern (a static Python-described picture cannot carry a runtime
+  switch); if wanted later it is a viewer feature that holds two
+  Python-produced lists and swaps — the engine still computes nothing.
+- **The finite/infinite seam** (for later): finite bags can *list* and
+  *test membership*; infinite bags (subgroups via close-up, cosets =
+  shift∘subgroup) can only *test membership* and are drawn by filtering the
+  visible tiles. invert/shift/union all have a membership reading, so the
+  finite word-side and the future engine-side computed bags mirror each
+  other. Only the finite side is in scope now.
+
+Open (to settle in the design conversation before building):
+- The right *shape* of the Python surface (free functions vs. a light
+  chainable object; naming — `invert`/`shift`/… vs `inverses`/`translate`).
+- Whether `shift` also offers right-multiply, and how `by` is given.
+- What (if anything) counts as "the finite bag system" beyond these
+  commands — e.g. a home module in `python/`, and which current finite-bag
+  spots it standardizes.
+
+**SUPERSEDED by §12.** The "commands on word lists" framing grew, in the
+same conversation, into a full decision: build a real Coxeter COMPUTE side
+in Python (not just word relabeling), with the visualizer a dumb renderer.
+invert/shift become methods on a `Bag` of real `Element`s, not free
+functions on raw word lists. §12 is the live plan; §11.3 is kept as the
+step that led there.
+
+## 12. The combined package — compute + viz (design, 2026-07-13, collaborative)
+
+**The decision.** coxeter-viz becomes ONE package with two subpackages:
+`compute/` (serious symbolic Coxeter computation, in Python) and `viz/`
+(the existing renderer, now a DUMB consumer). The user's research is done
+in Python; the TS engine inside `viz` is the renderer's internals, NOT the
+research substrate. Name stays `coxeter-viz` for now; likely → `coxeter_groups`
+later (package + repo together, one clean cut — nothing here depends on it).
+
+### 12.1 The line: symbolic (Python) vs geometric (renderer)
+
+- **Python / compute** owns SYMBOLIC combinatorics: the word problem
+  (element equality), length, descents, reduced words, and later Bruhat /
+  weak order, parabolics, cosets, enumeration by group-theoretic property.
+- **The renderer / viz** owns GEOMETRIC realization: solve walls/chamber,
+  realize a word as a matrix and draw it, tile the visible frame, cull to
+  the camera. It does NO symbolic math — never reduces a word, never
+  computes a normal form / coset / descent. (It DOES still enumerate tiles
+  to fill a frame — that is camera-driven geometric realization, not
+  symbolic computation, and Python cannot do it: it has no camera.)
+- The two meet ONLY at plain data (a group spec + word lists). Neither
+  subpackage imports the other; the top-level `__init__` composes them.
+
+### 12.2 Element representation + the word problem
+
+- An `Element` is a WORD (list of generator indices), NON-UNIQUE.
+- Equality is decided by the **reflection (Tits) representation**: build the
+  form `B(αᵢ,αⱼ) = −cos(π/mᵢⱼ)` and the reflection matrices from the Coxeter
+  matrix; a word → its matrix; the **quantized matrix is the element's key**
+  (round to a grid, exactly as the renderer's `matrixKey`). Faithful (Tits)
+  ⇒ correct. This is a SMALL, purpose-built faithful rep — NOT the renderer's
+  metric realization (no S/E/H classification, no chamber solve): it exists
+  only to answer "same element?" and to hand back descents (`sᵢ` is a right
+  descent of `w` iff `w·αᵢ` is a negative root) and, from descents by greedy
+  reduction, length + a reduced word.
+- **Ruling: general `mᵢⱼ`, FLOAT + tolerance, for now** — with a comment in
+  the code that this needs improvement (exact algebraic arithmetic /
+  `ℤ[2cos(π/m)]` later; crystallographic `m ∈ {2,3,4,6,∞}` is already exact
+  as integers). A float-equality library is a known future liability; noted.
+- Duplication note (accepted, principled): Python re-implements the small
+  reflection-matrix kernel the TS engine also has. It is REQUIRED for a
+  standalone compute side, it is ~fixed mathematics (low drift), the two are
+  both faithful of the same group so they cannot disagree on equality, and
+  they never share code (different languages, and the renderer's is entangled
+  with geometry).
+
+### 12.3 The object model
+
+`CoxeterGroup → Element → Bag`, with the rep as the oracle underneath.
+
+- **`CoxeterGroup`** (root): built from a Coxeter matrix (or polygon →
+  matrix). Holds the matrix, rank, the reflection rep (form + reflection
+  matrices, float) and the tolerance; computes keys. Factory (`g.element(w)`,
+  `g.bag(words)`) and enumeration entry (`g.ball(n)`, `g.sphere(n)`).
+- **`Element`** (atom, RICH): a word + its group + cached quantized-matrix
+  key. Group-like: `g*h` (concatenate / multiply), `g.inverse()` (reverse),
+  `len(g)` (length), `g.descents()`. **Hashable & comparable by key** — so
+  Python `set`/`dict` dedup elements for free.
+- **`Bag`** (light wrapper) around a `set[Element]` + its group; methods
+  return NEW bags: `.invert()`, `.shift(by)` (left-multiply), set ops
+  `.union`/`|`, `.intersection`/`&`, `.difference`/`-` (these WORK now —
+  real equality — which the reverted word-list sugar could never do),
+  `in` / `len` / iterate, and the seam accessor `.words()` →
+  `list[list[int]]`. Later: `.coset(...)`, descent/length filters.
+
+### 12.4 ball / sphere (word-length enumeration)
+
+Word length `ℓ(g)` = length of a reduced word. `sphere(n)` = elements of
+length exactly `n`; `ball(n)` = length ≤ `n`. Mechanically a BFS from the
+identity (multiply the current sphere by each generator, keep the new ones
+deduped by key, accumulate). This is the COMBINATORIAL (word-length) ball,
+Python's to compute — distinct from the renderer's GEOMETRIC "metric ball"
+(distance in S/E/H, camera-relevant, the renderer's).
+
+### 12.5 The seam currency + the bridge
+
+Plain data crossing compute → viz: the group SPEC (`group.matrix`), and
+WORD LISTS (`element.word`, `bag.words()`). The bridge is duck-typed and
+lives on the VIZ side: `figure(x)` reads `x.matrix` if present, else treats
+`x` as a raw matrix — so `viz` consumes a `CoxeterGroup` WITHOUT importing
+`compute`, and `compute` stays renderer-free. Open (design when it bites):
+how a COLORING (these elements red, those blue; a coset partition; a
+statistic) is expressed as plain data — grouped word lists vs `(word,label)`
+pairs + a label→color map.
+
+### 12.6 Module layout + the no-cross-import rule
+
+```
+<package>/
+  __init__.py        # top-level: CoxeterGroup, Element, Bag, figure(), polygon()
+  compute/
+    rep.py           # reflection representation + the quantized key
+    group.py         # CoxeterGroup
+    element.py       # Element
+    bag.py           # Bag
+  viz/               # the current renderer, MOVED here (figure, _html, _export, _static)
+```
+
+Hard rule: `compute/` never imports `viz/`; `viz/` never imports
+`compute/`; the top-level composes via plain data. This IS the seam inside
+one package, and it keeps a clean split-into-two-packages available for free.
+
+### 12.7 MVP scope + what is deferred
+
+**MVP**: `CoxeterGroup` + `Element` (equality/hash by key, `*`, `inverse`,
+`len`, `descents`) + `ball`/`sphere` + `Bag` (invert/shift/set-ops/words),
+and the `compute/`+`viz/` restructure with the duck-typed bridge.
+
+**Deferred (with a home in the model):** subgroups / parabolics and cosets
+(= shift ∘ subgroup); Bruhat / weak order (on the descent machinery);
+canonical ShortLex normal forms (the Brink–Howlett automaton — for
+canonical WORDS, not needed for equality); EXACT arithmetic (algebraic
+numbers) replacing float+tolerance; the coloring currency; the live viewer
+toggle; the `coxeter_groups` rename.
+
+### 12.8 Increments (to sequence before building; each green-gated)
+
+Order TBD with the user, but the natural spine: (1) the `compute/`+`viz/`
+restructure + duck-typed `figure(g)` bridge, engine unchanged; (2) `rep.py`
+— reflection matrices + key + a faithfulness/known-order pin; (3) `Element`
+— `*`/`inverse`/`==`/`hash`/`len`/`descents`, pinned against known small
+groups; (4) `ball`/`sphere` — counts pinned against known group orders
+(e.g. |W| for finite types); (5) `Bag` — invert/shift/set-ops/words, pinned
++ an end-to-end draw through `viz`. A README-spec per new module, first,
+per the repo's rule.

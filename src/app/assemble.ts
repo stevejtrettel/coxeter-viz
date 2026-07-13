@@ -19,10 +19,12 @@ import { defaultModel, realizeSpec, type RealizedGroup } from '@/viz2d/kit/reali
 import {
   cayleyScene,
   domainItem,
+  edgeGenerators,
   fieldTileId,
   hueColor,
   parityColor,
   polygonItem,
+  tessellationEdgeItems,
   tilesToScene,
   wallItems,
 } from '@/viz2d/kit/scene';
@@ -245,6 +247,19 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
           overlayItems.push(
             polygonItem(rg.poly.chamber, { fill: { color: TILE.identity, opacity } }, 'tile:e'),
           );
+        }
+        // Panel-type edges: thin strokes that must ride ON TOP of the fill,
+        // GPU-painted or not, so they land in BOTH the scene and the overlay.
+        if (layer.edges) {
+          const edgeGen = edgeGenerators(rg.group.chamber, rg.poly.walls);
+          const width = (layer.edges.width ?? 0.03) * rg.r0;
+          const colors = layer.edges.colors;
+          const edgeItems = tessellationEdgeItems(rg.group, tiles, edgeGen, (i) => ({
+            color: colors?.[i] ?? WALL_COLORS[i % WALL_COLORS.length],
+            width,
+          }));
+          scene.push(...edgeItems);
+          overlayItems.push(...edgeItems);
         }
         break;
       }

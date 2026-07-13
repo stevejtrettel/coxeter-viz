@@ -18,7 +18,7 @@ from typing import Any
 
 
 def _static(name: str) -> str:
-    ref = resources.files("coxeter_viz") / "_static" / name
+    ref = resources.files("coxeter_groups") / "_static" / name
     if not ref.is_file():
         from .figure import CoxeterVizError
 
@@ -37,7 +37,7 @@ def page(document: dict[str, Any]) -> str:
     """The self-contained HTML page: template + bundle + inlined figure JSON."""
     template = _static("template.html")
     viewer = _static("viewer.js")
-    title = document.get("title") or "coxeter-viz"
+    title = document.get("title") or "coxeter-groups"
     figure_json = json.dumps(document).replace("<", "\\u003c")
     return (
         template.replace("__COXETER_VIZ_TITLE__", _escape_html(title))

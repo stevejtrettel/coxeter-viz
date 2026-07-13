@@ -30,6 +30,14 @@ export interface TessellationLayer {
   extent?: Extent; // omitted = cover the frame
   color?: ColorSpec;
   opacity?: number;
+  /**
+   * Stroke the tiling's edges, colored by PANEL TYPE — the generator index i
+   * the edge is a translated mirror of (its reflection is conjugate to s_i).
+   * `colors[i]` per generator (defaults to the house wall colors); width × r₀.
+   * The edges are drawn for the enumerated tiles (like Cayley edges / walls),
+   * even when a GPU field paints the fill to pixel depth beneath them.
+   */
+  edges?: { width?: number; colors?: string[] };
 }
 export interface CayleyLayer {
   type: 'cayley';

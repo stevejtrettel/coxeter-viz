@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import coxeter_viz as cx
+import coxeter_groups as cx
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "figures"
 
@@ -116,6 +116,17 @@ def test_polygon_carries_the_list_verbatim():
     doc = cx.polygon([2, 3, 2, 6, 4, 5], title="hexagon").document()
     assert doc["group"] == {"polygon": [2, 3, 2, 6, 4, 5]}
     assert doc["title"] == "hexagon"
+
+
+def test_tessellation_edges():
+    # edges=True with no options → the defaulted empty object
+    doc = cx.figure(M237).tessellation(edges=True).document()
+    assert doc["layers"][0]["edges"] == {}
+    # edge_width / edge_colors imply edges even without edges=True
+    doc = cx.figure(M237).tessellation(edge_width=0.03, edge_colors=["#111", "#222", "#333"]).document()
+    assert doc["layers"][0]["edges"] == {"width": 0.03, "colors": ["#111", "#222", "#333"]}
+    # omitted by default
+    assert "edges" not in cx.figure(M237).tessellation().document()["layers"][0]
 
 
 def test_constant_color_vs_map():
