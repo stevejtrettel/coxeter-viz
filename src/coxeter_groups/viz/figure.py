@@ -73,8 +73,13 @@ def figure(
     ``M[i][j]`` the order of ``s_i s_j``, with ``-1`` the sentinel for
     infinity. The geometry (spherical / Euclidean / hyperbolic) is
     inferred by the engine, never declared.
+
+    Accepts either a raw matrix or a ``compute.CoxeterGroup`` (anything
+    exposing a ``coxeter_matrix``) — the seam bridge (PLAN §12.5),
+    duck-typed so ``viz`` never imports ``compute``.
     """
-    matrix = [_indices(row, "a Coxeter-matrix row") for row in coxeter_matrix]
+    source = getattr(coxeter_matrix, "coxeter_matrix", coxeter_matrix)
+    matrix = [_indices(row, "a Coxeter-matrix row") for row in source]
     return Figure({"coxeterMatrix": matrix}, title=title, model=model)
 
 

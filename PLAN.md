@@ -2367,9 +2367,20 @@ The spine:
    distinct keys, and BFS-by-key recovering |W| for the dihedrals (4/6/8/
    10/12) and the finite triangle groups (A₃=24, B₃=48, H₃=120). README-spec
    written first. `compute/` imports nothing from `viz`.
-3. `Element` — `*`/`inverse`/`==`/`hash`/`len`/`descents`, pinned against
-   known small groups; and the duck-typed `figure(g)` bridge (now that the
-   compute object with its `.matrix` exists).
+3. **`Element` + `CoxeterGroup` + the bridge — DONE 2026-07-13.**
+   `CoxeterGroup(M)` (validated: square/symmetric/diag-1/off-diag ≥2 or −1)
+   is the root/factory holding the rep; `element`/`identity`/`generators`.
+   `Element` = word + cached matrix + key; RICH and hashable-by-key: `a*b`
+   defined so **`element(u+v) == element(u)*element(v)`** (matrix
+   `b@a`), `inverse` (reversed word), `==`/`hash` by key, `len` = ℓ (strip
+   right descents to the identity), `descents()` = right descents (column
+   i ≤ 0). Bridge: `viz.figure(g)` reads `g.coxeter_matrix` (duck-typed —
+   `viz` still imports nothing from `compute`); the protocol attribute is
+   `coxeter_matrix` (not the ambiguous `.matrix`). Top-level exports
+   `CoxeterGroup`/`Element`. 8 pins: concatenation law, involutions,
+   inverse (incl. `(ab)⁻¹=b⁻¹a⁻¹`), set-dedup across spellings (braid,
+   `s²=e`, `(s0s1)²`), lengths (0/1/longest-of-S₃=3/…), descents (`w0` full
+   set), matrix/index validation, and `figure(g)` == `figure(matrix)`.
 4. `ball`/`sphere` — counts pinned against known group orders (e.g. |W| for
    finite types).
 5. `Bag` — invert/shift/set-ops/words, pinned + an end-to-end draw through

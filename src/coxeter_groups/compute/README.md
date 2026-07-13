@@ -47,6 +47,34 @@ Everything downstream is thin on top of this: `Element` (`==`/`hash` by
 key, plus `len`/`descents`), `ball`/`sphere` (BFS deduped by key), and
 `Bag` set-operations.
 
+## `group.py` — `CoxeterGroup`, the root
+
+Built from a Coxeter matrix (validated: square, symmetric, diagonal 1,
+off-diagonal `≥ 2` or `−1`). Holds the matrix, the rank, and the
+`ReflectionRep`. It is the factory for elements (`g.element(word)`,
+`g.identity()`, `g.generators`); `ball`/`sphere` enumeration and `g.bag(…)`
+arrive in later increments. Its `coxeter_matrix` attribute is the seam
+handoff — `viz.figure(g)` reads it (duck-typed, so `viz` never imports
+`compute`).
+
+## `element.py` — `Element`, the rich atom
+
+An element is a **word** plus its group, with the matrix and key cached. It
+behaves like a group element and is hashable by its key, so Python `set`/
+`dict` deduplicate elements for free.
+
+- `a * b` — the product, defined so that **`g.element(u + v) == g.element(u)
+  * g.element(v)`**: multiplication is word concatenation (matrix
+  `b.matrix @ a.matrix`, since `word_matrix` reverses under concatenation).
+- `a.inverse()` — the inverse, spelled by the reversed word.
+- `a == b`, `hash(a)` — by key (same group + same key). Distinct spellings
+  of one element are one element.
+- `len(a)` — the word length `ℓ(a)` (of a *reduced* word, not the stored
+  spelling): greedily strip right descents until the identity.
+- `a.descents()` — the **right** descent set `{i : a·αᵢ is a negative
+  root}` = `{i : column i of a's matrix is all ≤ 0}`. Descents are the
+  gateway to length, reduced words, and (later) Bruhat order.
+
 ## Deliberate, revisitable choices
 
 - **Float + tolerance, not exact** (user ruling 2026-07-13). `B` uses

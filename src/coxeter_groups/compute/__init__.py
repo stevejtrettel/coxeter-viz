@@ -3,6 +3,8 @@
 Pure group theory: no drawing, no import of `viz`. See the README.
 """
 
+from .element import Element
+from .group import CoxeterGroup
 from .rep import ReflectionRep
 
-__all__ = ["ReflectionRep"]
+__all__ = ["CoxeterGroup", "Element", "ReflectionRep"]
