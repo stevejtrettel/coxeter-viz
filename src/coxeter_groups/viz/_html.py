@@ -18,7 +18,7 @@ from typing import Any
 
 
 def _static(name: str) -> str:
-    ref = resources.files("coxeter_groups") / "_static" / name
+    ref = resources.files("coxeter_groups.viz") / "_static" / name
     if not ref.is_file():
         from .figure import CoxeterVizError
 

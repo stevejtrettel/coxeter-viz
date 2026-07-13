@@ -1,6 +1,13 @@
-"""coxeter-groups: pictures of Coxeter groups from abstract group data.
+"""coxeter_groups: symbolic Coxeter-group computation, with visualization.
 
-The public surface is two constructors and one class:
+Two halves that meet only at plain data (PLAN §12):
+
+- `compute/` — serious symbolic Coxeter computation (groups, elements,
+  word lists). *(Being built; not yet present.)*
+- `viz/` — a dumb renderer that turns a group specification + word lists
+  into pictures, doing no symbolic math of its own.
+
+The visualization surface is two constructors and one class:
 
     import coxeter_groups as cx
 
@@ -12,14 +19,13 @@ The public surface is two constructors and one class:
     # or any group by its Coxeter matrix (representation discovered):
     fig = cx.figure([[1, 2, 7], [2, 1, 3], [7, 3, 1]])
 
-All mathematics lives in the vendored JavaScript engine (`_static/`);
-Python only *describes* the figure (PLAN §7.8: no geometry, no semantic
-validation here — a refusal is the engine's answer, reported faithfully).
+All rendering mathematics lives in the vendored JavaScript engine
+(`viz/_static/`); the Python `viz` layer only *describes* the figure.
 """
 
 from importlib.metadata import PackageNotFoundError, version as _version
 
-from .figure import CoxeterVizError, Figure, figure, polygon
+from .viz import CoxeterVizError, Figure, figure, polygon
 
 try:
     __version__ = _version("coxeter-groups")

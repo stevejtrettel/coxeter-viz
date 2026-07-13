@@ -18,7 +18,7 @@ import pytest
 pytest.importorskip("playwright.sync_api")
 
 import coxeter_groups as cx  # noqa: E402
-from coxeter_groups import _export  # noqa: E402
+from coxeter_groups.viz import _export  # noqa: E402
 
 M237 = [[1, 2, 7], [2, 1, 3], [7, 3, 1]]
 SIZE = 360

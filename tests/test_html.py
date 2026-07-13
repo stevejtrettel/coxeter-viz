@@ -4,7 +4,7 @@ escaping, the $-literalness — same guarantees, Python side."""
 from pathlib import Path
 
 import coxeter_groups as cx
-from coxeter_groups import _html
+from coxeter_groups.viz import _html
 
 
 def page_for(title: str | None = None) -> str:

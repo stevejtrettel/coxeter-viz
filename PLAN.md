@@ -2346,13 +2346,53 @@ canonical WORDS, not needed for equality); EXACT arithmetic (algebraic
 numbers) replacing float+tolerance; the coloring currency; the live viewer
 toggle; the `coxeter_groups` rename.
 
-### 12.8 Increments (to sequence before building; each green-gated)
+### 12.8 Increments (each green-gated)
 
-Order TBD with the user, but the natural spine: (1) the `compute/`+`viz/`
-restructure + duck-typed `figure(g)` bridge, engine unchanged; (2) `rep.py`
-— reflection matrices + key + a faithfulness/known-order pin; (3) `Element`
-— `*`/`inverse`/`==`/`hash`/`len`/`descents`, pinned against known small
-groups; (4) `ball`/`sphere` — counts pinned against known group orders
-(e.g. |W| for finite types); (5) `Bag` — invert/shift/set-ops/words, pinned
-+ an end-to-end draw through `viz`. A README-spec per new module, first,
-per the repo's rule.
+The spine:
+
+1. **The `viz/` restructure — DONE 2026-07-13.** Renderer moved into
+   `coxeter_groups/viz/` (`figure`/`_html`/`_export`/`_static` + a
+   README-spec), top-level `__init__` re-exports from `.viz`,
+   `resources.files("coxeter_groups.viz")`, bundle → `viz/_static/`, tests'
+   internal imports repointed. 29 pytest green. The duck-typed `figure(g)`
+   bridge was DEFERRED to (3): building it now means guessing the compute
+   object's protocol before that object exists.
+2. `rep.py` — reflection matrices + the quantized key + a faithfulness /
+   known-order pin.
+3. `Element` — `*`/`inverse`/`==`/`hash`/`len`/`descents`, pinned against
+   known small groups; and the duck-typed `figure(g)` bridge (now that the
+   compute object with its `.matrix` exists).
+4. `ball`/`sphere` — counts pinned against known group orders (e.g. |W| for
+   finite types).
+5. `Bag` — invert/shift/set-ops/words, pinned + an end-to-end draw through
+   `viz`.
+
+A README-spec per new module, first, per the repo's rule.
+
+### 12.9 Repo reshape — DONE 2026-07-13 (Bokeh-standard, Python-at-root)
+
+The repo was inverted to read as what it now is — a Python package that
+vendors a compiled renderer — following Bokeh (the closest analog: a big
+Python package whose in-repo TS compiles to vendored assets) and modern
+`src/`-layout best practice:
+
+```
+repo/
+  pyproject.toml                 # coxeter-groups, at ROOT
+  src/coxeter_groups/{viz,…}/    # the package (src-layout); compute/ pending
+  tests/  examples/              # python
+  renderer/                      # the ENTIRE former root TS project
+    package.json  *.config.ts  tsconfig.json  src/  demos/  tests/  scripts/
+  README LICENSE  PLAN CLAUDE CONSUMER docs/
+```
+
+Moved as whole units (git mv, history preserved): the TS tree (root
+`src`/`demos`/`tests`/configs/`scripts` + `node_modules`) → `renderer/`;
+the Python package (`python/{pyproject,src,tests,examples,README}`) → root.
+Path fixes: `renderer/scripts/build-bundle.mjs` outputs to
+`../src/coxeter_groups/viz/_static`; `tests/test_figure.py` reads the
+cross-language fixtures from `renderer/tests/fixtures/figures`. The venv is
+recreated at root `.venv`. **Command locations changed:** npm / vitest /
+`build:bundle` run from `renderer/`; `pytest` from root. 29 pytest / 492
+vitest green. Docs still carry pre-reshape paths (`src/…`, `python/…`) — a
+deliberate deferral (user: docs may be rewritten from scratch).

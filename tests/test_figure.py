@@ -9,7 +9,9 @@ import pytest
 
 import coxeter_groups as cx
 
-FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "figures"
+# The cross-language fixtures live with the renderer's own tests (the same
+# JSONs the TS engine consumes): repo/renderer/tests/fixtures/figures.
+FIXTURES = Path(__file__).resolve().parents[1] / "renderer" / "tests" / "fixtures" / "figures"
 
 M237 = [[1, 2, 7], [2, 1, 3], [7, 3, 1]]
 PENTAGON = [
