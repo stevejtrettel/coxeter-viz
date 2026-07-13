@@ -34,11 +34,24 @@ harness. P7a (2026-07-11, PLAN §7.8): the PYTHON PACKAGE `python/` —
 `_static/` (committed). P8 (2026-07-11): `save('.png', scale=,
 background=)` / `save('.svg')` / `check()` via the Playwright `[export]`
 extra — a lazy shared browser, refusals raise `CoxeterVizError`, WebGL2
-confirmed headless; 23 pytest + 472 vitest green. THE WHOLE ARROW WORKS:
-Coxeter matrix in Python → live HTML / vector SVG / 4× shader PNG. Next:
-P9 (verification hardening: golden SVGs, GPU/CPU pixel-coincidence on
-figure renders, doc pass). 2D only — 3D waits (user ruling). Still also
-pending: the user's hands-on pass of §5.7/§5.8; GPU-globe v1 parked.**
+confirmed headless. P9 (2026-07-11): golden SVGs per fixture
+(`UPDATE_GOLDEN=1 npm run test` to regenerate intended changes),
+GPU-vs-vector pixel-coincidence through the VENDORED bundle
+(white-flattened, interiors-only — parity AND hue fields agree
+essentially everywhere), the 120/180 Cayley pin. P10 (2026-07-13,
+PLAN §10): the POLYGON PRESENTATION — `group.polygon` = a cyclic list of
+vertex orders (entry k = the order of s_k·s_{k+1 mod n}), the DEFAULT 2D
+input by user ruling (`polyhedron` will be its 3D counterpart; the
+matrix stays as the uniform discover-representation path): a FIRST-CLASS
+second presentation, not matrix sugar — `classifyPolygonOrders`
+(coxeter/matrix), one `classifyGroup` dispatch (schema/validate, reused
+by app/assemble), Python `cx.polygon([2,3,2,6,4,5])`, spec-identity pin
+against the hand-expanded matrix. **491 vitest / 20 files + 28 pytest.** THE WHOLE ARROW WORKS: Coxeter
+matrix in Python → live HTML / vector SVG / k× shader PNG; ready to
+publish (`coxeter-viz` free on PyPI). Next: the user's second
+(consumer) repo; then Milestone 2 (3D) planning. 2D only — 3D waits
+(user ruling). Still pending: the user's hands-on pass of §5.7/§5.8;
+GPU-globe v1 parked.**
 
 What exists, layer by layer (each folder README is its spec; PLAN § given):
 - **math / geometry / models / polytope / coxeter** — the substrate: own
@@ -80,13 +93,17 @@ What exists, layer by layer (each folder README is its spec; PLAN § given):
   `rafScheduler`/`button`/`checkbox`/`textInput`/`kSelect`/`downloadBlob`/
   `downloadSvg`/`exportSizeLabel`. Every 2D demo reads *data → scene → mount*.
 
-Demos (`npm run dev <name>`): `figure` (the PRODUCT dev harness: fixture
-documents through `render()`, `?doc=` deep links, SVG/PNG buttons),
-`group` (Milestone 1), `wordlists` (M3), `wordfile` (M3.5 + GPU field +
-exports), `tilingshader` (the field instrument + CPU-overlay verifier),
-`tilings` (any polygon; fd always orange, word list red on top; cayley
-checkbox), `cosets` (parabolic coset field), `uniform` (Wythoff rings),
-`render2d`/`sphereview` (system demos), `hello` (throwaway).
+Demos (`npm run dev <name>` — DEV-SERVER-ONLY, no demo builds): `figure`
+(the PRODUCT dev harness: fixture documents through `render()`, `?doc=`
+deep links, SVG/PNG buttons), `group` (Milestone 1), `wordlists` (M3;
+kept for its interactive word-entry/hover instrument), `tilings` (any
+polygon; fd always orange, word list red on top; cayley checkbox),
+`cosets` (parabolic coset field), `uniform` (Wythoff rings),
+`render2d`/`sphereview` (system demos), `hello` (throwaway; three's one
+import). RETIRED 2026-07-12: `tilingshader` (its GPU-vs-CPU verification
+job is automated in `python/tests/test_pixel.py`) and `wordfile` (its
+word-file→picture job moved to the Python package), plus
+`tests/smoke.test.ts`; `run-demo.mjs` trimmed to dev-only.
 
 **Pending the user's hands-on pass**: §5.7 (cosets / tilings-cayley /
 uniform) and §5.8 (field programs). Queued aesthetic rulings: the fd tile
@@ -101,7 +118,7 @@ demo conversion to an adapter module (available whenever); a polygon
 class/type (deferred until non-convex regions become first-class); the
 Tits/ShortLex automaton and the spherical hull policy (PLAN §6).
 
-Working facts: 472 tests / 20 files, strict typecheck; the house
+Working facts: 491 vitest / 20 files + 28 pytest, strict typecheck; the house
 verification pattern is exact spherical pins (orders, Euler counts) +
 headless-Chrome pixel-coincidence screenshots; `shader.glsl` at the repo
 root is the user's untracked reference shader (nothing survives verbatim).
@@ -135,9 +152,15 @@ The parent systems being married (and cleaned up) in this rewrite:
 - `npm run dev <demo>` — run a demo (Vite; one server per demo, ports 5173+).
   Demos live in `demos/<name>/main.ts`; pages are synthesized (no index.html
   files on disk); the dev-server root `/` lists all demos.
-- `npm run build <demo>` / `npm run preview <demo>` — build into `dist/<demo>`.
+- `npm run build:bundle` — the engine bundle, built straight into
+  `python/src/coxeter_viz/_static/` (committed; the wheel's two files).
+  There is no other build: Python is the product interface; demos are
+  dev-server-only (user ruling 2026-07-11).
 - `npm run typecheck` — `tsc --noEmit` (strict).
 - `npm run test` / `npm run test:watch` — vitest (`tests/*.test.ts`).
+- Python: `python/.venv` (uv-managed 3.12) — `.venv/bin/python -m pytest`
+  in `python/`. Generated images/pages go to the gitignored `outputs/`
+  (repo root); free-form experiments to `scratch/` (never committed).
 
 ## Working norms
 

@@ -67,6 +67,30 @@ describe('the figure document (schema/, PLAN §7.4)', () => {
     expect(all).toMatch(/chain/);
   });
 
+  it('accepts the polygon presentation, with rank = the list length (PLAN §10)', () => {
+    const doc = { ...base(), group: { polygon: [2, 3, 2, 6, 4, 5] } };
+    const fig = accepted(doc);
+    expect(fig.group).toEqual({ polygon: [2, 3, 2, 6, 4, 5] });
+    expect(accepted(fig)).toEqual(fig); // round-trips
+    // generator references check against n = 6, not anything geometric
+    const words = { ...doc, layers: [{ type: 'tiles', words: [[5, 6]] }] };
+    expect(problemsOf(words).join('\n')).toMatch(/layers\[0\]\.words\[0\]\[1\].*6/);
+  });
+
+  it('the group carries exactly one presentation, and its refusals surface verbatim', () => {
+    expect(problemsOf({ ...base(), group: {} }).join('\n')).toMatch(/coxeterMatrix.*polygon/);
+    expect(
+      problemsOf({ ...base(), group: { coxeterMatrix: [[1]], polygon: [2, 3, 7] } }).join('\n'),
+    ).toMatch(/exactly one presentation/);
+    expect(problemsOf({ ...base(), group: { polygons: [2, 3, 7] } }).join('\n')).toMatch(
+      /group\.polygons.*unknown field/,
+    );
+    const refused = problemsOf({ ...base(), group: { polygon: [2, 3, -1] } }).join('\n');
+    expect(refused).toMatch(/group\.polygon/);
+    expect(refused).toMatch(/non-compact/);
+    expect(refused).toMatch(/ideal vertex/);
+  });
+
   it('checks generator indices everywhere against the matrix rank', () => {
     const words = { ...base(), layers: [{ type: 'tiles', words: [[0, 3]] }] };
     expect(problemsOf(words).join('\n')).toMatch(/layers\[0\]\.words\[0\]\[1\].*3/);

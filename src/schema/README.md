@@ -36,10 +36,20 @@ Position in the dependency law:
 
 - **`title`** — optional display title: the saved page's browser-tab title
   and export filenames (user ruling 2026-07-10).
-- **`group.coxeterMatrix`** — the symmetric integer matrix, `M_ii = 1`,
-  `M_ij` = the order of `sᵢsⱼ`, **−1 the sentinel for ∞** (JSON has no
-  `Infinity`). Row/column order IS the generator indexing — load-bearing,
-  shared with every word list and generator reference in the document.
+- **`group`** — exactly ONE presentation of the group:
+  - **`coxeterMatrix`** — the symmetric integer matrix, `M_ii = 1`,
+    `M_ij` = the order of `sᵢsⱼ`, **−1 the sentinel for ∞** (JSON has no
+    `Infinity`). Row/column order IS the generator indexing —
+    load-bearing, shared with every word list and generator reference in
+    the document. The uniform *discover-representation* path (2D now, 3D
+    later).
+  - **`polygon`** — the 2D polygon presentation (PLAN §10; the DEFAULT
+    2D input, user ruling 2026-07-13): a cyclic list of vertex orders,
+    e.g. `[2, 3, 2, 6, 4, 5]` — n entries = n generators = n walls in
+    cyclic order, **entry k = the order of `s_k·s_{k+1 mod n}`** (vertex
+    k has angle π/m_k); non-adjacent walls never meet. List position IS
+    the generator index, verbatim. (`polyhedron` will be its 3D
+    counterpart.)
 - **`model`** — `"auto"` (default) | `"poincare"` | `"klein"` |
   `"cartesian"` | `"gnomonic"` | `"stereographic"`. `auto` = conformal:
   Poincaré (H), the plane (E), stereographic (S). A model incompatible
@@ -96,17 +106,19 @@ type FigureCheck =
 Two stages, one result: **structural** (shape, version known, indices in
 range — every generator reference and word letter is `0 ≤ i < rank`,
 `rings`/`subgroup` are sets of generator indices) and **semantic** — the
-matrix goes through `classifyCoxeterMatrix` (`coxeter/matrix`), and a
-refusal there (`free-product`, `not-2d`, …) surfaces as a problem verbatim,
-so Python can report *why* the group has no picture. Unknown `version` is
+group presentation goes through the matching classifier in
+`coxeter/matrix` (`classifyCoxeterMatrix` / `classifyPolygonOrders`, one
+shared dispatch `classifyGroup` that `app/assemble` reuses), and a refusal
+there (`free-product`, `not-2d`, …) surfaces as a problem verbatim, so
+Python can report *why* the group has no picture. Unknown `version` is
 itself a problem, not a crash.
 
 ## Files (P2)
 
 | file | exports |
 |---|---|
-| `types.ts` | `Figure`, `Layer` (the eight op interfaces), `Extent`, `ColorSpec`, `ModelName`, `FigureCheck`, `FigureProblem` |
-| `validate.ts` | `checkFigure(raw: unknown): FigureCheck` — parse + structural + semantic, applying defaults |
+| `types.ts` | `Figure`, `GroupPresentation`, `Layer` (the eight op interfaces), `Extent`, `ColorSpec`, `ModelName`, `FigureCheck`, `FigureProblem` |
+| `validate.ts` | `checkFigure(raw: unknown): FigureCheck` — parse + structural + semantic, applying defaults; `classifyGroup(group)` — the presentation dispatch |
 
 Hand-written fixture documents covering all eight ops (plus each failure
 class) live in `tests/fixtures/figures/` and double as the dev harness's

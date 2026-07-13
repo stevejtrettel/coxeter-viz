@@ -1,7 +1,12 @@
-import { classifyCoxeterMatrix, type CoxeterMatrix } from '@/coxeter/matrix';
+import {
+  classifyCoxeterMatrix,
+  classifyPolygonOrders,
+  type CoxeterMatrix,
+  type MatrixClassification,
+} from '@/coxeter/matrix';
 import type { RealizationSpec } from '@/coxeter/spec';
 import type { GeometryKind } from '@/geometry/types';
-import type { FigureCheck, FigureProblem, Layer, ModelName } from './types';
+import type { FigureCheck, FigureProblem, GroupPresentation, Layer, ModelName } from './types';
 
 /**
  * checkFigure (README): parse + validate a figure document, collecting every
@@ -38,6 +43,13 @@ const OP_FIELDS: Record<Layer['type'], readonly string[]> = {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** The ONE presentation dispatch (PLAN §10) — checkFigure and app/assemble both route through it. */
+export function classifyGroup(group: GroupPresentation): MatrixClassification {
+  return 'coxeterMatrix' in group
+    ? classifyCoxeterMatrix(group.coxeterMatrix)
+    : classifyPolygonOrders(group.polygon);
+}
+
 export function checkFigure(raw: unknown): FigureCheck {
   const problems: FigureProblem[] = [];
   const bad = (path: string, problem: string): void => {
@@ -59,20 +71,37 @@ export function checkFigure(raw: unknown): FigureCheck {
     bad('title', 'a title is a non-empty string.');
   }
 
-  // — the group, through the inference layer —
+  // — the group: exactly one presentation, through the inference layer —
   let rank = 0;
   let geometry: GeometryKind | undefined;
   let spec: RealizationSpec | undefined;
-  if (!isRecord(raw.group) || raw.group.coxeterMatrix === undefined) {
-    bad('group', 'required: { "coxeterMatrix": [[…]] } (−1 the sentinel for ∞).');
+  const GROUP_REQUIRED =
+    'required: { "coxeterMatrix": [[…]] } or { "polygon": [m₀,…] } (−1 the sentinel for ∞).';
+  if (!isRecord(raw.group)) {
+    bad('group', GROUP_REQUIRED);
   } else {
-    const M = raw.group.coxeterMatrix;
-    if (Array.isArray(M)) rank = M.length;
-    const cls = classifyCoxeterMatrix(M as CoxeterMatrix);
-    if (cls.kind === 'refused') bad('group.coxeterMatrix', `${cls.reason}: ${cls.detail}`);
-    else {
-      spec = cls.spec;
-      geometry = spec.geometry;
+    for (const key of Object.keys(raw.group)) {
+      if (key !== 'coxeterMatrix' && key !== 'polygon') bad(`group.${key}`, 'unknown field.');
+    }
+    const given = ['coxeterMatrix', 'polygon'].filter((k) => (raw.group as Record<string, unknown>)[k] !== undefined);
+    if (given.length !== 1) {
+      bad(
+        'group',
+        given.length === 0 ? GROUP_REQUIRED : 'give exactly one presentation: "coxeterMatrix" or "polygon", not both.',
+      );
+    } else {
+      const [presentation] = given;
+      const value = (raw.group as Record<string, unknown>)[presentation];
+      if (Array.isArray(value)) rank = value.length;
+      const cls =
+        presentation === 'coxeterMatrix'
+          ? classifyCoxeterMatrix(value as CoxeterMatrix)
+          : classifyPolygonOrders(value as readonly number[]);
+      if (cls.kind === 'refused') bad(`group.${presentation}`, `${cls.reason}: ${cls.detail}`);
+      else {
+        spec = cls.spec;
+        geometry = spec.geometry;
+      }
     }
   }
 
@@ -258,7 +287,7 @@ export function checkFigure(raw: unknown): FigureCheck {
     figure: {
       version: '0.1',
       ...(raw.title !== undefined ? { title: raw.title as string } : {}),
-      group: { coxeterMatrix: (raw.group as { coxeterMatrix: CoxeterMatrix }).coxeterMatrix },
+      group: raw.group as GroupPresentation,
       model,
       layers: raw.layers as Layer[],
     },

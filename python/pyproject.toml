@@ -13,6 +13,10 @@ authors = [{ name = "Steve Trettel" }]
 keywords = ["coxeter", "hyperbolic", "tessellation", "visualization", "geometry"]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/stevejtrettel/coxeter-viz"
+Repository = "https://github.com/stevejtrettel/coxeter-viz"
+
 [project.optional-dependencies]
 export = ["playwright>=1.40"]
 

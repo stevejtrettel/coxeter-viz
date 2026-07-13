@@ -1,0 +1,8 @@
+{
+  "version": "0.1",
+  "group": { "polygon": [2, 3, 2, 6, 4, 5] },
+  "layers": [
+    { "type": "tessellation", "extent": { "ball": 4.0 }, "color": { "map": "hue" }, "opacity": 0.85 },
+    { "type": "walls", "width": 0.05 }
+  ]
+}

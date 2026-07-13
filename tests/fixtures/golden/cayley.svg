@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <path data-id="tile:e" fill="#f6d9a0" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L135 130.61L135 105L109.39 105L83.79 105L109.39 130.61Z"/>
+  <path data-id="tile:0" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L135 130.61L135 105L160.61 105L186.21 105L160.61 130.61Z"/>
+  <path data-id="tile:1" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L135 79.39L135 105L109.39 105L83.79 105L109.39 79.39Z"/>
+  <path data-id="tile:2" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L109.39 156.21L83.79 156.21L83.79 130.61L83.79 105L109.39 130.61Z"/>
+  <path data-id="tile:0.1" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L135 79.39L135 105L160.61 105L186.21 105L160.61 79.39Z"/>
+  <path data-id="tile:0.2" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L109.39 156.21L83.79 156.21L83.79 181.82L83.79 207.43L109.39 181.82Z"/>
+  <path data-id="tile:1.2" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 156.21L58.18 156.21L83.79 156.21L83.79 130.61L83.79 105L58.18 130.61Z"/>
+  <path data-id="tile:2.0" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L160.61 156.21L186.21 156.21L186.21 130.61L186.21 105L160.61 130.61Z"/>
+  <path data-id="tile:2.1" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L109.39 53.79L83.79 53.79L83.79 79.39L83.79 105L109.39 79.39Z"/>
+  <path data-id="tile:0.1.2" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 156.21L58.18 156.21L83.79 156.21L83.79 181.82L83.79 207.43L58.18 181.82Z"/>
+  <path data-id="tile:0.2.0" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L160.61 156.21L186.21 156.21L186.21 181.82L186.21 207.43L160.61 181.82Z"/>
+  <path data-id="tile:0.2.1" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L109.39 53.79L83.79 53.79L83.79 28.18L83.79 2.57L109.39 28.18Z"/>
+  <path data-id="tile:1.2.0" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M237.43 156.21L211.82 156.21L186.21 156.21L186.21 130.61L186.21 105L211.82 130.61Z"/>
+  <path data-id="tile:1.2.1" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 53.79L58.18 53.79L83.79 53.79L83.79 79.39L83.79 105L58.18 79.39Z"/>
+  <path data-id="tile:2.0.1" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L160.61 53.79L186.21 53.79L186.21 79.39L186.21 105L160.61 79.39Z"/>
+  <path data-id="tile:2.0.2" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L135 181.82L135 207.43L109.39 207.43L83.79 207.43L109.39 181.82Z"/>
+  <path data-id="tile:2.1.2" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 156.21L32.57 130.61L32.57 105L58.18 105L83.79 105L58.18 130.61Z"/>
+  <path data-id="tile:0.1.2.0" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M237.43 156.21L211.82 156.21L186.21 156.21L186.21 181.82L186.21 207.43L211.82 181.82Z"/>
+  <path data-id="tile:0.1.2.1" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 53.79L58.18 53.79L83.79 53.79L83.79 28.18L83.79 2.57L58.18 28.18Z"/>
+  <path data-id="tile:0.2.0.1" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L160.61 53.79L186.21 53.79L186.21 28.18L186.21 2.57L160.61 28.18Z"/>
+  <path data-id="tile:0.2.0.2" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 156.21L135 181.82L135 207.43L160.61 207.43L186.21 207.43L160.61 181.82Z"/>
+  <path data-id="tile:0.2.1.2" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 156.21L32.57 130.61L32.57 105L6.97 105L-18.64 105L6.97 130.61Z"/>
+  <path data-id="tile:1.2.0.1" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M237.43 53.79L211.82 53.79L186.21 53.79L186.21 79.39L186.21 105L211.82 79.39Z"/>
+  <path data-id="tile:1.2.0.2" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 258.64L135 233.03L135 207.43L109.39 207.43L83.79 207.43L109.39 233.03Z"/>
+  <path data-id="tile:1.2.1.2" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 53.79L32.57 79.39L32.57 105L58.18 105L83.79 105L58.18 79.39Z"/>
+  <path data-id="tile:2.0.1.2" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 156.21L32.57 181.82L32.57 207.43L58.18 207.43L83.79 207.43L58.18 181.82Z"/>
+  <path data-id="tile:2.0.2.1" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L135 28.18L135 2.57L109.39 2.57L83.79 2.57L109.39 28.18Z"/>
+  <path data-id="tile:2.1.2.0" fill="#f2e3c4" fill-opacity="0.35" fill-rule="evenodd" d="M237.43 156.21L237.43 130.61L237.43 105L211.82 105L186.21 105L211.82 130.61Z"/>
+  <path data-id="tile:0.1.2.0.1" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M237.43 53.79L211.82 53.79L186.21 53.79L186.21 28.18L186.21 2.57L211.82 28.18Z"/>
+  <path data-id="tile:0.1.2.0.2" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 258.64L135 233.03L135 207.43L160.61 207.43L186.21 207.43L160.61 233.03Z"/>
+  <path data-id="tile:0.1.2.1.2" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M32.57 53.79L32.57 79.39L32.57 105L6.97 105L-18.64 105L6.97 79.39Z"/>
+  <path data-id="tile:0.2.0.2.1" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M135 53.79L135 28.18L135 2.57L160.61 2.57L186.21 2.57L160.61 28.18Z"/>
+  <path data-id="tile:1.2.1.2.0" fill="#ffffff" fill-opacity="0.35" fill-rule="evenodd" d="M237.43 53.79L237.43 79.39L237.43 105L211.82 105L186.21 105L211.82 79.39Z"/>
+  <path data-id="cayedge:e:0" fill="#c0392b" fill-rule="evenodd" d="M120 119.55L135 119.55L150 119.55L150 120.45L135 120.45L120 120.45Z"/>
+  <path data-id="cayedge:e:1" fill="#27ae60" fill-rule="evenodd" d="M119.55 120L119.55 105L119.55 90L120.45 90L120.45 105L120.45 120Z"/>
+  <path data-id="cayedge:e:2" fill="#2f6fb7" fill-rule="evenodd" d="M120.32 120.32L109.71 130.92L99.1 141.53L98.47 140.9L109.08 130.29L119.68 119.68Z"/>
+  <path data-id="cayedge:0:1" fill="#27ae60" fill-rule="evenodd" d="M149.55 120L149.55 105L149.55 90L150.45 90L150.45 105L150.45 120Z"/>
+  <path data-id="cayedge:0:2" fill="#2f6fb7" fill-rule="evenodd" d="M150.32 119.68L160.92 130.29L171.53 140.9L170.9 141.53L160.29 130.92L149.68 120.32Z"/>
+  <path data-id="cayedge:1:0" fill="#c0392b" fill-rule="evenodd" d="M120 89.55L135 89.55L150 89.55L150 90.45L135 90.45L120 90.45Z"/>
+  <path data-id="cayedge:1:2" fill="#2f6fb7" fill-rule="evenodd" d="M119.68 90.32L109.08 79.71L98.47 69.1L99.1 68.47L109.71 79.08L120.32 89.68Z"/>
+  <path data-id="cayedge:2:0" fill="#c0392b" fill-rule="evenodd" d="M99.24 141.21L99.24 156.21L99.24 171.21L98.34 171.21L98.34 156.21L98.34 141.21Z"/>
+  <path data-id="cayedge:2:1" fill="#27ae60" fill-rule="evenodd" d="M98.79 141.66L83.79 141.66L68.79 141.66L68.79 140.76L83.79 140.76L98.79 140.76Z"/>
+  <path data-id="cayedge:0.1:2" fill="#2f6fb7" fill-rule="evenodd" d="M149.68 89.68L160.29 79.08L170.9 68.47L171.53 69.1L160.92 79.71L150.32 90.32Z"/>
+  <path data-id="cayedge:0.2:1" fill="#27ae60" fill-rule="evenodd" d="M98.79 171.66L83.79 171.66L68.79 171.66L68.79 170.76L83.79 170.76L98.79 170.76Z"/>
+  <path data-id="cayedge:0.2:2" fill="#2f6fb7" fill-rule="evenodd" d="M99.1 170.9L109.71 181.5L120.32 192.11L119.68 192.74L109.08 182.14L98.47 171.53Z"/>
+  <path data-id="cayedge:1.2:0" fill="#c0392b" fill-rule="evenodd" d="M69.24 141.21L69.24 156.21L69.24 171.21L68.34 171.21L68.34 156.21L68.34 141.21Z"/>
+  <path data-id="cayedge:1.2:2" fill="#2f6fb7" fill-rule="evenodd" d="M68.47 141.53L57.86 130.92L47.26 120.32L47.89 119.68L58.5 130.29L69.1 140.9Z"/>
+  <path data-id="cayedge:2.0:0" fill="#c0392b" fill-rule="evenodd" d="M171.66 141.21L171.66 156.21L171.66 171.21L170.76 171.21L170.76 156.21L170.76 141.21Z"/>
+  <path data-id="cayedge:2.0:1" fill="#27ae60" fill-rule="evenodd" d="M171.21 140.76L186.21 140.76L201.21 140.76L201.21 141.66L186.21 141.66L171.21 141.66Z"/>
+  <path data-id="cayedge:2.1:0" fill="#c0392b" fill-rule="evenodd" d="M98.34 68.79L98.34 53.79L98.34 38.79L99.24 38.79L99.24 53.79L99.24 68.79Z"/>
+  <path data-id="cayedge:2.1:1" fill="#27ae60" fill-rule="evenodd" d="M98.79 69.24L83.79 69.24L68.79 69.24L68.79 68.34L83.79 68.34L98.79 68.34Z"/>
+  <path data-id="cayedge:0.1.2:2" fill="#2f6fb7" fill-rule="evenodd" d="M69.1 171.53L58.5 182.14L47.89 192.74L47.26 192.11L57.86 181.5L68.47 170.9Z"/>
+  <path data-id="cayedge:0.2.0:1" fill="#27ae60" fill-rule="evenodd" d="M171.21 170.76L186.21 170.76L201.21 170.76L201.21 171.66L186.21 171.66L171.21 171.66Z"/>
+  <path data-id="cayedge:0.2.0:2" fill="#2f6fb7" fill-rule="evenodd" d="M171.53 171.53L160.92 182.14L150.32 192.74L149.68 192.11L160.29 181.5L170.9 170.9Z"/>
+  <path data-id="cayedge:0.2.1:1" fill="#27ae60" fill-rule="evenodd" d="M98.79 39.24L83.79 39.24L68.79 39.24L68.79 38.34L83.79 38.34L98.79 38.34Z"/>
+  <path data-id="cayedge:0.2.1:2" fill="#2f6fb7" fill-rule="evenodd" d="M98.47 38.47L109.08 27.86L119.68 17.26L120.32 17.89L109.71 28.5L99.1 39.1Z"/>
+  <path data-id="cayedge:1.2.0:0" fill="#c0392b" fill-rule="evenodd" d="M201.66 141.21L201.66 156.21L201.66 171.21L200.76 171.21L200.76 156.21L200.76 141.21Z"/>
+  <path data-id="cayedge:1.2.0:2" fill="#2f6fb7" fill-rule="evenodd" d="M200.9 140.9L211.5 130.29L222.11 119.68L222.74 120.32L212.14 130.92L201.53 141.53Z"/>
+  <path data-id="cayedge:1.2.1:0" fill="#c0392b" fill-rule="evenodd" d="M68.34 68.79L68.34 53.79L68.34 38.79L69.24 38.79L69.24 53.79L69.24 68.79Z"/>
+  <path data-id="cayedge:1.2.1:2" fill="#2f6fb7" fill-rule="evenodd" d="M69.1 69.1L58.5 79.71L47.89 90.32L47.26 89.68L57.86 79.08L68.47 68.47Z"/>
+  <path data-id="cayedge:2.0.1:0" fill="#c0392b" fill-rule="evenodd" d="M170.76 68.79L170.76 53.79L170.76 38.79L171.66 38.79L171.66 53.79L171.66 68.79Z"/>
+  <path data-id="cayedge:2.0.1:1" fill="#27ae60" fill-rule="evenodd" d="M171.21 68.34L186.21 68.34L201.21 68.34L201.21 69.24L186.21 69.24L171.21 69.24Z"/>
+  <path data-id="cayedge:2.0.2:0" fill="#c0392b" fill-rule="evenodd" d="M120 191.98L135 191.98L150 191.98L150 192.88L135 192.88L120 192.88Z"/>
+  <path data-id="cayedge:2.0.2:1" fill="#27ae60" fill-rule="evenodd" d="M120.45 192.43L120.45 207.43L120.45 222.43L119.55 222.43L119.55 207.43L119.55 192.43Z"/>
+  <path data-id="cayedge:2.1.2:0" fill="#c0392b" fill-rule="evenodd" d="M47.57 120.45L32.57 120.45L17.57 120.45L17.57 119.55L32.57 119.55L47.57 119.55Z"/>
+  <path data-id="cayedge:2.1.2:1" fill="#27ae60" fill-rule="evenodd" d="M47.12 120L47.12 105L47.12 90L48.02 90L48.02 105L48.02 120Z"/>
+  <path data-id="cayedge:0.2.0.1:1" fill="#27ae60" fill-rule="evenodd" d="M171.21 38.34L186.21 38.34L201.21 38.34L201.21 39.24L186.21 39.24L171.21 39.24Z"/>
+  <path data-id="cayedge:0.2.0.1:2" fill="#2f6fb7" fill-rule="evenodd" d="M170.9 39.1L160.29 28.5L149.68 17.89L150.32 17.26L160.92 27.86L171.53 38.47Z"/>
+  <path data-id="cayedge:0.2.0.2:1" fill="#27ae60" fill-rule="evenodd" d="M150.45 192.43L150.45 207.43L150.45 222.43L149.55 222.43L149.55 207.43L149.55 192.43Z"/>
+  <path data-id="cayedge:0.2.1.2:1" fill="#27ae60" fill-rule="evenodd" d="M17.12 120L17.12 105L17.12 90L18.02 90L18.02 105L18.02 120Z"/>
+  <path data-id="cayedge:1.2.0.1:0" fill="#c0392b" fill-rule="evenodd" d="M200.76 68.79L200.76 53.79L200.76 38.79L201.66 38.79L201.66 53.79L201.66 68.79Z"/>
+  <path data-id="cayedge:1.2.0.1:2" fill="#2f6fb7" fill-rule="evenodd" d="M201.53 68.47L212.14 79.08L222.74 89.68L222.11 90.32L211.5 79.71L200.9 69.1Z"/>
+  <path data-id="cayedge:1.2.0.2:0" fill="#c0392b" fill-rule="evenodd" d="M120 221.98L135 221.98L150 221.98L150 222.88L135 222.88L120 222.88Z"/>
+  <path data-id="cayedge:1.2.1.2:0" fill="#c0392b" fill-rule="evenodd" d="M47.57 90.45L32.57 90.45L17.57 90.45L17.57 89.55L32.57 89.55L47.57 89.55Z"/>
+  <path data-id="cayedge:2.0.2.1:0" fill="#c0392b" fill-rule="evenodd" d="M120 17.12L135 17.12L150 17.12L150 18.02L135 18.02L120 18.02Z"/>
+  <path data-id="cayedge:2.1.2.0:1" fill="#27ae60" fill-rule="evenodd" d="M221.98 120L221.98 105L221.98 90L222.88 90L222.88 105L222.88 120Z"/>
+  <path data-id="cay:e" fill="#333333" fill-rule="evenodd" d="M121.65 120L121.17 118.83L120 118.35L118.83 118.83L118.35 120L118.83 121.17L120 121.65L121.17 121.17Z"/>
+  <path data-id="cay:0" fill="#333333" fill-rule="evenodd" d="M151.65 120L151.17 118.83L150 118.35L148.83 118.83L148.35 120L148.83 121.17L150 121.65L151.17 121.17Z"/>
+  <path data-id="cay:1" fill="#333333" fill-rule="evenodd" d="M121.65 90L121.17 88.83L120 88.35L118.83 88.83L118.35 90L118.83 91.17L120 91.65L121.17 91.17Z"/>
+  <path data-id="cay:2" fill="#333333" fill-rule="evenodd" d="M100.44 141.21L99.95 140.05L98.79 139.56L97.62 140.05L97.14 141.21L97.62 142.38L98.79 142.86L99.95 142.38Z"/>
+  <path data-id="cay:0.1" fill="#333333" fill-rule="evenodd" d="M151.65 90L151.17 88.83L150 88.35L148.83 88.83L148.35 90L148.83 91.17L150 91.65L151.17 91.17Z"/>
+  <path data-id="cay:0.2" fill="#333333" fill-rule="evenodd" d="M100.44 171.21L99.95 170.05L98.79 169.56L97.62 170.05L97.14 171.21L97.62 172.38L98.79 172.86L99.95 172.38Z"/>
+  <path data-id="cay:1.2" fill="#333333" fill-rule="evenodd" d="M70.44 141.21L69.95 140.05L68.79 139.56L67.62 140.05L67.14 141.21L67.62 142.38L68.79 142.86L69.95 142.38Z"/>
+  <path data-id="cay:2.0" fill="#333333" fill-rule="evenodd" d="M172.86 141.21L172.38 140.05L171.21 139.56L170.05 140.05L169.56 141.21L170.05 142.38L171.21 142.86L172.38 142.38Z"/>
+  <path data-id="cay:2.1" fill="#333333" fill-rule="evenodd" d="M100.44 68.79L99.95 67.62L98.79 67.14L97.62 67.62L97.14 68.79L97.62 69.95L98.79 70.44L99.95 69.95Z"/>
+  <path data-id="cay:0.1.2" fill="#333333" fill-rule="evenodd" d="M70.44 171.21L69.95 170.05L68.79 169.56L67.62 170.05L67.14 171.21L67.62 172.38L68.79 172.86L69.95 172.38Z"/>
+  <path data-id="cay:0.2.0" fill="#333333" fill-rule="evenodd" d="M172.86 171.21L172.38 170.05L171.21 169.56L170.05 170.05L169.56 171.21L170.05 172.38L171.21 172.86L172.38 172.38Z"/>
+  <path data-id="cay:0.2.1" fill="#333333" fill-rule="evenodd" d="M100.44 38.79L99.95 37.62L98.79 37.14L97.62 37.62L97.14 38.79L97.62 39.95L98.79 40.44L99.95 39.95Z"/>
+  <path data-id="cay:1.2.0" fill="#333333" fill-rule="evenodd" d="M202.86 141.21L202.38 140.05L201.21 139.56L200.05 140.05L199.56 141.21L200.05 142.38L201.21 142.86L202.38 142.38Z"/>
+  <path data-id="cay:1.2.1" fill="#333333" fill-rule="evenodd" d="M70.44 68.79L69.95 67.62L68.79 67.14L67.62 67.62L67.14 68.79L67.62 69.95L68.79 70.44L69.95 69.95Z"/>
+  <path data-id="cay:2.0.1" fill="#333333" fill-rule="evenodd" d="M172.86 68.79L172.38 67.62L171.21 67.14L170.05 67.62L169.56 68.79L170.05 69.95L171.21 70.44L172.38 69.95Z"/>
+  <path data-id="cay:2.0.2" fill="#333333" fill-rule="evenodd" d="M121.65 192.43L121.17 191.26L120 190.78L118.83 191.26L118.35 192.43L118.83 193.59L120 194.08L121.17 193.59Z"/>
+  <path data-id="cay:2.1.2" fill="#333333" fill-rule="evenodd" d="M49.22 120L48.74 118.83L47.57 118.35L46.41 118.83L45.92 120L46.41 121.17L47.57 121.65L48.74 121.17Z"/>
+  <path data-id="cay:0.1.2.0" fill="#333333" fill-rule="evenodd" d="M202.86 171.21L202.38 170.05L201.21 169.56L200.05 170.05L199.56 171.21L200.05 172.38L201.21 172.86L202.38 172.38Z"/>
+  <path data-id="cay:0.1.2.1" fill="#333333" fill-rule="evenodd" d="M70.44 38.79L69.95 37.62L68.79 37.14L67.62 37.62L67.14 38.79L67.62 39.95L68.79 40.44L69.95 39.95Z"/>
+  <path data-id="cay:0.2.0.1" fill="#333333" fill-rule="evenodd" d="M172.86 38.79L172.38 37.62L171.21 37.14L170.05 37.62L169.56 38.79L170.05 39.95L171.21 40.44L172.38 39.95Z"/>
+  <path data-id="cay:0.2.0.2" fill="#333333" fill-rule="evenodd" d="M151.65 192.43L151.17 191.26L150 190.78L148.83 191.26L148.35 192.43L148.83 193.59L150 194.08L151.17 193.59Z"/>
+  <path data-id="cay:0.2.1.2" fill="#333333" fill-rule="evenodd" d="M19.22 120L18.74 118.83L17.57 118.35L16.41 118.83L15.92 120L16.41 121.17L17.57 121.65L18.74 121.17Z"/>
+  <path data-id="cay:1.2.0.1" fill="#333333" fill-rule="evenodd" d="M202.86 68.79L202.38 67.62L201.21 67.14L200.05 67.62L199.56 68.79L200.05 69.95L201.21 70.44L202.38 69.95Z"/>
+  <path data-id="cay:1.2.0.2" fill="#333333" fill-rule="evenodd" d="M121.65 222.43L121.17 221.26L120 220.78L118.83 221.26L118.35 222.43L118.83 223.59L120 224.08L121.17 223.59Z"/>
+  <path data-id="cay:1.2.1.2" fill="#333333" fill-rule="evenodd" d="M49.22 90L48.74 88.83L47.57 88.35L46.41 88.83L45.92 90L46.41 91.17L47.57 91.65L48.74 91.17Z"/>
+  <path data-id="cay:2.0.1.2" fill="#333333" fill-rule="evenodd" d="M49.22 192.43L48.74 191.26L47.57 190.78L46.41 191.26L45.92 192.43L46.41 193.59L47.57 194.08L48.74 193.59Z"/>
+  <path data-id="cay:2.0.2.1" fill="#333333" fill-rule="evenodd" d="M121.65 17.57L121.17 16.41L120 15.92L118.83 16.41L118.35 17.57L118.83 18.74L120 19.22L121.17 18.74Z"/>
+  <path data-id="cay:2.1.2.0" fill="#333333" fill-rule="evenodd" d="M224.08 120L223.59 118.83L222.43 118.35L221.26 118.83L220.78 120L221.26 121.17L222.43 121.65L223.59 121.17Z"/>
+  <path data-id="cay:0.1.2.0.1" fill="#333333" fill-rule="evenodd" d="M202.86 38.79L202.38 37.62L201.21 37.14L200.05 37.62L199.56 38.79L200.05 39.95L201.21 40.44L202.38 39.95Z"/>
+  <path data-id="cay:0.1.2.0.2" fill="#333333" fill-rule="evenodd" d="M151.65 222.43L151.17 221.26L150 220.78L148.83 221.26L148.35 222.43L148.83 223.59L150 224.08L151.17 223.59Z"/>
+  <path data-id="cay:0.1.2.1.2" fill="#333333" fill-rule="evenodd" d="M19.22 90L18.74 88.83L17.57 88.35L16.41 88.83L15.92 90L16.41 91.17L17.57 91.65L18.74 91.17Z"/>
+  <path data-id="cay:0.2.0.2.1" fill="#333333" fill-rule="evenodd" d="M151.65 17.57L151.17 16.41L150 15.92L148.83 16.41L148.35 17.57L148.83 18.74L150 19.22L151.17 18.74Z"/>
+  <path data-id="cay:1.2.1.2.0" fill="#333333" fill-rule="evenodd" d="M224.08 90L223.59 88.83L222.43 88.35L221.26 88.83L220.78 90L221.26 91.17L222.43 91.65L223.59 91.17Z"/>
+</svg>

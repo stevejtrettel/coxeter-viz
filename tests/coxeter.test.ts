@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GeometryKind } from '@/geometry/types';
 import { classifyPolygon, validatePolygon, type RealizationSpec } from '@/coxeter/spec';
 import { solvePolygon } from '@/coxeter/solve';
-import { classifyCoxeterMatrix, type RefusalReason } from '@/coxeter/matrix';
+import { classifyCoxeterMatrix, classifyPolygonOrders, type RefusalReason } from '@/coxeter/matrix';
 
 /** Spec for the polygon with walls 0…n−1 in index order and orders[k] between walls k, k+1. */
 function polygonSpec(geometry: GeometryKind, orders: number[]): RealizationSpec {
@@ -281,5 +281,76 @@ describe('the inference layer: Coxeter matrix → spec (matrix.ts, PLAN §7.3)',
       ],
       'not-2d',
     );
+  });
+});
+
+describe('the polygon presentation: vertex orders → spec (matrix.ts, PLAN §10)', () => {
+  const acceptedSpec = (orders: number[]): RealizationSpec => {
+    const r = classifyPolygonOrders(orders);
+    if (r.kind !== 'polygon') throw new Error(`expected a polygon, got ${JSON.stringify(r)}`);
+    return r.spec;
+  };
+  const refusal = (orders: number[], reason: RefusalReason): string => {
+    const r = classifyPolygonOrders(orders);
+    expect(r.kind).toBe('refused');
+    if (r.kind !== 'refused') return '';
+    expect(r.reason).toBe(reason);
+    return r.detail;
+  };
+  /** The hand-expanded matrix: orders[k] at (k, k+1 mod n), −1 elsewhere. */
+  const expand = (orders: number[]): number[][] => {
+    const n = orders.length;
+    return Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) =>
+        i === j ? 1 : (j - i + n) % n === 1 ? orders[i] : (i - j + n) % n === 1 ? orders[j] : -1,
+      ),
+    );
+  };
+
+  it.each([
+    [[2, 3, 7], 'hyperbolic'],
+    [[2, 4, 4], 'euclidean'],
+    [[2, 2, 5], 'spherical'],
+    [[2, 2, 2, 2], 'euclidean'],
+  ] as [number[], GeometryKind][])('accepts %j as %s, and the spec solves', (orders, kind) => {
+    const spec = acceptedSpec(orders);
+    expect(spec.geometry).toBe(kind);
+    expect(() => solvePolygon(spec)).not.toThrow();
+  });
+
+  it('the [2,3,2,6,4,5] hexagon: labels verbatim, entry k on walls (k, k+1), solved with 6 vertices', () => {
+    const orders = [2, 3, 2, 6, 4, 5];
+    const spec = acceptedSpec(orders);
+    expect(spec.geometry).toBe('hyperbolic');
+    expect(spec.combinatorics.cyclicOrder).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(spec.decorations).toEqual(orders.map((m, k) => ({ walls: [k, (k + 1) % 6], order: m })));
+    const r = solvePolygon(spec);
+    expect(r.chamber.vertices).toHaveLength(6);
+  });
+
+  it('cannot drift from the matrix path: the hand-expanded matrix yields the IDENTICAL spec', () => {
+    for (const orders of [[2, 3, 7], [2, 4, 4], [2, 2, 5], [2, 2, 2, 2, 2], [2, 3, 2, 6, 4, 5]]) {
+      const viaMatrix = classifyCoxeterMatrix(expand(orders));
+      expect(viaMatrix.kind).toBe('polygon');
+      if (viaMatrix.kind !== 'polygon') continue;
+      expect(acceptedSpec(orders)).toEqual(viaMatrix.spec);
+    }
+  });
+
+  it('refuses non-order-lists as a value (invalid-polygon), one detail per defect', () => {
+    refusal([], 'invalid-polygon'); // empty
+    refusal([2, 3.5, 7], 'invalid-polygon'); // non-integer
+    refusal([2, 1, 7], 'invalid-polygon'); // order 1
+    refusal([2, 0, 7], 'invalid-polygon'); // 0 is not the ∞ sentinel
+  });
+
+  it('refuses n < 3 (a half-space / a wedge is not a compact polygon)', () => {
+    refusal([7], 'rank-too-small');
+    refusal([3, 3], 'rank-too-small');
+  });
+
+  it('refuses an ∞ entry as non-compact, naming the ideal vertex (unambiguous here; accepted once §9 lands)', () => {
+    const detail = refusal([2, 3, -1], 'non-compact');
+    expect(detail).toMatch(/walls 2 and 0/);
   });
 });

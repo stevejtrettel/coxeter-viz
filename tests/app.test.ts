@@ -114,6 +114,20 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
     expect(a.diagnostics.tileCount).toBe(120);
   });
 
+  it('the exact spherical pin (P9): the (2,3,5) Cayley graph is 120 nodes, 180 edges', () => {
+    const a = assemble(
+      checked({
+        version: '0.1',
+        group: { coxeterMatrix: [[1, 2, 5], [2, 1, 3], [5, 3, 1]] },
+        layers: [{ type: 'cayley' }],
+      }),
+      SIZE,
+    );
+    expect(a.diagnostics.cayleyNodeCount).toBe(120); // |W| for H₃ (the icosahedral group)
+    const edges = a.scene.filter((i) => i.id.startsWith('cayedge:'));
+    expect(edges).toHaveLength(180); // 120 · 3 generators / 2
+  });
+
   it('figureToSvg (P5): a raw document → an SVG string, pure, same ids', () => {
     const raw = figureFixture('tessellation.json');
     const r = figureToSvg(raw);

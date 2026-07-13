@@ -17,6 +17,7 @@ export type CoxeterMatrix = readonly (readonly number[])[];
 
 export type RefusalReason =
   | 'invalid-matrix'
+  | 'invalid-polygon'
   | 'rank-too-small'
   | 'non-compact'
   | 'free-product'
@@ -155,6 +156,62 @@ export function classifyCoxeterMatrix(M: CoxeterMatrix): MatrixClassification {
     geometry,
     dim: 2,
     combinatorics: { kind: 'polygon', cyclicOrder },
+    decorations,
+  };
+  validatePolygon(spec); // by construction; kept as an executable postcondition (a throw here is a bug)
+  return { kind: 'polygon', spec };
+}
+
+/**
+ * The polygon presentation (PLAN §10): a cyclic list of vertex orders —
+ * n entries = n generators = n walls in cyclic order, entry k = the order
+ * of s_k·s_{k+1 mod n} (vertex k has angle π/m_k); non-adjacent walls never
+ * meet. Nothing is discovered: the cyclic order IS the labeling, verbatim.
+ * This is the default 2D input (user ruling 2026-07-13); the matrix stays
+ * as the uniform discover-representation path. An ∞ entry is an UNAMBIGUOUS
+ * ideal vertex (no §9 completion ambiguity) — accepted once cusps land;
+ * refused `non-compact` until then.
+ */
+export function classifyPolygonOrders(orders: readonly number[]): MatrixClassification {
+  // — a vertex-order list at all? (defensive: the input crosses the JSON seam) —
+  if (!Array.isArray(orders) || orders.length === 0) {
+    return refuse('invalid-polygon', 'not a (non-empty) list of vertex orders.');
+  }
+  const n = orders.length;
+  for (let k = 0; k < n; k++) {
+    const m = orders[k];
+    if (typeof m !== 'number' || !Number.isInteger(m)) {
+      return refuse('invalid-polygon', `entry ${k} = ${m} is not an integer.`);
+    }
+    if (m !== INF && m < 2) {
+      return refuse('invalid-polygon', `entry ${k} = ${m}: orders are integers ≥ 2, with −1 the sentinel for ∞.`);
+    }
+  }
+  if (n < 3) {
+    return refuse(
+      'rank-too-small',
+      n === 1
+        ? 'rank 1: the chamber of a single reflection is a half-space, not a compact polygon.'
+        : 'rank 2: the chamber of a dihedral group is a wedge (a lune on S²), not a compact polygon.',
+    );
+  }
+  const ideal = orders.findIndex((m) => m === INF);
+  if (ideal !== -1) {
+    return refuse(
+      'non-compact',
+      `entry ${ideal} is ∞: walls ${ideal} and ${(ideal + 1) % n} meet at an ideal vertex — ` +
+        'a non-compact chamber, deferred in v1.',
+    );
+  }
+
+  const decorations: Decoration[] = orders.map((m, k) => ({
+    walls: [k, (k + 1) % n] as [number, number],
+    order: m,
+  }));
+  const spec: RealizationSpec = {
+    geometry: classifyPolygon([...orders]),
+    dim: 2,
+    combinatorics: { kind: 'polygon', cyclicOrder: Array.from({ length: n }, (_, k) => k) },
     decorations,
   };
   validatePolygon(spec); // by construction; kept as an executable postcondition (a throw here is a bug)

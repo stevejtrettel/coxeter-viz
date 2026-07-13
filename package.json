@@ -5,10 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/run-demo.mjs dev",
-    "build": "node scripts/run-demo.mjs build",
     "build:bundle": "node scripts/build-bundle.mjs",
-    "samples": "node scripts/make-samples.mjs",
-    "preview": "node scripts/run-demo.mjs preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -17,6 +14,7 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "@types/three": "^0.185.0",
     "typescript": "^6.0.3",
     "vite": "^8.1.3",

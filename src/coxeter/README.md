@@ -104,11 +104,24 @@ construction. **Geometric realizability, not irreducibility, is the
 criterion** (user ruling 2026-07-10): (2,2,m) — reducible as A₁ × I₂(m) —
 is a perfectly good compact spherical triangle and is accepted.
 
+**The polygon presentation** (`classifyPolygonOrders`, PLAN §10 — the
+DEFAULT 2D input, user ruling 2026-07-13): a cyclic list of vertex orders
+`[m₀,…,m_{n−1}]` — n entries = n generators = n walls in cyclic order,
+**entry k = the order of s_k·s_{k+1 mod n}** (vertex k has angle π/m_k);
+non-adjacent walls never meet. Nothing is discovered: the cyclic order IS
+the user's labeling, verbatim. Same `MatrixClassification` value. Unlike
+the matrix (where the cusp-set is a discrete modulus, PLAN §9.2), an ∞
+entry here is an UNAMBIGUOUS ideal vertex — accepted once cusps land;
+refused `non-compact` until then. The two presentations cannot drift: a
+test pins `classifyPolygonOrders(orders)` ≡ `classifyCoxeterMatrix` of the
+hand-expanded matrix, spec-identical.
+
 The refusal taxonomy, exhaustively:
 
 | reason | class of matrix |
 |---|---|
 | `invalid-matrix` | not a Coxeter matrix: asymmetric, bad diagonal, entries < 2 other than the −1 sentinel, non-integer |
+| `invalid-polygon` | (polygon presentation only) not a list of integers ≥ 2 / the −1 sentinel |
 | `rank-too-small` | rank ≤ 2: the chamber is a point/halfplane/wedge, not a compact polygon (digons/lunes refused per house rule) |
 | `non-compact` | the finite graph is an **open chain** (connected, every degree ≤ 2, not closed): a genuinely 2D chamber with an ideal/open end — deferred in v1, matching `validatePolygon`. n = 3 with an ∞ entry (the ideal-vertex triangle) is exactly the 3-chain. |
 | `free-product` | the finite graph is disconnected: blocks of generators with NO relation between them (all ∞) — walls in different blocks never meet; no compact chamber. The detail names the blocks. (Not to be confused with direct-product reducibility, which has order-2 entries — finite — and is accepted when realizable.) |

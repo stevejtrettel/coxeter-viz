@@ -82,11 +82,20 @@ export type Layer =
   | CosetsLayer
   | UniformLayer;
 
+/**
+ * The group, by presentation (exactly one):
+ * - `coxeterMatrix` — the abstract group; the uniform discover-representation path.
+ * - `polygon` — the 2D polygon presentation (PLAN §10, the default 2D input):
+ *   a cyclic list of vertex orders, entry k = the order of s_k·s_{k+1 mod n};
+ *   the list position IS the generator index, verbatim.
+ */
+export type GroupPresentation = { coxeterMatrix: CoxeterMatrix } | { polygon: readonly number[] };
+
 export interface Figure {
   version: '0.1';
   /** Optional display title: the saved page's browser-tab title, export filenames. */
   title?: string;
-  group: { coxeterMatrix: CoxeterMatrix };
+  group: GroupPresentation;
   model: ModelName; // defaulted to 'auto' by checkFigure
   layers: Layer[];
 }

@@ -1509,8 +1509,8 @@ tile/Cayley coloring by word lists).
 
 ## 7. Milestone 4 — the product layer (planned 2026-07-10, collaboratively)
 
-**Status: PLANNED and SIGNED OFF (user, 2026-07-10). No code yet; P0 is
-the next work item.** This is the
+**Status: COMPLETE — P0 through P9 all built and green, 2026-07-10/11;
+Milestone 4 is CLOSED.** This is the
 missing outer shell from `coxeter-viz-DESIGN.md` (schema, `render()`,
 bundle, Python), re-planned against the system as actually built. **2D only
 (user ruling): 3D is refused politely and extended later; nothing here
@@ -1752,6 +1752,18 @@ Pinned conventions:
   likely be more three.js soon unless we spin up our own 3D library") and
   `demos/hello` + `tests/smoke.test.ts` stay with it (hello is three's
   one live import — the canary).
+- **Repo-identity cleanup (2026-07-11, user-directed)** — the goal is now
+  "access everything through Python"; the JS side is the internal engine.
+  `dist/` RETIRED: `build:bundle` builds straight into `_static/` (the
+  only destination); `make-samples.mjs` + `npm run samples` deleted
+  (superseded by the package + pytest — they ARE the spec now);
+  `npm run build`/`preview` (static demo builds) dropped — demos are
+  dev-server-only. Output conventions: generated images/pages →
+  gitignored `outputs/` at the repo root; free-form experiments →
+  gitignored `scratch/`. `fig.show()` added (temp file + default
+  browser — the Python dev loop). Also: `.DS_Store`/`237.png` untracked,
+  README landing page brought current (schema/app layers, Using from
+  Python, repo map), `[project.urls]` + `__version__`.
 - **P7** — `python/coxeter_viz/`: the builder (one method per op, 1:1
   with §7.4), `save('.html')`, packaging (wheel vendors the bundle).
 - **P8** — `save('.png')` / `save('.svg')` via Playwright; k× scale
@@ -1759,7 +1771,23 @@ Pinned conventions:
   PNG.**
 - **P9** — verification hardening: golden SVG fixtures, GPU/CPU
   pixel-coincidence on figure renders, matrix→picture pins (spherical
-  orders / Euler counts); README + CLAUDE.md status updates.
+  orders / Euler counts); README + CLAUDE.md status updates. — DONE
+  2026-07-11 (479 vitest / 21 files + 26 pytest, strict typecheck).
+  **Golden SVGs**: every fixture's export pinned byte-for-byte at 240 px
+  (`tests/fixtures/golden/`; regenerate INTENDED changes with
+  `UPDATE_GOLDEN=1 npm run test` and read the diff; per-platform pin —
+  releases are cut from this machine; needed `@types/node` + "node" in
+  tsconfig types). **Pixel-coincidence** (`python/tests/test_pixel.py`,
+  through the VENDORED bundle, so it validates the shipped artifact):
+  GPU field vs the SVG vector twin, rasterized + diffed in the headless
+  page, FLATTENED OVER WHITE (abutting SVG polygons leave boundary
+  pixels semi-transparent — the classic seam; an alpha representation
+  artifact, not a disagreement), compared on INTERIORS only (3×3-flat in
+  both images; AA edge pixels legitimately differ): interiors agree
+  essentially everywhere (mismatch < 0.5 %, mean < 3, comparable > 50 %)
+  for the parity field AND the hue field — the shared hashHue law
+  per-pixel. **Exact pins**: (2,3,5) Cayley = 120 nodes / 180 edges
+  joins the 120-tile and dodecahedron pins. **MILESTONE 4 IS CLOSED.**
 
 ### 7.7 Parked in this session (with provenance)
 
@@ -1859,3 +1887,251 @@ scale/background (a vector is honest at any size). WebGL2 CONFIRMED in
 Playwright's headless Chromium (the shader PNG test would fail
 otherwise). Checkpoint artifact: pentagon-cosets at scale 4 (3200²,
 1.3 MB) saved from a Python loop, visually verified.
+
+## 8. The 2D feature queue (rulings 2026-07-12)
+
+Milestone 4 is closed; these are the WANTED next features for the 2D
+product, each to get its own collaborative planning session before any
+code (house rule). Rulings all user, 2026-07-12:
+
+- **Non-compact chambers** — "absolutely want to build": accept ∞ entries
+  (ideal vertices; the modular group (2,3,∞), (∞,∞,∞), …) instead of the
+  v1 `non-compact` refusal. Touches solver (ideal vertices; what replaces
+  the inscribed-circle canonicality at a cusp), validation, polytope
+  (unbounded chambers), rendering (tiles reaching the boundary circle),
+  and the field (folding still works; edge/vertex dressing at cusps).
+  The deepest of the queue — plan first, carefully.
+- **The gallery** — "absolutely want the possibility": one HTML, N
+  figures, a selector; `cx.gallery([figs]).save(…)`. Additive over the
+  flat document (a gallery document embeds figure documents).
+- **Camera features** — "absolutely", including CENTER ON WORD w (the
+  camera field: view anchored at w·x₀, zoom, rotation; document-level and
+  Python-level), and other camera controls to be enumerated in planning.
+- **Upper half-plane model** — "absolutely": the classic H² chart, in the
+  original design's model list but never built. A `Model` + shader chart
+  + schema `model` value; also the natural home for modular-group
+  pictures (pairs with non-compact).
+- **Globe as figure model** — explained to the user (the `sphereview`
+  perspective-globe painter as a `"model"` value for spherical documents);
+  awaiting ruling.
+- **`fig.measure()`** — "a great idea" (user): Python gets NUMBERS from
+  the engine, not just pictures — areas (Gauss-Bonnet; volumes in the 3D
+  era), tile/element counts, coset counts. The diagnostics seam exists;
+  the design question is the returned vocabulary.
+- **`points` / `geodesic` ops** — "sounds good, but sit and plan" (user):
+  orbits of points, geodesic segments between words' base-point images
+  (word paths). Own planning session.
+- **`hull(of="tiles")`** — yes, but THINK FIRST (user): there are two
+  different mathematical objects — the COMBINATORIAL hull (built from
+  tiles; boundary along tile edges) and the GEOMETRIC hull (geodesic
+  boundary, which can pass through tiles). The op vocabulary must name
+  both honestly. (`hullOfWords`/`hullOfTiles` both exist in the library;
+  both are GEODESIC hulls of different point sets — the combinatorial
+  notion is a THIRD thing, to be pinned in planning.)
+- **Text labels, with LaTeX** — emphatic yes, "do a good job of this"
+  (user): words/annotations on tiles and nodes, LaTeX-rendered. Design
+  tensions for the planning session: the self-contained-HTML budget
+  (KaTeX + fonts inlined), labels must survive SVG export as VECTORS
+  (KaTeX/MathJax SVG output), placement anchors are intrinsic (incenter
+  images, node points) but label SIZE is probably screen-fixed
+  (readability over metric honesty — an aesthetic ruling to make
+  deliberately).
+
+**Priority rulings (user, 2026-07-12):**
+
+- **Tier 1 — "absolutes and things we can do"**: NON-COMPACT CHAMBERS,
+  UHP, THE GALLERY, MEASURE(). The immediate work queue; each gets its
+  planning session, then increments.
+- **Tier 2 — next priority**: LABELS (LaTeX). Self-containment RELAXED
+  by ruling: a CDN import with an offline fallback is acceptable, or the
+  whole thing deferred — the packaging choice is made at its planning
+  session, not now.
+- **The rest, "not so much yet"**: points/geodesic ops, the hull
+  taxonomy, the globe model (still unruled), and the camera features
+  (the 2026-07-12 "absolutely" for center-on-word stands, but it sits
+  behind Tier 1 in sequence).
+
+Also still parked (§7.7): per-word tile colors, document background,
+Jupyter inline (anywidget), ShortLex automaton, isometry navigation
+("soon" per 2026-07-10), the UI description language.
+
+## 9. Non-compact polygons (cusps) — planning record (2026-07-12/13, collaborative)
+
+The first Tier-1 feature (§8). This section records the mathematics
+(settled and numerically verified), the rulings already made, the
+decisions still open, and the work inventory. Increments get their
+detailed plan at build time, per house rule.
+
+### 9.1 The mathematics (settled; verified 2026-07-13)
+
+**Funnels are never forced — cusps suffice.** For an ∞-labeled *adjacent*
+pair, the walls can be tangent at infinity (cusp: Gram entry −1, product
+parabolic, ideal vertex, finite area) or ultraparallel (funnel: Gram
+< −1, product hyperbolic, infinite area, one modulus per pair). The
+abstract group cannot distinguish them. The all-cusp realization exists
+whenever the spec is realizable at all: with ≥ 1 ideal vertex the angle
+sum obeys Σβ ≤ (n−1)·π/2 < (n−2)π for n ≥ 4, and for n = 3 the only
+failure is (2,2,∞); n = 2 only (∞). Those two are the affine groups
+(Ã₁ × A₁ and Ã₁), realized in E² by parallel walls (half-strip / strip)
+— the flat analogue of the cusp (Gram exactly −1), not a funnel. So the
+scope is **cusps only**; funnels (Gram < −1, one length modulus each)
+are PARKED with this provenance. This matches the Tits canonical
+representation, which always takes −cos(π/∞) = −1; Vinberg's g ≤ −1
+freedom is where funnels live.
+
+**The cusp-set is a discrete modulus.** The matrix does not say which
+∞-pairs are adjacent (cusps) vs non-adjacent (divergent, the existing
+undecorated pairs) — both have infinite-order products. Distinct
+completions are all valid realizations (Vinberg + the angle-sum bound
+hold uniformly) and can be genuinely inequivalent, not just relabelings:
+with four forced "dominoes" of distinct orders (8 generators — 1-2 order
+2, 3-4 order 3, 5-6 order 7, 7-8 order 11, else ∞) the three cyclic
+domino arrangements are unrelated by any matrix automorphism and have
+different parabolic words. So the choice is canonicalized, not refused —
+the discrete sibling of the compact side-length moduli that the
+inscribed circle already canonicalizes.
+
+**The κ-Porti solver generalizes verbatim.** β = 0 is a regular value of
+the one formula Δφₖ = 2·arcsin(cos(βₖ/2)/C(r)): cos(0/2) = 1, closure(0⁺)
+= Σ(π−β) − 2π > 0 ⟺ the hyperbolic classification with π/∞ = 0, still
+strictly decreasing to −2π, unique root, same bisection. The Gram
+identity cᵢᵀJcⱼ = 1 − 2cos²(β/2) = −cos β holds *identically in r*, so
+∞-pairs come out at exactly −1 (true tangency, not approximate). The E
+branch also generalizes: gaps π − β close identically and (2,2,∞) yields
+the half-strip with the parallel pair's direction-dot exactly −1.
+Numerically verified 2026-07-13 (throwaway script re-implementing
+`buildInscribedPolygon` with `Infinity` orders): ideal triangle
+r = ½·ln 3 to 2×10⁻¹⁶ (a closed-form TEST PIN); (2,3,∞) = PGL(2,ℤ) with
+all Grams exact; a mixed 5-gon (2,3,∞,4,∞) with closure error 0, all
+adjacent Grams exact, all non-adjacent Grams < −1; cross-product vertices
+of tangent pairs null to 4×10⁻¹⁵ (xᵀJx = 0 — ideal vertices are
+light-cone directions). Caveat recorded: Porti's *minimal-perimeter*
+characterization degenerates (ideal polygons have infinite perimeter);
+existence/uniqueness of the tangent polygon rests on our own
+monotonicity argument, which is what the solver implements anyway.
+
+### 9.2 Rulings made (user, 2026-07-12/13)
+
+- **Cusps only**; funnels parked (never forced — §9.1 proof).
+- **Generator labels ≠ cyclic order; NO relabeling, ever.** Words mean
+  the user's labels; a normal form that permutes generators would
+  silently change every word. The discovered cyclic order is spec data,
+  reportable as a diagnostic.
+- **Inference rule**: finite entry ⇒ forced adjacency (a generator with
+  ≥ 3 finite entries ⇒ refusal); ∞ entry ⇒ optional (in the cycle →
+  cusp, out → divergent). Valid ⟺ a Hamiltonian cycle through all forced
+  edges exists. Compact behavior unchanged (forced edges = the whole
+  cycle).
+- **Ambiguity → canonical pick + override**: multiple completions are
+  all valid; pick the **lex-smallest cycle** deterministically (ruled
+  2026-07-13). Override: an optional, **exhaustive** `cusps=[(i,j),…]`
+  declaration — adjacency = finite ∪ cusps must be exactly an n-cycle;
+  a cusp declared on a finite pair, or a non-cycle, is a refusal.
+
+### 9.3 Decisions still open (rule at or before the owning increment)
+
+1. **(2,2,∞)**: accept as the Euclidean half-strip (the solver already
+   produces it) or refuse. ((∞), n = 2, stays refused under the digon
+   rule unless overruled.)
+2. **Ideal vertices in the polytope engine**: first-class (null vectors
+   up to scale; they land on the Klein boundary circle, so charts cope)
+   vs reshaping postcondition 2 (finite vertices = #finite orders;
+   ∞-pairs checked null; non-adjacent pairs checked divergent). Affects
+   the `Polytope` vertex list and every consumer of `chamber.vertices`.
+3. **Representation of ∞** (proposal, not yet ruled): `Infinity` inside
+   TS — the solver and postcondition 1 already compute correctly with it
+   byte-for-byte — with −1 only at the JSON seam; `classifyPolygon`'s
+   exact integer arithmetic reworked over the finite orders only
+   (P = Π finite m; ∞ terms contribute 0).
+4. **Tessellation truncation**: `chamberDiameter` = ∞ for a cusped
+   chamber breaks `orbitBall`/`tessellateBall` as written. Candidate
+   principles: distance from basepoint to the tile (nearest point),
+   horoball cutoff, plain word-depth fallback. The deepest open design.
+5. **Rendering & field**: tiles now reach the boundary circle (cull,
+   fill honesty, adaptive `coverageRadius` near cusps where tiles
+   accumulate); shader edge/vertex dressing at ideal vertices; the
+   folding itself is unaffected (walls are walls).
+6. **Python/schema surface**: the `cusps=` argument (exhaustive
+   semantics), new refusal vocabulary, schema version bump question.
+7. **Sequencing vs UHP** (§8 Tier 1): the upper half-plane model is the
+   natural home for modular-group pictures; build order TBD.
+
+### 9.4 Work inventory (each green-gated, README-first)
+
+- **N1 spec/validation** — `spec.ts`: admit ∞ decorations, exact
+  classification over finite orders, (2,2,∞) ruling applied.
+- **N2 solver** — `polygon.ts`/`solve.ts`: ∞ flows through (near-no-op
+  after N1); new pins: ideal triangle r = ½ln 3, (2,3,∞) Gram row,
+  mixed 5-gon.
+- **N3 polytope engine** — ideal vertices per the §9.3(2) ruling;
+  postcondition 2 reshaped.
+- **N4 inference** — `matrix.ts`: forced-edge Hamiltonian completion,
+  lex-smallest pick, `cusps=` override plumbed through the seam; the v1
+  `non-compact` refusal becomes the accepting path; refusal taxonomy
+  updated.
+- **N5 group layer** — truncation principle per §9.3(4);
+  `chamberDiameter` semantics for noncompact chambers.
+- **N6 viz** — render/kit/shader per §9.3(5); sphere untouched
+  (spherical polygons are never cusped).
+- **N7 product** — schema, `render()`, Python `cusps=`, goldens +
+  pixel-coincidence for a cusped fixture, README/docs.
+
+## 10. The polygon presentation (planned 2026-07-13, collaborative; built same session)
+
+The second group presentation: a cyclic list of vertex orders,
+`[2, 3, 2, 6, 4, 5]` = a hexagon — n entries = n generators = n walls in
+cyclic order, **entry k = the order of s_k·s_{k+1 mod n}** (vertex k,
+where walls k and k+1 meet, has angle π/m_k); non-adjacent walls never
+meet. Labels are the user's verbatim (§9.2: NO relabeling — here nothing
+is even discovered).
+
+### 10.1 Rulings (user, 2026-07-13)
+
+- **This is the DEFAULT way to specify a 2D polygon going forward** — a
+  first-class presentation in the document, NOT sugar expanded to a
+  Coxeter matrix. Reason: the matrix underdetermines the picture once ∞
+  orders arrive (§9.2, the cusp-set is a discrete modulus needing
+  Hamiltonian completion + `cusps=`); the cyclic list states adjacency
+  outright, so an ∞ entry is an UNAMBIGUOUS cusp at vertex k — the §9
+  ambiguity machinery never applies to this input form.
+- **The matrix input SURVIVES** as the separate, uniform
+  *discover-representation-from-abstract-group* path (2D, 3D, and
+  beyond). Pattern: each dimension also gets closer-to-the-geometry
+  presentations — **`polygon` here; `polyhedron` will be its 3D
+  counterpart.**
+- **Names**: schema field `group.polygon`, Python builder
+  `cx.polygon([...])`. It returns the same `Figure`; the top-level
+  `figure()` command is slated for a full rethink LATER (its own
+  session) — any entry-point shape chosen now is provisional.
+- **Schema is not precious yet** ("don't bump schema — we are still
+  developing"): the group field becomes a union with no version
+  ceremony; `version` stays "0.1".
+- Python does no mathematics: the list crosses the seam verbatim
+  (integer coercion only); the engine judges everything.
+
+### 10.2 Design (as built)
+
+- **`coxeter/matrix.ts`**: `classifyPolygonOrders(orders)` — the direct
+  constructor beside `classifyCoxeterMatrix`, same
+  `MatrixClassification` value. Cyclic order is GIVEN as `[0…n−1]`, not
+  discovered; decorations read straight off the list; geometry by the
+  exact trichotomy; `validatePolygon` as executable postcondition.
+  Refusals: `invalid-polygon` (new reason: not a list of integers ≥ 2 /
+  −1), `rank-too-small` (n < 3), `non-compact` (an ∞ entry — an ideal
+  vertex, deferred until §9 lands; then this becomes the accepting path
+  with NO ambiguity).
+- **`schema/`**: `group` is `{ coxeterMatrix } | { polygon }` — exactly
+  one. `checkFigure` dispatches to the matching classifier via one
+  shared helper (`classifyGroup`), which `app/assemble` reuses — one
+  dispatch point, two callers.
+- **Python**: `cx.polygon(orders, title=, model=)` beside
+  `cx.figure(M)`; `Figure.__init__` takes the formed group dict
+  (internal refactor, both builders thin).
+- **Equivalence pin**: `classifyPolygonOrders(orders)` and
+  `classifyCoxeterMatrix` of the hand-expanded matrix (a_k at (k, k+1
+  mod n), −1 elsewhere) produce IDENTICAL specs — the two presentations
+  cannot drift while both exist.
+- **Fixture**: `polygon-hexagon.json` (the [2,3,2,6,4,5] example) —
+  auto-flows into checkFigure round-trip, golden SVG, the figure demo
+  menu, and the Python cross-language pin (the exhaustiveness test
+  forces it).

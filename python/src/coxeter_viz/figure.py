@@ -74,16 +74,39 @@ def figure(
     infinity. The geometry (spherical / Euclidean / hyperbolic) is
     inferred by the engine, never declared.
     """
-    return Figure(coxeter_matrix, title=title, model=model)
+    matrix = [_indices(row, "a Coxeter-matrix row") for row in coxeter_matrix]
+    return Figure({"coxeterMatrix": matrix}, title=title, model=model)
+
+
+def polygon(
+    orders: Any,
+    *,
+    title: str | None = None,
+    model: str | None = None,
+) -> "Figure":
+    """A new figure for the polygon with these vertex orders — the default
+    way to specify a 2D group.
+
+    ``orders`` lists the orders of consecutive generator pairs in cyclic
+    order around the polygon: n entries = n generators = n walls, and
+    entry ``k`` is the order of ``s_k s_{k+1 mod n}`` (the vertex where
+    walls ``k`` and ``k+1`` meet has angle pi/m). Non-adjacent walls never
+    meet. List position IS the generator index, verbatim — words, walls,
+    and Cayley edges all use it.
+
+    ``cx.polygon([2, 3, 2, 6, 4, 5])`` is the hyperbolic hexagon with
+    right angles at vertices 0 and 2. The geometry is inferred by the
+    engine, never declared.
+    """
+    return Figure({"polygon": _indices(orders, "polygon vertex orders")}, title=title, model=model)
 
 
 class Figure:
-    def __init__(self, coxeter_matrix: Any, *, title: str | None = None, model: str | None = None):
-        matrix = [_indices(row, "a Coxeter-matrix row") for row in coxeter_matrix]
+    def __init__(self, group: dict[str, Any], *, title: str | None = None, model: str | None = None):
         self._doc: dict[str, Any] = {"version": "0.1"}
         if title is not None:
             self._doc["title"] = title
-        self._doc["group"] = {"coxeterMatrix": matrix}
+        self._doc["group"] = group
         if model is not None:
             self._doc["model"] = model
         self._doc["layers"] = []
@@ -200,6 +223,22 @@ class Figure:
             _export.save(self._doc, p, suffix, **options)
             return p
         raise ValueError(f"unknown output format {suffix!r}: use .html, .png, or .svg")
+
+    def show(self) -> Path:
+        """Open the live illustration in the default browser (a temp file).
+
+        The quick development loop: describe, `.show()`, look — no file
+        management. Returns the temp path (the OS cleans it eventually).
+        """
+        import tempfile
+        import webbrowser
+
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".html", prefix="coxeter-viz-", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(_html.page(self._doc))
+        webbrowser.open(f"file://{f.name}")
+        return Path(f.name)
 
     def check(self) -> None:
         """Validate against the engine (headless); raises CoxeterVizError on problems.

@@ -30,6 +30,7 @@ The 2D program is complete and instrument-grade. The 3D program is planned.
   - [7. Rendering: intrinsic styling](#7-rendering-intrinsic-styling)
 - [Architecture](#architecture)
 - [Getting started](#getting-started)
+- [Using from Python](#using-from-python)
 - [Using the library](#using-the-library)
 - [Testing and conventions](#testing-and-conventions)
 - [Status and roadmap](#status-and-roadmap)
@@ -190,7 +191,7 @@ There are **three painters** of the same scene (`src/viz2d/`):
 **Dependency direction is law**, and enforced by tests:
 
 ```
-math → geometry → models → polytope → coxeter → group → viz2d → demos
+math → geometry → models → polytope → coxeter → group → viz2d → schema → app → demos
 ```
 
 | layer | what it owns |
@@ -202,6 +203,8 @@ math → geometry → models → polytope → coxeter → group → viz2d → de
 | [`coxeter/`](src/coxeter) | the `RealizationSpec` seam: `validatePolygon` (exact classification) + the inscribed-circle solver |
 | [`group/`](src/group) | the orbit engine, `CoxeterGroup` (tessellate, Cayley, cosets, subgroups), word lists, Wythoff uniform tilings |
 | [`viz2d/`](src/viz2d) | the 2D visualization system (below) |
+| [`schema/`](src/schema) | the **figure document** — the versioned JSON contract (a Coxeter matrix + layers); validation collects every problem as a value, never a throw |
+| [`app/`](src/app) | the product entry: `render(container, figure)`, `figureToSvg`/`figureToPng`, the self-contained HTML exporter; compiled into one `viewer.js` bundle |
 
 The 2D system is one umbrella (`src/viz2d/`, its own [README](src/viz2d/README.md)):
 
@@ -227,7 +230,8 @@ only taste — which data, which colors, which layout. Demos are thin
 npm install
 npm run dev group        # open a demo (Vite dev server, one per demo)
 npm run typecheck        # tsc --noEmit (strict)
-npm run test             # vitest (428 tests / 17 files)
+npm run test             # vitest (478 tests / 20 files)
+npm run build:bundle     # the viewer.js bundle (+ vendored into the Python package)
 npm run build <demo>     # build into dist/<demo>
 ```
 
@@ -244,9 +248,40 @@ npm run build <demo>     # build into dist/<demo>
 | `tilings` | any compact Coxeter polygon (geometry inferred); GPU field, fundamental domain, word-list patch, Cayley toggle, adaptive SVG + k× PNG |
 | `cosets` | parabolic coset coloring as a GPU field program, with a CPU verification overlay |
 | `uniform` | Wythoff uniform tilings; ring toggles pick the seed, faces colored by type (the dodecahedron is `(2,3,5)` with one ring) |
+| `figure` | the product dev harness: figure documents (JSON) through the one `render()` entry point, with SVG/PNG export |
 | `render2d`, `sphereview`, `tilingshader` | system demos: the solved chambers through every chart, the perspective globe, the GPU field vs. CPU overlay |
 
 ---
+
+## Using from Python
+
+The Python package is a thin builder over the engine — no node, no npm:
+the JavaScript ships as two static files inside the wheel.
+
+```bash
+pip install "coxeter-viz @ git+https://github.com/stevejtrettel/coxeter-viz.git#subdirectory=python"
+pip install "coxeter-viz[export]"    # optional: .png/.svg (then: playwright install chromium)
+```
+
+```python
+import coxeter_viz as cx
+
+fig = cx.figure([[1, 2, 7],
+                 [2, 1, 3],
+                 [7, 3, 1]], title="the (2,3,7) tiling")   # geometry inferred
+fig.tessellation(ball=4.0, color="parity")
+fig.tiles([[0], [0, 1], [0, 1, 2]], fill="#d03030")         # highlight named tiles
+fig.walls(width=0.05)
+
+fig.save("237.html")                 # a self-contained live illustration
+fig.save("237.png", scale=4)         # shader-rendered, genuinely sharper at 4×
+fig.save("237.svg")                  # the exact vector picture
+```
+
+A mathematically impossible request is refused with its reason (a value,
+never a crash): saved HTML displays the problems; `.png`/`.svg` raise
+`CoxeterVizError` listing them. See [`python/`](python/) and
+[`python/examples/`](python/examples/).
 
 ## Using the library
 
@@ -321,13 +356,15 @@ full API and the mathematics it pins.
 
 ## Status and roadmap
 
-**The 2D program is complete** — realization, groups, all three painters, the
-picturing toolkit, and nine demos. 428 tests / 17 files, strict typecheck.
+**The 2D program and the product layer are complete** — realization, groups,
+all three painters, the picturing toolkit, the figure-document contract, the
+single-file HTML/SVG/PNG exports, and the Python package driving it all
+through a pure group-theoretic seam. 478 vitest + 26 pytest, strict
+typecheck.
 
 **Next:** the 3D program (S/E/H in three dimensions — the polytope engine at
-full depth and the seedless H³ solver), built on three.js in its own
-visualization system, planned before any code. There is also a thin Python
-package planned to drive the engine through a pure group-theoretic seam.
+full depth and the seedless H³ solver), in its own visualization system,
+planned before any code.
 
 The full increment-by-increment history and the working plan live in
 [`PLAN.md`](PLAN.md); working guidance for contributors is in
@@ -342,10 +379,14 @@ src/
   math/        geometry/     models/      polytope/    coxeter/     group/
   viz2d/
     render/  sphere/  shader/  kit/
+  schema/      app/
+python/
+  src/coxeter_viz/   (the pip package; _static/ vendors the compiled engine)
+  examples/          tests/
 demos/
-  group/ wordlists/ wordfile/ tilings/ cosets/ uniform/
+  figure/ group/ wordlists/ wordfile/ tilings/ cosets/ uniform/
   render2d/ sphereview/ tilingshader/    shared/   (the harness)
-tests/         PLAN.md        CLAUDE.md
+tests/         PLAN.md        CLAUDE.md        docs/
 ```
 
 Each `src/` subfolder and `src/viz2d/` and `demos/shared/` carries a `README.md`

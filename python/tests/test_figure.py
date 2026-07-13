@@ -68,6 +68,11 @@ def test_uniform_fixture():
     assert fig.document() == fixture("uniform.json")
 
 
+def test_polygon_hexagon_fixture():
+    fig = cx.polygon([2, 3, 2, 6, 4, 5]).tessellation(ball=4.0, color="hue", opacity=0.85).walls(width=0.05)
+    assert fig.document() == fixture("polygon-hexagon.json")
+
+
 def test_every_fixture_is_pinned_above():
     covered = {
         "domain-walls.json",
@@ -76,6 +81,7 @@ def test_every_fixture_is_pinned_above():
         "tiles-hull.json",
         "cosets-pentagon.json",
         "uniform.json",
+        "polygon-hexagon.json",
     }
     on_disk = {p.name for p in FIXTURES.glob("*.json")}
     assert on_disk == covered, "a fixture exists without a cross-language pin (add a test)"
@@ -102,6 +108,14 @@ def test_indices_are_exact_integers():
         cx.figure(M237).tiles([[0.5]])
     with pytest.raises(TypeError):
         cx.figure([[1.0, 2.5], [2.5, 1.0]])
+    with pytest.raises(TypeError):
+        cx.polygon([2.0, 3.5, 7.0])
+
+
+def test_polygon_carries_the_list_verbatim():
+    doc = cx.polygon([2, 3, 2, 6, 4, 5], title="hexagon").document()
+    assert doc["group"] == {"polygon": [2, 3, 2, 6, 4, 5]}
+    assert doc["title"] == "hexagon"
 
 
 def test_constant_color_vs_map():

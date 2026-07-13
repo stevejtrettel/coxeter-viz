@@ -5,7 +5,7 @@ import { Klein2 } from '@/models/klein';
 import { Cartesian2 } from '@/models/cartesian';
 import { Gnomonic2 } from '@/models/gnomonic';
 import { Stereographic2 } from '@/models/stereographic';
-import { classifyCoxeterMatrix } from '@/coxeter/matrix';
+import { classifyGroup } from '@/schema/validate';
 import type { Tile } from '@/group/CoxeterGroup';
 import { wordId } from '@/group/CoxeterGroup';
 import { hullOfWords, parabolicFixedPoint } from '@/group/wordlists';
@@ -107,7 +107,7 @@ export interface AssembleOptions {
 }
 
 export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions): Assembled {
-  const cls = classifyCoxeterMatrix(figure.group.coxeterMatrix);
+  const cls = classifyGroup(figure.group);
   if (cls.kind === 'refused') {
     // checkFigure guarantees acceptance; reaching this is a bug, not bad input.
     throw new Error(`assemble: unchecked document (${cls.reason}: ${cls.detail})`);

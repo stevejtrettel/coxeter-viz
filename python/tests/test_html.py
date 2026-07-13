@@ -39,3 +39,17 @@ def test_dollar_stays_literal():
 
 def test_default_title():
     assert "<title>coxeter-viz</title>" in page_for()
+
+
+def test_show_writes_a_temp_page_and_opens_it(monkeypatch):
+    import webbrowser
+
+    opened: dict[str, str] = {}
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.setdefault("url", url) or True)
+    fig = cx.figure([[1, 2, 7], [2, 1, 3], [7, 3, 1]]).tessellation(ball=3.0)
+    path = fig.show()
+    try:
+        assert opened["url"] == f"file://{path}"
+        assert "coxeterViz" in path.read_text(encoding="utf-8")
+    finally:
+        path.unlink()
