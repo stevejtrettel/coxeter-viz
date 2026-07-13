@@ -20,6 +20,12 @@ Repository = "https://github.com/stevejtrettel/coxeter-viz"
 [project.optional-dependencies]
 export = ["playwright>=1.40"]
 
+# Dev/test tooling (PEP 735). `uv sync` installs this by default; or
+# `uv pip install -e ".[export]" --group dev` (the `[export]` extra brings
+# Playwright, which the PNG/SVG/pixel tests drive headless).
+[dependency-groups]
+dev = ["pytest"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/coxeter_groups"]
 

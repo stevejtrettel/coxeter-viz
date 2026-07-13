@@ -2357,8 +2357,16 @@ The spine:
    internal imports repointed. 29 pytest green. The duck-typed `figure(g)`
    bridge was DEFERRED to (3): building it now means guessing the compute
    object's protocol before that object exists.
-2. `rep.py` — reflection matrices + the quantized key + a faithfulness /
-   known-order pin.
+2. **`compute/rep.py` — DONE 2026-07-13.** `ReflectionRep(coxeter_matrix)`:
+   the Tits form `B[i][j] = −cos(π/mᵢⱼ)` (∞-sentinel → −1, diagonal → 1),
+   the reflection matrices (row `i` = `δᵢⱼ − 2B[i][j]`), `word_matrix`
+   (left-to-right, the renderer's convention), and the quantized `key`
+   (rounded float tuple; float+tolerance, exact-arithmetic upgrade noted).
+   Pure stdlib (tiny matrices, zero deps — flagged revisitable). Pins (14):
+   involutions + exact order relations `(sᵢsⱼ)^m = e`, distinct generators
+   distinct keys, and BFS-by-key recovering |W| for the dihedrals (4/6/8/
+   10/12) and the finite triangle groups (A₃=24, B₃=48, H₃=120). README-spec
+   written first. `compute/` imports nothing from `viz`.
 3. `Element` — `*`/`inverse`/`==`/`hash`/`len`/`descents`, pinned against
    known small groups; and the duck-typed `figure(g)` bridge (now that the
    compute object with its `.matrix` exists).
@@ -2396,3 +2404,11 @@ recreated at root `.venv`. **Command locations changed:** npm / vitest /
 `build:bundle` run from `renderer/`; `pytest` from root. 29 pytest / 492
 vitest green. Docs still carry pre-reshape paths (`src/…`, `python/…`) — a
 deliberate deferral (user: docs may be rewritten from scratch).
+
+**Unified command surface + declared dev deps** (same day): a root
+`Makefile` hides the split cwd — `make setup` / `dev DEMO=` / `bundle` /
+`typecheck` / `test` (+ `test-js`/`test-py`), each cd-ing to the right
+subproject. `pyproject.toml` gains `[dependency-groups] dev = ["pytest"]`
+(PEP 735) so the dev env is reproducible (`uv pip install -e ".[export]"
+--group dev`), not hand-assembled. This closes the repo-shape work — the
+layout is the Bokeh/`src`-layout standard.
