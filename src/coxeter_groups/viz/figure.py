@@ -34,6 +34,42 @@ class CoxeterVizError(Exception):
 _COLOR_MAPS = ("parity", "hue")
 
 
+_UNSET = object()  # "no default given" — distinct from any real default value
+
+
+class _Unspecified:
+    """The marker for a field left *unspecified* — a hole that becomes a live
+    INPUT in the ``.html`` explorer (and is filled back in with ``.specify``).
+
+    Field-agnostic by design: it carries no type of its own; the site it is
+    dropped into stamps its kind and coerces its default
+    (``cx.polygon(cx.unspecified)`` → a hole of kind ``"polygon"``). So the
+    same marker generalizes to any field we later open (a depth, a color, a
+    word list), not just the group.
+
+    Use the bare singleton ``cx.unspecified`` for a blank hole, or CALL it to
+    carry a starting value: ``cx.unspecified([2, 3, 7])`` — the value the
+    input is prefilled with, and what a static export (or ``.specify()`` with
+    no argument) draws.
+    """
+
+    __slots__ = ("default",)
+
+    def __init__(self, default: Any = _UNSET):
+        self.default = default
+
+    def __call__(self, default: Any) -> "_Unspecified":
+        """A hole carrying a default (the input's starting value)."""
+        return _Unspecified(default)
+
+    def __repr__(self) -> str:
+        return "cx.unspecified" if self.default is _UNSET else f"cx.unspecified({self.default!r})"
+
+
+#: The singleton hole marker (see :class:`_Unspecified`).
+unspecified = _Unspecified()
+
+
 def _indices(values: Any, what: str) -> list[int]:
     """Generator indices: exact-integer coercion (floats refuse loudly)."""
     try:
@@ -44,6 +80,14 @@ def _indices(values: Any, what: str) -> list[int]:
 
 def _words(words: Any) -> list[list[int]]:
     return [_indices(w, "a word") for w in words]
+
+
+def _wordlist(words: Any) -> list[list[int]]:
+    """Accept a compute ``WordSet`` (anything exposing a callable ``words()``)
+    or a raw word list — duck-typed, so ``viz`` never imports ``compute``."""
+    if callable(getattr(words, "words", None)):
+        words = words.words()
+    return _words(words)
 
 
 def _extent(ball: float | None, depth: int | None) -> dict[str, Any] | None:
@@ -107,7 +151,17 @@ def polygon(
     ``cx.polygon([2, 3, 2, 6, 4, 5])`` is the hyperbolic hexagon with
     right angles at vertices 0 and 2. The geometry is inferred by the
     engine, never declared.
+
+    Pass ``cx.unspecified`` (optionally ``cx.unspecified([2, 3, 7])`` to carry
+    a default) in place of the orders to leave the GROUP open — a hole that
+    becomes a live input in the ``.html`` explorer, filled back in with
+    :meth:`Figure.specify`.
     """
+    if isinstance(orders, _Unspecified):
+        hole: dict[str, Any] = {"unspecified": "polygon"}
+        if orders.default is not _UNSET:
+            hole["default"] = _indices(orders.default, "polygon vertex orders")
+        return Figure(hole, title=title, model=model)
     return Figure({"polygon": _indices(orders, "polygon vertex orders")}, title=title, model=model)
 
 
@@ -194,12 +248,14 @@ class _LayerBuilder:
         )
 
     def tiles(self: _Self, words: Any, *, fill: str | None = None) -> _Self:
-        """The tiles the word list names: word w ↦ THE TILE w·(chamber)."""
-        return self._add({"type": "tiles", "words": _words(words), "fill": fill})
+        """The tiles a WordSet (or raw word list) names: word w ↦ THE TILE
+        w·(chamber)."""
+        return self._add({"type": "tiles", "words": _wordlist(words), "fill": fill})
 
     def hull(self: _Self, words: Any, *, fill: str | None = None, stroke: str | None = None) -> _Self:
-        """The convex hull of the words' base-point images (area reported by the engine)."""
-        return self._add({"type": "hull", "words": _words(words), "fill": fill, "stroke": stroke})
+        """The convex hull of the base-point images of a WordSet (or raw word
+        list); area reported by the engine."""
+        return self._add({"type": "hull", "words": _wordlist(words), "fill": fill, "stroke": stroke})
 
     def cosets(
         self: _Self,
@@ -275,10 +331,41 @@ class Figure(_LayerBuilder):
 
     # ── the document and the outputs ──────────────────────────────────────
 
+    def specify(self, *, group: Any = _UNSET) -> "Figure":
+        """Fill an unspecified field, recovering the ordinary figure.
+
+        ``cx.polygon(cx.unspecified).….specify(group=orders)`` is identical
+        to ``cx.polygon(orders)`` carrying the same layers/views — the hole is
+        upstream, so nothing about the figure's construction changes. Omit
+        ``group`` to use the hole's default (if it carries one). (Only the
+        group is openable today; the keyword generalizes to other fields.)
+        """
+        kind = self._group.get("unspecified")
+        if kind is None:
+            raise TypeError("this figure has no unspecified group to specify.")
+        if group is _UNSET:
+            if "default" not in self._group:
+                raise TypeError("no value given and this open group has no default.")
+            group = self._group["default"]
+        if kind == "polygon":
+            filled = {"polygon": _indices(group, "polygon vertex orders")}
+        else:  # pragma: no cover - only 'polygon' is wired up today
+            raise TypeError(f"cannot specify a group hole of kind {kind!r}.")
+        fig = Figure(filled, title=self._title, model=self._model)
+        fig._layers = copy.deepcopy(self._layers)
+        for v in self._views:
+            fig.view(v.name)._layers = copy.deepcopy(v._layers)
+        return fig
+
     def document(self) -> dict[str, Any]:
         """The figure document (fresh each call) — the exact JSON the engine
-        reads. version '0.2' iff there are views, else '0.1'."""
-        doc: dict[str, Any] = {"version": "0.2" if self._views else "0.1"}
+        reads. An unspecified (open) group ⇒ version '0.3'; else '0.2' iff
+        there are views, else '0.1'."""
+        if "unspecified" in self._group:
+            version = "0.3"
+        else:
+            version = "0.2" if self._views else "0.1"
+        doc: dict[str, Any] = {"version": version}
         if self._title is not None:
             doc["title"] = self._title
         doc["group"] = copy.deepcopy(self._group)

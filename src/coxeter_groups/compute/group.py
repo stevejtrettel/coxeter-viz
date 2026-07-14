@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .bag import Bag
+from .wordset import WordSet
 from .element import Element
 from .rep import DEFAULT_TOL_DIGITS, ReflectionRep
 
@@ -110,18 +110,18 @@ class CoxeterGroup:
             frontier = nxt
         return spheres
 
-    def sphere(self, n: int) -> Bag:
+    def sphere(self, n: int) -> WordSet:
         """The elements of word length exactly `n` (empty past the diameter)."""
         spheres = self._spheres(n)
-        return Bag(self, spheres[n] if n < len(spheres) else [])
+        return WordSet(self, spheres[n] if n < len(spheres) else [])
 
-    def ball(self, n: int) -> Bag:
+    def ball(self, n: int) -> WordSet:
         """The elements of word length ≤ `n` (spheres 0…n)."""
-        return Bag(self, (g for s in self._spheres(n) for g in s))
+        return WordSet(self, (g for s in self._spheres(n) for g in s))
 
-    def bag(self, items=()) -> Bag:
-        """A bag of the given elements or words (deduped by element)."""
-        return Bag(self, items)
+    def words(self, items=()) -> WordSet:
+        """A WordSet of the given words or elements (deduped by element)."""
+        return WordSet(self, items)
 
     def __repr__(self) -> str:
         return f"CoxeterGroup(rank={self.rank})"

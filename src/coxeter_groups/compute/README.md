@@ -45,7 +45,7 @@ Python.
 
 Everything downstream is thin on top of this: `Element` (`==`/`hash` by
 key, plus `len`/`descents`), `ball`/`sphere` (BFS deduped by key), and
-`Bag` set-operations.
+`WordSet` set-operations.
 
 ## `group.py` — `CoxeterGroup`, the root
 
@@ -55,7 +55,7 @@ off-diagonal `≥ 2` or `−1`). Holds the matrix, the rank, and the
 `g.identity()`, `g.generators`) and enumerates by **word length**:
 `g.sphere(n)` (length exactly `n`) and `g.ball(n)` (length `≤ n`), a BFS
 from the identity deduped by key — the combinatorial ball, distinct from
-the renderer's geometric metric ball. (`g.bag(…)` arrives with `Bag`.) Its
+the renderer's geometric metric ball. (`g.words(…)` makes a `WordSet`.) Its
 `coxeter_matrix` attribute is the seam handoff — `viz.figure(g)` reads it
 (duck-typed, so `viz` never imports `compute`).
 
@@ -77,21 +77,22 @@ behaves like a group element and is hashable by its key, so Python `set`/
   root}` = `{i : column i of a's matrix is all ≤ 0}`. Descents are the
   gateway to length, reduced words, and (later) Bruhat order.
 
-## `bag.py` — `Bag`, a set of elements
+## `wordset.py` — `WordSet`, a set of elements
 
 A light, immutable wrapper over a `frozenset[Element]` plus its group; every
-method returns a new bag. Made from `g.bag(items)` (words or elements), or
+method returns a new set. Made from `g.words(items)` (words or elements), or
 returned by `g.ball`/`g.sphere`.
 
-- `bag.invert()` — `{e⁻¹}`; `bag.shift(by)` — `{e·by}` (the bag translated
+- `ws.invert()` — `{e⁻¹}`; `ws.shift(by)` — `{e·by}` (the set translated
   rigidly by the isometry `by`).
-- `bag | other`, `bag & other`, `bag - other` — union / intersection /
+- `ws | other`, `ws & other`, `ws - other` — union / intersection /
   difference. **Exact**, because `Element` has real equality — the
   operations the word-list sugar could not do (e.g. `ball(3) − ball(2) ==
   sphere(3)`).
-- `e in bag` (element or word), `len`, iteration.
-- `bag.words()` — the plain `list[list[int]]` the renderer draws, in a
-  deterministic order. This is the whole seam: `figure(g).tiles(bag.words())`.
+- `e in ws` (element or word), `len`, iteration.
+- `ws.words()` — the plain `list[list[int]]` the renderer draws, in a
+  deterministic order. The drawing ops accept a `WordSet` directly
+  (`figure(g).tiles(ws)`), so this is mostly an escape hatch.
 
 ## Deliberate, revisitable choices
 

@@ -1,10 +1,10 @@
-"""Bag — a set of elements with convenience methods (see README).
+"""WordSet — a set of elements with convenience methods (see README).
 
 A light wrapper over a ``frozenset[Element]`` plus its group. Immutable:
-every operation returns a new bag. Because ``Element`` is hashable by key,
+every operation returns a new set. Because ``Element`` is hashable by key,
 membership / union / intersection / difference are exact — the operations
 the word-list sugar could never do — and `.words()` hands the renderer the
-plain word lists it draws.
+plain word lists it draws (the drawing ops also accept the WordSet directly).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 Item = Union[Element, Sequence[int]]  # an Element, or a word to make one
 
 
-class Bag:
+class WordSet:
     __slots__ = ("_group", "_elements")
 
     def __init__(self, group: "CoxeterGroup", items: Iterable[Item] = ()):
@@ -48,45 +48,46 @@ class Bag:
         return e in self._elements
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Bag) and self._group is other._group and self._elements == other._elements
+        return isinstance(other, WordSet) and self._group is other._group and self._elements == other._elements
 
     __hash__ = None  # mutable-semantics value; not a dict key
 
     def __repr__(self) -> str:
-        return f"Bag({len(self._elements)} elements)"
+        return f"WordSet({len(self._elements)} elements)"
 
     # ── the seam accessor ─────────────────────────────────────────────────
     def words(self) -> list[list[int]]:
         """The plain word lists the renderer draws, in a deterministic order
-        (by length then lexicographic)."""
+        (by length then lexicographic). The drawing ops accept a WordSet
+        directly, so you rarely call this yourself."""
         return [e.word for e in sorted(self._elements, key=lambda e: (len(e.word), e.word))]
 
-    # ── the algebra (each returns a new bag) ──────────────────────────────
-    def invert(self) -> "Bag":
-        """The inverse bag: {e⁻¹ : e ∈ self}."""
-        return Bag(self._group, (e.inverse() for e in self._elements))
+    # ── the algebra (each returns a new word set) ─────────────────────────
+    def invert(self) -> "WordSet":
+        """The inverse set: {e⁻¹ : e ∈ self}."""
+        return WordSet(self._group, (e.inverse() for e in self._elements))
 
-    def shift(self, by: Item) -> "Bag":
-        """Translate the bag by the element `by`: {e·by}. Geometrically the
-        whole bag moves rigidly by the isometry `by`."""
+    def shift(self, by: Item) -> "WordSet":
+        """Translate the set by the element `by`: {e·by}. Geometrically the
+        whole set moves rigidly by the isometry `by`."""
         b = by if isinstance(by, Element) else self._group.element(by)
-        return Bag(self._group, (e * b for e in self._elements))
+        return WordSet(self._group, (e * b for e in self._elements))
 
-    def _same_group(self, other: "Bag") -> None:
-        if not isinstance(other, Bag) or other._group is not self._group:
-            raise ValueError("bags must belong to the same group.")
+    def _same_group(self, other: "WordSet") -> None:
+        if not isinstance(other, WordSet) or other._group is not self._group:
+            raise ValueError("word sets must belong to the same group.")
 
-    def union(self, other: "Bag") -> "Bag":
+    def union(self, other: "WordSet") -> "WordSet":
         self._same_group(other)
-        return Bag(self._group, self._elements | other._elements)
+        return WordSet(self._group, self._elements | other._elements)
 
-    def intersection(self, other: "Bag") -> "Bag":
+    def intersection(self, other: "WordSet") -> "WordSet":
         self._same_group(other)
-        return Bag(self._group, self._elements & other._elements)
+        return WordSet(self._group, self._elements & other._elements)
 
-    def difference(self, other: "Bag") -> "Bag":
+    def difference(self, other: "WordSet") -> "WordSet":
         self._same_group(other)
-        return Bag(self._group, self._elements - other._elements)
+        return WordSet(self._group, self._elements - other._elements)
 
     __or__ = union
     __and__ = intersection

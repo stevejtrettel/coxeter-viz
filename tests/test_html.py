@@ -41,6 +41,17 @@ def test_default_title():
     assert "<title>coxeter-groups</title>" in page_for()
 
 
+def test_open_figure_saves_an_explorer_page(tmp_path: Path):
+    # An unspecified group ⇒ a page that inlines the OPEN document and carries
+    # the input machinery; the boot script resolves the hole before rendering.
+    fig = cx.polygon(cx.unspecified([2, 3, 7]), title="explorer").tessellation(color="parity").walls()
+    out = fig.save(tmp_path / "explorer.html")
+    html = out.read_text(encoding="utf-8")
+    assert '"unspecified"' in html and '"default"' in html   # the open document, inlined
+    assert "figureInputs" in html and "resolveFigure" in html  # the boot + bundled resolver
+    assert 'id="inputs"' in html                              # the input corner
+
+
 def test_show_writes_a_temp_page_and_opens_it(monkeypatch):
     import webbrowser
 

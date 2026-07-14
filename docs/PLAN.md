@@ -1,8 +1,13 @@
-# coxeter-viz — build plan
+# coxeter-groups — historical build record (Phases 0–13)
 
-> Status: **building** — Phases 0–2, 3a, and 1b (own linear algebra,
-> retrofit; §5.2b) complete (see CLAUDE.md for the current state); this
-> document remains the collaboratively-edited plan.
+> **This is history, not the live plan.** The increment-by-increment record
+> of building the system: the original viz-only engine (Phases 0–10), then
+> the rename `coxeter-viz` → `coxeter_groups`, the Bokeh repo reshape, the
+> symbolic **compute** side, and the background/**views** grammar
+> (Phases §11–13). Paths and names throughout are as-of-their-time (e.g.
+> `src/…` now `renderer/src/…`, `python/…` now the repo root). The CURRENT
+> architecture is **CLAUDE.md**; the current engine specs are the
+> `renderer/src/*/README.md` files. Kept for provenance.
 > Companion: `docs/DESIGN-original.md` (the original product design), which
 > this plan supersedes where they disagree (notably: the role of the Gram
 > matrix).

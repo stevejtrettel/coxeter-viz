@@ -8,3 +8,4 @@
 
 export { render, type RenderHandle, type RenderResult } from './render';
 export { figureToSvg, figureToPng, type ExportOptions, type ExportResult } from './export';
+export { figureInputs, resolveFigure, type InputField } from './inputs';

@@ -202,3 +202,71 @@ def test_views_chain_fluently():
     assert doc["layers"] == [{"type": "tessellation"}]  # background from the figure op
     assert doc["views"][0]["layers"] == [{"type": "tiles", "words": [[0]]}]
     assert doc["views"][1]["layers"] == [{"type": "tiles", "words": [[1]]}]
+
+
+# ── unspecified: a field left open, to become an HTML input ──────────────
+
+
+def _decorate(fig):
+    """The same layers on any figure, so two builds can be compared verbatim."""
+    return fig.tessellation(ball=4.0, color="parity", opacity=0.85).walls(width=0.05)
+
+
+@pytest.mark.parametrize("seq", [[2, 3, 7], [2, 2, 2, 2, 2], [2, 3, 2, 6, 4, 5], [3, 3, 4]])
+def test_specify_is_byte_for_byte_the_ordinary_polygon(seq):
+    # Specifying the open group with any sequence gives EXACTLY the figure
+    # cx.polygon would have drawn — the hole is upstream; nothing downstream
+    # changes.
+    specified = _decorate(cx.polygon(cx.unspecified)).specify(group=seq)
+    ordinary = _decorate(cx.polygon(seq))
+    assert specified.document() == ordinary.document()
+
+
+def test_unspecified_group_document_records_the_hole():
+    doc = _decorate(cx.polygon(cx.unspecified, title="explorer")).document()
+    assert doc["version"] == "0.3"                              # an open field ⇒ v0.3
+    assert doc["group"] == {"unspecified": "polygon"}
+    assert doc["title"] == "explorer"
+    # the layers are the ordinary layers, shared by every value the input takes
+    assert doc["layers"] == [
+        {"type": "tessellation", "extent": {"ball": 4.0}, "color": {"map": "parity"}, "opacity": 0.85},
+        {"type": "walls", "width": 0.05},
+    ]
+
+
+def test_specify_coerces_indices_exactly():
+    with pytest.raises(TypeError):
+        cx.polygon(cx.unspecified).specify(group=[2.0, 3.5])
+
+
+def test_specify_refuses_a_concrete_figure():
+    with pytest.raises(TypeError, match="no unspecified group"):
+        cx.polygon([2, 3, 7]).specify(group=[3, 3, 4])
+
+
+# ── a default: the input's starting value ────────────────────────────────
+
+
+def test_unspecified_default_is_recorded_and_coerced():
+    doc = _decorate(cx.polygon(cx.unspecified([2, 3, 7]))).document()
+    assert doc["version"] == "0.3"
+    assert doc["group"] == {"unspecified": "polygon", "default": [2, 3, 7]}
+    with pytest.raises(TypeError):  # the site coerces the default like any orders
+        cx.polygon(cx.unspecified([2.0, 3.5]))
+
+
+def test_specify_without_a_value_uses_the_default():
+    # An open-with-default figure realizes statically as its default.
+    fromdefault = _decorate(cx.polygon(cx.unspecified([2, 3, 7]))).specify()
+    ordinary = _decorate(cx.polygon([2, 3, 7]))
+    assert fromdefault.document() == ordinary.document()
+
+
+def test_specify_overrides_the_default():
+    both = _decorate(cx.polygon(cx.unspecified([2, 3, 7]))).specify(group=[3, 3, 4])
+    assert both.document() == _decorate(cx.polygon([3, 3, 4])).document()
+
+
+def test_specify_without_value_and_no_default_refuses():
+    with pytest.raises(TypeError, match="no default"):
+        cx.polygon(cx.unspecified).specify()

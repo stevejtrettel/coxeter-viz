@@ -36,10 +36,27 @@
     }
     #views button:hover { background: #f2f0ea; }
     #views button.active { background: #444; color: #fff; border-color: #444; }
+    /* The input corner (top-left): the explorer's open fields. Always visible
+       — it is the primary control — unlike the hover-revealed exports/views. */
+    #inputs {
+      position: fixed; left: 12px; top: 12px; display: flex; flex-direction: column; gap: 6px;
+    }
+    #inputs .field { display: flex; align-items: center; gap: 8px; }
+    #inputs label {
+      font: 12px system-ui, sans-serif; color: #555; min-width: 4.5em; text-align: right;
+    }
+    #inputs input {
+      font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 8px;
+      width: 12em; color: #222; background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #ccc; border-radius: 4px;
+    }
+    #inputs input:focus { outline: none; border-color: #888; }
+    #inputs .msg { font: 11px system-ui, sans-serif; color: #a03030; min-height: 14px; }
   </style>
 </head>
 <body>
   <div id="figure"></div>
+  <div id="inputs"></div>
   <div id="exports" hidden>
     <button id="dl-svg" type="button">SVG</button>
     <button id="dl-png" type="button">PNG 4&times;</button>
@@ -53,7 +70,64 @@
       var container = document.getElementById('figure');
       var exportsBox = document.getElementById('exports');
       var viewsBox = document.getElementById('views');
+      var inputsBox = document.getElementById('inputs');
       var handle = null;
+
+      // The document's OPEN fields (empty for an ordinary figure). Each becomes
+      // a live input; `values` holds the current value per field id, and every
+      // draw resolves the holes to a concrete document the engine renders.
+      var inputs = coxeterViz.figureInputs(FIGURE);
+      var values = {};
+
+      // A field's value, parsed from its text box. Only 'polygon' today: a
+      // comma/space-separated integer sequence. Bad text is a hint, not a draw.
+      function parseField(kind, text) {
+        var tokens = text.split(/[\s,]+/).filter(function (t) { return t.length; });
+        if (!tokens.length) return { hint: 'enter a sequence, e.g. 2, 3, 7' };
+        var nums = tokens.map(Number);
+        if (nums.some(function (n) { return !Number.isInteger(n); })) {
+          return { hint: 'integers separated by commas' };
+        }
+        return { value: nums };
+      }
+
+      function buildInputs() {
+        inputsBox.textContent = '';
+        inputs.forEach(function (field) {
+          var start = Array.isArray(field.default) ? field.default.join(', ') : '';
+          var row = document.createElement('div');
+          row.className = 'field';
+          var label = document.createElement('label');
+          label.textContent = field.label;
+          var input = document.createElement('input');
+          input.type = 'text';
+          input.value = start;
+          input.spellcheck = false;
+          input.setAttribute('aria-label', field.label);
+          var msg = document.createElement('span');
+          msg.className = 'msg';
+          row.append(label, input, msg);
+          inputsBox.appendChild(row);
+
+          var seed = parseField(field.kind, start);
+          if (seed.value) values[field.id] = seed.value;
+
+          var timer;
+          input.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+              var parsed = parseField(field.kind, input.value);
+              if (parsed.value) {
+                msg.textContent = '';
+                values[field.id] = parsed.value;
+                mount();
+              } else {
+                msg.textContent = parsed.hint;
+              }
+            }, 200);
+          });
+        });
+      }
 
       // The view switcher: a toggle for 2 views, a dropdown for 3+, none for
       // 0/1. Switching calls handle.setView — the background and camera stay.
@@ -93,11 +167,28 @@
         }
       }
 
+      function showNotice(text) {
+        var pre = document.createElement('pre');
+        pre.id = 'problems';
+        pre.textContent = text;
+        container.appendChild(pre);
+        exportsBox.hidden = true;
+        viewsBox.hidden = true;
+      }
+
       function mount() {
         if (handle) handle.dispose();
         handle = null;
         container.textContent = '';
-        var result = coxeterViz.render(container, FIGURE);
+        // An open field with no value yet (no default, nothing typed): prompt
+        // for it rather than rendering a still-open document.
+        var missing = inputs.filter(function (f) { return !(f.id in values); });
+        if (missing.length) {
+          showNotice('Enter a value for: ' + missing.map(function (f) { return f.label; }).join(', '));
+          return;
+        }
+        var concrete = coxeterViz.resolveFigure(FIGURE, values);
+        var result = coxeterViz.render(container, concrete);
         if (!result.ok) {
           var pre = document.createElement('pre');
           pre.id = 'problems';
@@ -113,6 +204,7 @@
         exportsBox.hidden = false;
         buildViewControl();
       }
+      buildInputs();
       mount();
 
       var resizeTimer;

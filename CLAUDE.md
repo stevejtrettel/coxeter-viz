@@ -1,245 +1,148 @@
 # CLAUDE.md
 
-Guidance for working in this repo. Read this first, then `PLAN.md`.
+Guidance for working in this repo. Read this first.
 
 ## What this is
 
-`coxeter-viz` (name TBD) turns **abstract Coxeter data** — generators and the
-orders of pairwise products — into geometric realizations of the group in the
-three constant-curvature geometries (S/E/H, dimensions 2 & 3), and everything
-downstream: tessellations, Cayley graphs, word-list images, hulls,
-areas/volumes, rendered through swappable coordinate models. TypeScript +
-Vite, with our own linear algebra in the core (three.js appears only in
-demos and the future 3D render layer — enforced by a test); a thin Python
-package drives it through a pure group-theoretic seam.
+**`coxeter_groups`** — a Python package for **computing with Coxeter groups
+and drawing them**. It has two halves that meet only at plain data:
 
-The user is a mathematician (professor). Correctness and clean,
-close-to-the-math abstractions matter more than feature count.
+- **`compute/`** — serious *symbolic* Coxeter-group computation, in pure
+  Python (no dependencies): the group, its elements, word lists.
+- **`viz/`** — a *dumb renderer* that turns a group specification + word
+  lists into pictures (live HTML, vector SVG, shader PNG). It does **no**
+  symbolic group theory; it vendors a compiled TypeScript engine.
 
-## Status (2026-07-10 — CURRENT STATE; the full increment-by-increment history lives in PLAN.md §5)
+The user is a mathematician (professor) who does research in Python and
+wants to visualize it. Correctness and clean, close-to-the-math
+abstractions matter more than feature count.
 
-**The 2D program is COMPLETE and instrument-grade. Milestones 1 and 3 are
-closed. Milestone 4 — THE PRODUCT LAYER (PLAN.md §7) — is BUILT THROUGH
-P6 (all on 2026-07-10): the inference layer (`coxeter/matrix.ts`), the
-figure document (schema v0.1 with `title`, refusals as values),
-`render(container, figure)` + all eight ops + the GPU field with CPU
-fallback (`src/app/`), `figureToSvg`/`figureToPng` (k× shader PNGs),
-`npm run build:bundle` → `dist/lib/viewer.js` (66 kB IIFE) +
-`template.html` (the two files Python vendors), self-contained HTML
-instruments (`dist/samples/`), and the `figure` demo as the product dev
-harness. P7a (2026-07-11, PLAN §7.8): the PYTHON PACKAGE `python/` —
-`cx.figure(M)` builder (one method per op, cross-language fixture pins),
-`save('.html')` pure-stdlib, MIT, Python ≥ 3.10 (dev env: uv-managed
-3.12 in `python/.venv`; system python3 is 3.9), `build:bundle` vendors
-`_static/` (committed). P8 (2026-07-11): `save('.png', scale=,
-background=)` / `save('.svg')` / `check()` via the Playwright `[export]`
-extra — a lazy shared browser, refusals raise `CoxeterVizError`, WebGL2
-confirmed headless. P9 (2026-07-11): golden SVGs per fixture
-(`UPDATE_GOLDEN=1 npm run test` to regenerate intended changes),
-GPU-vs-vector pixel-coincidence through the VENDORED bundle
-(white-flattened, interiors-only — parity AND hue fields agree
-essentially everywhere), the 120/180 Cayley pin. P10 (2026-07-13,
-PLAN §10): the POLYGON PRESENTATION — `group.polygon` = a cyclic list of
-vertex orders (entry k = the order of s_k·s_{k+1 mod n}), the DEFAULT 2D
-input by user ruling (`polyhedron` will be its 3D counterpart; the
-matrix stays as the uniform discover-representation path): a FIRST-CLASS
-second presentation, not matrix sugar — `classifyPolygonOrders`
-(coxeter/matrix), one `classifyGroup` dispatch (schema/validate, reused
-by app/assemble), Python `cx.polygon([2,3,2,6,4,5])`, spec-identity pin
-against the hand-expanded matrix. P11a (2026-07-13, PLAN §11): EDGE
-COLORING SHIPPED. `tessellation.edges` — stroke the tiling's edges by PANEL
-TYPE (the generator index each edge is a translated mirror of; deduped by
-the {g, g·R_i} element pair, one segment per shared edge = the
-tiling-edge↔Cayley-edge bijection, 180 for (2,3,5)); `edgeGenerators` +
-`tessellationEdgeItems` in viz2d/kit/scene, always drawn on top (scene AND
-overlay). Python: `tessellation(edges=, edge_width=, edge_colors=)`.
-**BIG REDIRECTION (2026-07-13, PLAN §12): ONE PACKAGE, TWO HALVES.** The
-word-bag-inverse request grew into a full rearchitecture. The Python package
-(RENAMED `coxeter_viz`→`coxeter_groups`; the repo RESHAPED Bokeh-standard —
-`src/coxeter_groups/` at root + the TS engine in `renderer/`, root `Makefile`)
-is now `compute/` (serious symbolic Coxeter computation, Python) + `viz/`
-(the DUMB renderer — the old package, plus the vendored bundle), meeting only
-at plain data; neither imports the other. A first spike that put
-`tiles.invert`+a live HTML toggle into the ENGINE was REVERTED — invert/shift/
-union are relabeling, and belong to `compute`. **Compute MVP BUILT
-(increments 2–5):** `ReflectionRep` (word problem via the faithful Tits rep,
-float+tolerance), `CoxeterGroup`→`Element` (rich/hashable; `*`/inverse/len/
-descents), `ball`/`sphere` (word-length BFS), `Bag` (invert/shift/set-ops/
-`.words()`); the arrow `CoxeterGroup(M)` → `Bag` → `figure(g).tiles(bag.words())`
-→ picture runs. Deferred (§12.7): subgroups/cosets, Bruhat, ShortLex normal
-forms, exact arithmetic, the coloring currency, the live toggle. **492 vitest / 20 files + 63 pytest.** THE WHOLE ARROW WORKS: Coxeter
-matrix in Python → live HTML / vector SVG / k× shader PNG; ready to
-publish (`coxeter-viz` free on PyPI). Next: the user's second
-(consumer) repo; then Milestone 2 (3D) planning. 2D only — 3D waits
-(user ruling). Still pending: the user's hands-on pass of §5.7/§5.8 and of
-the P11a edges; the §11.3 word-bag design; GPU-globe v1 parked.**
+## The load-bearing rule: the seam
 
-What exists, layer by layer (each folder README is its spec; PLAN § given):
-- **math / geometry / models / polytope / coxeter** — the substrate: own
-  linear algebra (flat Float64Array), the six S/E/H cells behind one
-  `Geometry<P,I>`, covector walls, straight+conformal charts, the polytope
-  engine, `validatePolygon` + the κ-Porti solver realizing every compact 2D
-  Coxeter polygon (`RealizedPolygon`). PLAN §5.1–5.2.
-- **group** (§5.4, §5.5, §5.7) — generic orbit BFS (optional `admit` prune),
-  `CoxeterGroup` (tessellate, METRIC balls `orbitBall`/`tessellateBall`,
-  `chamberDiameter`, `cayleyGraph`, `subgroup`), word lists
-  (`elements`/`tilesFor`/`cosetIndex`/hulls), `wythoff.ts` (uniform tilings:
-  ringed seed by the 3×3 solve, faces = dihedral orbits hulled).
-- **viz2d/render** (§5.3.1 V0–V3+P, §5.6 T3; §5.9 split the 781-line
-  `scene.ts` into `style`/`cull`/`wallclip`/`dash`/`honesty`/`item` + the
-  builder) — scene → PathList → Canvas painter
-  + `svg.ts` + `png.ts` (`RasterLayer` k× compositor: scale the CAMERA, so
-  k× re-renders, never upsamples); intrinsic-width strokes, dashes, joins,
-  domain items, fill honesty, pre-cull; interaction (zoom/pan/double-bisector
-  drag/hitTest).
-- **viz2d/sphere** (§5.3.2) — the perspective-globe instrument, CPU only
-  (drag/zoom/SVG/dashed hidden lines). No GPU path (see the 2026-07-06
-  globe discussion in the session record / parked list below).
-- **viz2d/shader** (§5.6, §5.8) — the GPU field: per-pixel folding
-  `p ← p − 2⟨p,c⟩·Jc` in canonical coordinates (κ-branch-free, n-gon
-  MAX_WALLS 16), all five flat charts, parity/edge/vertex layers, plus the
-  FIELD PROGRAMS: `coset` (M⁻¹-accumulated anchor image hashed by the
-  SHARED `hashHue` — CPU/SVG/GPU hues agree bit-exactly), `star` (Cayley /
-  uniform edge nets), `regions` (Wythoff face types); and the VECTOR TWIN
-  for SVG (`fieldScene` + ADAPTIVE `coverageRadius` — intrinsic-radius
-  coverage from ε px, no per-group depth constants — + `mergeFieldPaths`).
-- **viz2d/kit** (§5.9) — the picturing toolkit (NO math): `realize`
-  (spec→group→model), `scene` (item builders + the `tile:`/`cay:`/`wall:` id
-  scheme + parity/coset/hue color maps), `camera` (fit + tipped view),
-  `field` (`fieldStyle` + coset/star/regions assembly), `palette`. All viz
-  math lives here or in the library core (`Hyperplane.foot`, `cayleyBall`,
-  `dihedralWords`/`parabolicFixedPoint`/`parseWord*`).
-- **demos/shared** (§5.9) — the demo harness (composable primitives, no
-  mount-functions): `pageShell`/`canvas2d`/`layerStack`/`sizeStack`/
-  `rafScheduler`/`button`/`checkbox`/`textInput`/`kSelect`/`downloadBlob`/
-  `downloadSvg`/`exportSizeLabel`. Every 2D demo reads *data → scene → mount*.
+**`compute/` never imports `viz/`; `viz/` never imports `compute/`.** They
+communicate only through **plain data** — a Coxeter matrix / polygon, and
+**word lists** (`list[list[int]]`). The top-level `__init__` composes them;
+`cx.figure(group)` reads `group.coxeter_matrix` duck-typed. This keeps the
+compute library usable with no renderer and the renderer usable with no
+compute library.
 
-Demos (`npm run dev <name>` — DEV-SERVER-ONLY, no demo builds): `figure`
-(the PRODUCT dev harness: fixture documents through `render()`, `?doc=`
-deep links, SVG/PNG buttons), `group` (Milestone 1), `wordlists` (M3;
-kept for its interactive word-entry/hover instrument), `tilings` (any
-polygon; fd always orange, word list red on top; cayley checkbox),
-`cosets` (parabolic coset field), `uniform` (Wythoff rings),
-`render2d`/`sphereview` (system demos), `hello` (throwaway; three's one
-import). RETIRED 2026-07-12: `tilingshader` (its GPU-vs-CPU verification
-job is automated in `python/tests/test_pixel.py`) and `wordfile` (its
-word-file→picture job moved to the Python package), plus
-`tests/smoke.test.ts`; `run-demo.mjs` trimmed to dev-only.
+- **Symbolic vs geometric.** Python owns *symbolic combinatorics* (the word
+  problem / element equality, length, descents, and later Bruhat order,
+  cosets, …). The renderer owns *geometric realization* (solving walls,
+  tiling the visible frame, culling to the camera) — geometry, not symbolic
+  math. The two meet at words.
 
-**Pending the user's hands-on pass**: §5.7 (cosets / tilings-cayley /
-uniform) and §5.8 (field programs). Queued aesthetic rulings: the fd tile
-dims the central Cayley star (identity-knife layering); coset/uniform
-palettes.
+## Repo layout (Bokeh-standard: a Python package + a JS engine subdir)
 
-**Parked / deferred** (with provenance): GPU globe v1 (scoped 2026-07-06:
-both sheets + tint in one pass, occlusion approximation documented,
-PNG-only — build only if needed for figures; the globe SVG twin is
-explicitly REFUSED for now); promote the many-times-duplicated group→Scene
-demo conversion to an adapter module (available whenever); a polygon
-class/type (deferred until non-convex regions become first-class); the
-Tits/ShortLex automaton and the spherical hull policy (PLAN §6).
+```
+pyproject.toml            # the package (name: coxeter-groups)
+Makefile                  # one command surface over both subprojects
+src/coxeter_groups/
+  compute/                # symbolic Coxeter computation (pure Python)
+    rep.py element.py group.py wordset.py   (+ README = the spec)
+  viz/                    # the dumb renderer
+    figure.py _html.py _export.py _static/  (+ README)
+tests/  examples/         # Python tests; runnable reference scripts
+renderer/                 # the TS engine that BUILDS viz/_static (a build input)
+  src/ demos/ tests/ scripts/  package.json  *.config.ts
+docs/                     # design/history (PLAN build log lives here)
+outputs/ scratch/         # gitignored: generated images / throwaway experiments
+```
 
-Working facts: 492 vitest / 20 files + 63 pytest, strict typecheck; the house
-verification pattern is exact spherical pins (orders, Euler counts) +
-headless-Chrome pixel-coincidence screenshots; `shader.glsl` at the repo
-root is the user's untracked reference shader (nothing survives verbatim).
+The renderer is the *source* of one committed, vendored asset
+(`viz/_static/{viewer.js, template.html}`); the wheel ships those two files,
+so end users never need node. The renderer is the renderer's internals —
+**not** the research substrate.
 
-`PLAN.md` is the working plan, edited collaboratively. In place: the
-toolchain (see Commands) and the geometry substrate — `src/math/` (the
-linear layer: `Vec`/`Covec` with the two matrix actions `applyToVector` /
-`applyToCovector`, flat row-major matrices; plus the Jacobi
-eigensolver, linear solve), `src/geometry/` (the six cells S/E/H × 2D/3D
-behind one `Geometry<P,I>`, walls as covectors with the uniform reflection
-I − 2(Jc)cᵀ), `src/models/` (straight + conformal charts per geometry,
-Globe2), and `src/polytope/` (fromHalfspaces/fromVertices in all six cells
-via the J-free cross-product vertex solve; contravariant wall transport;
-the spherical hemisphere refusal), and `src/coxeter/` (the RealizationSpec
-seam: `validatePolygon` with exact classification, and the κ-Porti
-inscribed-circle solver realizing every compact 2D Coxeter polygon in
-S/E/H with verified postconditions) — each folder specified by its README.
-`demos/hello` and
-`tests/smoke.test.ts` are Phase 0 throwaways, replaced when real work lands.
-The parent systems being married (and cleaned up) in this rewrite:
+## The API, briefly
 
-- `/Users/strettel/Code/homogeneous-spaces` — geometry substrate (S/E/H
-  geometries, models, metric-correct rendering)
-- `/Users/strettel/Code/hyperbolic-polytopes` — Coxeter machinery (polytope
-  engine, solvers, groups, Cayley); also holds `coxeter-viz-DESIGN.md` (the
-  original product design) and `COX_COMPUTE/` (the seedless 3D solver
-  pipeline, after Roeder)
+**Compute** (`import coxeter_groups as cx`):
+- `g = cx.CoxeterGroup(matrix)` or `cx.CoxeterGroup.from_polygon([2,3,7])`.
+- `g.element(word)`, `g.generators`, `g.identity()`; `g.ball(n)` / `g.sphere(n)`
+  (word-length enumeration); `g.words(words)`.
+- `Element`: rich and hashable by its **key** (the quantized reflection
+  matrix); `a*b` (= `element(u+v)`), `a.inverse()`, `len(a)` (ℓ),
+  `a.descents()`. Two words are equal iff same key — the word problem, via
+  the faithful reflection (Tits) representation.
+- `WordSet` (`g.words(...)`, `ball`/`sphere`): `set`-backed; `.invert()`,
+  `.shift(by)`, `|`/`&`/`-`; `.words()` is the plain-list accessor, but the
+  drawing ops take a `WordSet` directly (`fig.tiles(ws)`).
 
-## Commands
+**Viz**:
+- `cx.figure(matrix_or_group)` / `cx.polygon(orders)` → a `Figure`.
+- Ops: `domain`, `walls`, `tessellation` (+ `edges=`), `cayley`, `tiles`,
+  `hull`, `cosets`, `uniform`.
+- **Views** (background + swappable): `fig.view(name)` opens a named
+  figure-description over the shared background; the viewer swaps them (a
+  toggle for 2, a dropdown for 3+) at a fixed camera. Chainable
+  (`.view(...)…`, `.figure`).
+- `fig.save('x.html' | 'x.svg' | 'x.png')`; with views, `.svg`/`.png` write
+  one file per view. `fig.show()` opens a temp HTML.
 
-- `npm run dev <demo>` — run a demo (Vite; one server per demo, ports 5173+).
-  Demos live in `demos/<name>/main.ts`; pages are synthesized (no index.html
-  files on disk); the dev-server root `/` lists all demos.
-- `npm run build:bundle` — the engine bundle, built straight into
-  `python/src/coxeter_viz/_static/` (committed; the wheel's two files).
-  There is no other build: Python is the product interface; demos are
-  dev-server-only (user ruling 2026-07-11).
-- `npm run typecheck` — `tsc --noEmit` (strict).
-- `npm run test` / `npm run test:watch` — vitest (`tests/*.test.ts`).
-- Python: `python/.venv` (uv-managed 3.12) — `.venv/bin/python -m pytest`
-  in `python/`. Generated images/pages go to the gitignored `outputs/`
-  (repo root); free-form experiments to `scratch/` (never committed).
+## Commands (root `Makefile`)
+
+- `make setup` — build both dev environments (Python venv + editable/export/
+  dev deps; `npm install`).
+- `make test` — both suites · `make test-py` · `make test-js`.
+- `make bundle` — build the renderer → `viz/_static/` (do this after any
+  `renderer/` change).
+- `make dev DEMO=<name>` (TS dev demos) · `make typecheck` (TS strict).
+- Python runs from the repo root (`.venv`, uv-managed); TS from `renderer/`.
+  Generated images/pages go to gitignored `outputs/`; throwaway to `scratch/`.
 
 ## Working norms
 
-- **A rigorous written plan precedes ANY code, every time.** Plan approval is
-  not license to build a whole phase in one burst: execute in small
-  reviewable increments, surface every interpretation of an ambiguous answer
-  before acting on it, and pause at checkpoints. The user runs one work item
-  per fresh session, inheriting the agreed plan via this file and PLAN.md.
-- **Plan collaboratively.** Discuss before building; treat vision/context
-  messages as read-and-absorb, not build triggers. Do not scaffold, create
-  files, or "get ahead" without explicit agreement.
-- **Verify geometry claims** with throwaway `node` scripts / vitest before
-  asserting them.
-- Copy nothing verbatim from the parents — re-derive (see PLAN.md §3, Rules
-  of construction). Parents are references, not sources.
-- Every `src/` folder gets a `README.md` stating its mathematics, written
-  first as the module's spec.
-- Dependency direction is law:
-  math → geometry → models → polytope → coxeter → group → {2D viz | 3D viz} → app.
-  The two visualization systems are TOTALLY SEPARATE: 2D lives under
-  `src/viz2d/` — `render/` (the flat-chart core + shared seams), `sphere/`
-  (the perspective globe), `shader/` (the GPU field), and `kit/` (the
-  picturing toolkit: group data → `Scene`/`Camera`/`TilingStyle`, no math) —
-  and has no three.js; 3D (not yet built) will be built on three.js and gets
-  its own plan before any code. **All viz math lives in the library core or
-  `kit/`; the demos (`demos/*` + the `demos/shared` harness) are thin —
-  data → scene → mount, no math inline.** The consolidation reorg is
-  PLAN.md §5.9 (renamed render2d→viz2d/render, sphereview→viz2d/sphere,
-  tilingshader→viz2d/shader; historical §5.3.1 etc. labels keep the old
-  names).
-- Don't create branches or commit unless asked. Commit messages end with the
-  `Co-Authored-By: Claude` line.
+- **A rigorous written plan precedes nontrivial code.** Execute in small,
+  reviewable increments; surface every interpretation of an ambiguous answer
+  before acting; pause at checkpoints. Do not scaffold or "get ahead"
+  without explicit agreement. Treat vision/context messages as
+  read-and-absorb, not build triggers.
+- **README-first.** Each `src/coxeter_groups/*` (and `renderer/src/*`) folder
+  has a `README.md` stating its mathematics, written first as the spec.
+- **Verify claims** with throwaway scripts / tests before asserting them.
+- **After any change:** `make test` (or the relevant `test-py`/`test-js`);
+  `make typecheck` for TS.
+- **Don't create branches or commit unless asked.** Commit messages end with
+  the `Co-Authored-By: Claude` line.
+
+## Deliberate, revisitable decisions
+
+- **Element equality is float + tolerance** (the reflection rep uses
+  `cos`; the key is a rounded matrix). Correct in practice, a known
+  long-term liability — the intended upgrade is **exact arithmetic**
+  (integer matrices for crystallographic `m ∈ {2,3,4,6,∞}`; algebraic
+  numbers in general). Flagged in `compute/rep.py`.
+- **Compute is pure stdlib** (tiny matrices; zero deps) — revisit if exact
+  arithmetic or profiling wants a numeric library.
+- **Generator indexing is load-bearing** and identical everywhere (words,
+  walls, Cayley edges, `polygon` position).
 
 ## Glossary (one vocabulary, used identically everywhere)
 
 | term | meaning |
 |---|---|
-| **Coxeter matrix** | symmetric integer M, M_ii = 1, M_ij = order of s_i s_j (−1 sentinel for ∞). The *group*. The public input form. |
-| **Gram matrix** | ⟨n_i, n_j⟩ of realized walls. A *byproduct* of realization; an input only internally, for simplices. |
-| **wall / mirror** | the fixed hyperplane of a generating reflection; stored as a **covector** n, incidence via the pairing ⟨p, n⟩ |
-| **pole** | the ambient vector representing a wall (spacelike unit in H, etc.) |
-| **chamber / fundamental domain (FD)** | the intersection of the walls' half-spaces; the tile carried around by the group |
-| **decoration** | data on a meeting wall-pair: `{ walls: [i,j], order: m }` ⇒ dihedral angle π/m |
-| **undecorated pair** | walls that do NOT meet in the realized polytope; their distance is moduli the solver resolves canonically |
-| **canonical representative** | where moduli exist, the chamber with an inscribed circle/sphere (= minimal perimeter; Porti in H²; the square in E²) |
-| **RealizationSpec ("spec")** | the internal seam: geometry + dim + FD combinatorics + decorations. Exact side above, numeric side below. |
-| **realization** | a solver's output: walls (covectors), interior point, diagnostics; provably realizes the spec's combinatorics |
-| **straight(-geodesic) chart** | the model where geodesics are straight lines (Klein in H, gnomonic in S, the plane itself in E); all hulls/combinatorics are computed there |
-| **generator indexing** | wall index = generator index everywhere (combinatorics, decorations, words, Cayley); load-bearing, never cosmetic |
-| **word** | list of generator indices `[i₀,…,i_k]`, applied left to right (i₀ first) ⇒ element R_{i_k}···R_{i₀} |
+| **Coxeter matrix** | symmetric integer M, M_ii = 1, M_ij = order of s_i s_j (−1 = ∞). The abstract group. |
+| **polygon presentation** | a cyclic list of vertex orders; entry k = order of s_k·s_{k+1 mod n}; non-adjacent walls never meet (∞). The default 2D input. Expands to a Coxeter matrix. |
+| **word** | list of generator indices `[i₀,…,i_k]`, applied left to right (i₀ first). Non-unique: many words = one element. |
+| **key** | an element's identity: its quantized matrix in the reflection rep. Equal words ⇒ equal key. |
+| **element / word set** | a group element (hashable by key); a `WordSet` is a `set` of them. |
+| **ball / sphere** | word-length enumeration: `ball(n)` = length ≤ n, `sphere(n)` = exactly n (distinct from the renderer's *geometric* metric ball). |
+| **wall / mirror / chamber** | the mirror of a generating reflection; the fundamental chamber = the intersection of half-spaces (the tile the group carries around). |
+| **background / view** | the shared drawing (the tiling); a view is a swappable figure-description over it. |
+| **figure document** | the viz seam: a versioned JSON of pure abstract data (group + layers + views), no geometry. `renderer/src/schema/`. |
 
-## Conventions (inherited from the parents, to be kept)
+## Current work
 
-- Strict TS (`noUnusedLocals/Parameters`, `erasableSyntaxOnly` → no parameter
-  properties / enums), Vite, vitest, `npm run dev <demo>` with
-  `demos/<name>/main.ts` and a synthesized HTML page.
-- Generic over the canonical point type `P` (Vector3 in 2D ambient R³,
-  Vector4 in 3D ambient R⁴) and isometry type `I`; never branch on
-  geometry/dimension except where genuinely necessary — and prefer
-  capability-style dispatch over `kind` switches.
-- After any change: `npm run typecheck && npm run test`.
+The active next build is the **interactive group explorer** (an HTML mode
+with a live input field for the group spec, re-drawing the tessellation as
+you type) — plan in **`docs/plan-group-explorer.md`**. Cusps for triangle
+groups (`docs/PLAN.md` §9, math already verified) is designed and deferred
+behind it.
+
+## History
+
+The full increment-by-increment build record (Phases 0–13: the original
+viz-only system, then the rename to `coxeter_groups` + the Bokeh reshape +
+the compute side + the views grammar) lives in **`docs/PLAN.md`** — a
+historical log, not the live plan. `renderer/src/*/README.md` are the
+current specs for the engine's math substrate.

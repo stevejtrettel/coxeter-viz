@@ -7,6 +7,6 @@ cosets or descents (PLAN §12.1: that is the `compute/` side's job). The two
 halves meet only at plain data; `viz` never imports `compute`.
 """
 
-from .figure import CoxeterVizError, Figure, figure, polygon
+from .figure import CoxeterVizError, Figure, figure, polygon, unspecified
 
-__all__ = ["figure", "polygon", "Figure", "CoxeterVizError"]
+__all__ = ["figure", "polygon", "unspecified", "Figure", "CoxeterVizError"]
