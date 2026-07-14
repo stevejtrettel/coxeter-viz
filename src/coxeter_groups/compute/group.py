@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from .bag import Bag
 from .element import Element
 from .rep import DEFAULT_TOL_DIGITS, ReflectionRep
 
@@ -53,6 +54,50 @@ class CoxeterGroup:
     @property
     def generators(self) -> list[Element]:
         return [Element(self, [i]) for i in range(self.rank)]
+
+    # ── enumeration by word length ────────────────────────────────────────
+    def _spheres(self, max_len: int) -> list[list[Element]]:
+        """Spheres 0…max_len (stopping early if the group is exhausted).
+
+        BFS from the identity: multiply each element of the current sphere by
+        every generator, keep what is new (deduped by key). A newly-seen
+        element from sphere k has length k+1 exactly — anything of length k−1
+        was already discovered — so no length recomputation is needed, and the
+        spelling each element is first found by is a reduced word.
+        """
+        if max_len < 0:
+            raise ValueError("length must be ≥ 0.")
+        e = self.identity()
+        gens = self.generators
+        seen = {e.key}
+        spheres = [[e]]
+        frontier = [e]
+        for _ in range(max_len):
+            nxt: list[Element] = []
+            for g in frontier:
+                for s in gens:
+                    cand = g * s
+                    if cand.key not in seen:
+                        seen.add(cand.key)
+                        nxt.append(cand)
+            if not nxt:
+                break  # finite group, fully enumerated
+            spheres.append(nxt)
+            frontier = nxt
+        return spheres
+
+    def sphere(self, n: int) -> Bag:
+        """The elements of word length exactly `n` (empty past the diameter)."""
+        spheres = self._spheres(n)
+        return Bag(self, spheres[n] if n < len(spheres) else [])
+
+    def ball(self, n: int) -> Bag:
+        """The elements of word length ≤ `n` (spheres 0…n)."""
+        return Bag(self, (g for s in self._spheres(n) for g in s))
+
+    def bag(self, items=()) -> Bag:
+        """A bag of the given elements or words (deduped by element)."""
+        return Bag(self, items)
 
     def __repr__(self) -> str:
         return f"CoxeterGroup(rank={self.rank})"

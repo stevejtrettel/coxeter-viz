@@ -52,10 +52,12 @@ key, plus `len`/`descents`), `ball`/`sphere` (BFS deduped by key), and
 Built from a Coxeter matrix (validated: square, symmetric, diagonal 1,
 off-diagonal `≥ 2` or `−1`). Holds the matrix, the rank, and the
 `ReflectionRep`. It is the factory for elements (`g.element(word)`,
-`g.identity()`, `g.generators`); `ball`/`sphere` enumeration and `g.bag(…)`
-arrive in later increments. Its `coxeter_matrix` attribute is the seam
-handoff — `viz.figure(g)` reads it (duck-typed, so `viz` never imports
-`compute`).
+`g.identity()`, `g.generators`) and enumerates by **word length**:
+`g.sphere(n)` (length exactly `n`) and `g.ball(n)` (length `≤ n`), a BFS
+from the identity deduped by key — the combinatorial ball, distinct from
+the renderer's geometric metric ball. (`g.bag(…)` arrives with `Bag`.) Its
+`coxeter_matrix` attribute is the seam handoff — `viz.figure(g)` reads it
+(duck-typed, so `viz` never imports `compute`).
 
 ## `element.py` — `Element`, the rich atom
 
@@ -74,6 +76,22 @@ behaves like a group element and is hashable by its key, so Python `set`/
 - `a.descents()` — the **right** descent set `{i : a·αᵢ is a negative
   root}` = `{i : column i of a's matrix is all ≤ 0}`. Descents are the
   gateway to length, reduced words, and (later) Bruhat order.
+
+## `bag.py` — `Bag`, a set of elements
+
+A light, immutable wrapper over a `frozenset[Element]` plus its group; every
+method returns a new bag. Made from `g.bag(items)` (words or elements), or
+returned by `g.ball`/`g.sphere`.
+
+- `bag.invert()` — `{e⁻¹}`; `bag.shift(by)` — `{e·by}` (the bag translated
+  rigidly by the isometry `by`).
+- `bag | other`, `bag & other`, `bag - other` — union / intersection /
+  difference. **Exact**, because `Element` has real equality — the
+  operations the word-list sugar could not do (e.g. `ball(3) − ball(2) ==
+  sphere(3)`).
+- `e in bag` (element or word), `len`, iteration.
+- `bag.words()` — the plain `list[list[int]]` the renderer draws, in a
+  deterministic order. This is the whole seam: `figure(g).tiles(bag.words())`.
 
 ## Deliberate, revisitable choices
 

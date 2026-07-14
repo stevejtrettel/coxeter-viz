@@ -53,14 +53,21 @@ the {g, g·R_i} element pair, one segment per shared edge = the
 tiling-edge↔Cayley-edge bijection, 180 for (2,3,5)); `edgeGenerators` +
 `tessellationEdgeItems` in viz2d/kit/scene, always drawn on top (scene AND
 overlay). Python: `tessellation(edges=, edge_width=, edge_colors=)`.
-**WORD-BAG ALGEBRA (invert/shift/…) — DESIGN IN PROGRESS (PLAN §11.3), NOT
-BUILT.** A first spike put `tiles.invert` + a live HTML `tiles.toggle`
-checkbox into the ENGINE; REVERTED 2026-07-13 after the collaborative
-ruling: invert/shift/union on word lists are RELABELING (reverse /
-concatenate), not group computation, so they belong on the PYTHON side as
-data-shaping commands (`cx.invert`, `cx.shift`, …) that produce word lists
-the DUMB drawer (`tiles`/`hull`, unchanged) consumes; the live in-browser
-toggle is parked as a separate interactivity concern. **492 vitest / 20 files + 29 pytest.** THE WHOLE ARROW WORKS: Coxeter
+**BIG REDIRECTION (2026-07-13, PLAN §12): ONE PACKAGE, TWO HALVES.** The
+word-bag-inverse request grew into a full rearchitecture. The Python package
+(RENAMED `coxeter_viz`→`coxeter_groups`; the repo RESHAPED Bokeh-standard —
+`src/coxeter_groups/` at root + the TS engine in `renderer/`, root `Makefile`)
+is now `compute/` (serious symbolic Coxeter computation, Python) + `viz/`
+(the DUMB renderer — the old package, plus the vendored bundle), meeting only
+at plain data; neither imports the other. A first spike that put
+`tiles.invert`+a live HTML toggle into the ENGINE was REVERTED — invert/shift/
+union are relabeling, and belong to `compute`. **Compute MVP BUILT
+(increments 2–5):** `ReflectionRep` (word problem via the faithful Tits rep,
+float+tolerance), `CoxeterGroup`→`Element` (rich/hashable; `*`/inverse/len/
+descents), `ball`/`sphere` (word-length BFS), `Bag` (invert/shift/set-ops/
+`.words()`); the arrow `CoxeterGroup(M)` → `Bag` → `figure(g).tiles(bag.words())`
+→ picture runs. Deferred (§12.7): subgroups/cosets, Bruhat, ShortLex normal
+forms, exact arithmetic, the coloring currency, the live toggle. **492 vitest / 20 files + 63 pytest.** THE WHOLE ARROW WORKS: Coxeter
 matrix in Python → live HTML / vector SVG / k× shader PNG; ready to
 publish (`coxeter-viz` free on PyPI). Next: the user's second
 (consumer) repo; then Milestone 2 (3D) planning. 2D only — 3D waits
@@ -132,7 +139,7 @@ demo conversion to an adapter module (available whenever); a polygon
 class/type (deferred until non-convex regions become first-class); the
 Tits/ShortLex automaton and the spherical hull policy (PLAN §6).
 
-Working facts: 492 vitest / 20 files + 29 pytest, strict typecheck; the house
+Working facts: 492 vitest / 20 files + 63 pytest, strict typecheck; the house
 verification pattern is exact spherical pins (orders, Euler counts) +
 headless-Chrome pixel-coincidence screenshots; `shader.glsl` at the repo
 root is the user's untracked reference shader (nothing survives verbatim).

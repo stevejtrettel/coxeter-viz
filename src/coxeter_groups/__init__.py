@@ -25,7 +25,7 @@ All rendering mathematics lives in the vendored JavaScript engine
 
 from importlib.metadata import PackageNotFoundError, version as _version
 
-from .compute import CoxeterGroup, Element
+from .compute import Bag, CoxeterGroup, Element
 from .viz import CoxeterVizError, Figure, figure, polygon
 
 try:
@@ -36,6 +36,7 @@ except PackageNotFoundError:  # an uninstalled source tree
 __all__ = [
     "CoxeterGroup",
     "Element",
+    "Bag",
     "figure",
     "polygon",
     "Figure",

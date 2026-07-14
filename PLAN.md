@@ -2381,12 +2381,36 @@ The spine:
    inverse (incl. `(ab)⁻¹=b⁻¹a⁻¹`), set-dedup across spellings (braid,
    `s²=e`, `(s0s1)²`), lengths (0/1/longest-of-S₃=3/…), descents (`w0` full
    set), matrix/index validation, and `figure(g)` == `figure(matrix)`.
-4. `ball`/`sphere` — counts pinned against known group orders (e.g. |W| for
-   finite types).
-5. `Bag` — invert/shift/set-ops/words, pinned + an end-to-end draw through
-   `viz`.
+4. **`ball`/`sphere` — DONE 2026-07-13.** `g.sphere(n)` (length exactly n),
+   `g.ball(n)` (≤ n): a BFS from the identity deduped by key, layer k → k+1
+   (a newly-seen element from sphere k is length k+1 exactly, so no length
+   recompute; discovery spellings are reduced words). Word-length ball, not
+   the renderer's geometric one. Terminates for finite n (each sphere is
+   finite); stops early when a finite group is exhausted. 6 pins: ball =
+   |W| (6/8/24/120), the Mahonian sphere sizes (S₃ 1·2·2·1, I₂(4) 1·2·2·2·1,
+   S₄ 1·3·5·6·5·3·1), H₃ diameter 15 with a unique longest element, and ball
+   length-filtered + all-distinct. Returns `list[Element]` for now; `Bag`
+   (increment 5) wraps.
+5. **`Bag` — DONE 2026-07-13.** A light immutable wrapper over
+   `frozenset[Element]` + group; `g.bag(items)` (words or elements), and
+   `ball`/`sphere` now RETURN bags. `.invert()`, `.shift(by)` (= `{e·by}`,
+   the bag translated by the isometry `by`), exact set-ops `|`/`&`/`-`
+   (real equality — e.g. `ball(3)−ball(2)==sphere(3)`), `in`/`len`/iter,
+   and `.words()` (deterministic `list[list[int]]` — the seam). 6 pins:
+   dedup, invert-involution, shift-bijection, the set-op identities, plain/
+   deterministic words, and the END-TO-END draw (`figure(g).tiles(bag.words())`
+   → document with matching words → `viz` builds the HTML page).
 
 A README-spec per new module, first, per the repo's rule.
+
+**MVP compute side COMPLETE (increments 2–5, 2026-07-13).** The whole arrow
+now runs in Python: `CoxeterGroup(M)` → symbolic `Element`s (equality/length/
+descents via the faithful reflection rep) → `ball`/`sphere`/`Bag` with real
+set algebra → `figure(g).tiles(bag.words())` → the dumb renderer draws it.
+`compute/` imports nothing from `viz`; the seam is plain data. 34 compute
+pins (rep 14, element 8, enumerate 6, bag 6); 63 pytest total. Deferred
+(§12.7): subgroups/parabolics/cosets, Bruhat/weak order, ShortLex normal
+forms, exact arithmetic, the coloring currency, the live toggle.
 
 ### 12.9 Repo reshape — DONE 2026-07-13 (Bokeh-standard, Python-at-root)
 
@@ -2423,3 +2447,89 @@ subproject. `pyproject.toml` gains `[dependency-groups] dev = ["pytest"]`
 (PEP 735) so the dev env is reproducible (`uv pip install -e ".[export]"
 --group dev`), not hand-assembled. This closes the repo-shape work — the
 layout is the Bokeh/`src`-layout standard.
+
+## 13. Background + swappable views — the figure grammar (planned 2026-07-13)
+
+**The model (user, 2026-07-13).** A clean grammar for drawing a group:
+three levels —
+1. **the group** — the math;
+2. **the background** — the tiling (and anything else shared): inherent to
+   the group, drawn once, unchanged as you flip;
+3. **views (figure-descriptions)** — each a bundle of *decisions*
+   (selections of tiles/edges, colorings, styles). Several share the
+   background; the viewer swaps between them (a toggle for 2, a dropdown for
+   3+). The reverted words↔inverses toggle is the special case "two views."
+
+This is the RIGHT generalization of the reverted `tiles.toggle` flag:
+**declarative data, not smuggled UI** — the document says "N named views over
+this background"; the *viewer* renders that as a control (HTML) or as N
+pictures (static export). It composes with the compute side: compute N bags
+→ N views.
+
+### 13.1 Rulings (user "sounds great" to the recommended shape, 2026-07-13)
+
+- **Grammar = a named sub-builder.** `fig.view(name)` returns a builder with
+  the same ops, whose layers belong to that view; layers added to `fig`
+  directly are the background:
+
+  ```python
+  fig = cx.figure(g, model="poincare")
+  fig.tessellation(ball=5.0, color="parity")          # background
+  fig.view("words").tiles(bag.words(), fill="red")
+  fig.view("inverses").tiles(bag.invert().words(), fill="blue")
+  fig.save("x.html")   # dropdown: words | inverses
+  ```
+- **Background = "layers outside any view"** (the user chooses what's shared;
+  not hardcoded to the tessellation).
+- **Camera held FIXED on swap** — the point of comparison is registered
+  views; the background (incl. the GPU field) renders once and only the
+  vector overlay re-paints. (Strictly better than the reverted re-mount.)
+- **Static export = one file per view** (`x-words.svg`, `x-inverses.svg`);
+  `save('.html')` is the interactive multi-view page.
+- **Control**: 2 views → a toggle, 3+ → a dropdown (viewer's call).
+- **Schema v0.1 → v0.2**: an optional `views` array; back-compatible — a
+  document with no views stays v0.1 and renders as today's single picture.
+
+### 13.2 Design (to refine per increment)
+
+- **Schema** (`renderer/src/schema/types.ts`): `Figure.views?: { name:
+  string; layers: Layer[] }[]`; top-level `layers` is the background.
+  `version` is `"0.2"` iff `views` present (else `"0.1"`, so every existing
+  fixture/test is untouched). `checkFigure` accepts both; view names
+  non-empty and distinct; each view's layers validated like background
+  layers. A field-paintable layer (the tessellation) normally lives in the
+  background; the "first field layer" rule (P4) applies to background +
+  active view together — settle when assemble lands.
+- **Python** (`viz/figure.py`): extract the op methods into a shared base
+  operating on a target layer list; `Figure` holds background `_layers` +
+  ordered `_views`; `View` holds its `_layers`; `fig.view(name)` creates/
+  returns a `View` (ops chain within it). `document()` emits `views` and the
+  right `version`. `save`/`show`/`check` stay on `Figure`.
+- **Assemble** (`app/assemble.ts`): given a figure with views, produce the
+  shared background (scene + field + auto-fit camera, computed ONCE) and a
+  per-view overlay scene. The camera is background-only, so all views share
+  it.
+- **Viewer** (`app/render.ts` + `template.html`): mount background once
+  (field canvas + vector canvas); a control (toggle/dropdown) selects the
+  active view; switching re-paints background + active overlay at the SAME
+  camera (no re-mount, no re-fit). Exports re-assemble at the current camera
+  per view.
+- **Exports** (`app/export.ts`, `viz/_export.py`, `Figure.save`): `.svg`/
+  `.png` with views write one file per view (name-suffixed); `.html` is the
+  multi-view page.
+
+### 13.3 Increments (each green-gated, README-first where a module is new)
+
+1. **Schema + Python builder** (pure, no rendering): `views` in schema
+   types + `checkFigure`; the `View` sub-builder + `document()` + version
+   logic; cross-language fixtures. Fully testable at the document level.
+2. **Assemble: background + per-view overlays** — scene-level pins (shared
+   camera, background field, per-view overlay items).
+3. **Viewer: `render()` view-switching + template control** — background
+   once, overlay swap at fixed camera; headless-verified (the control
+   appears, swapping changes only the overlay, camera preserved).
+4. **Per-view exports** — `figureToSvg`/`figureToPng`/`save` emit one output
+   per view.
+
+Start at (1): it fixes the grammar and the document contract with zero
+rendering risk, and everything downstream builds against it.
