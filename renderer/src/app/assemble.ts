@@ -72,15 +72,27 @@ export interface RenderDiagnostics {
   truncated: boolean;
 }
 
+/** One assembled view: its CPU overlay, painted over the background at the shared camera. */
+export interface AssembledView {
+  name: string;
+  scene: Scene;
+}
+
 export interface Assembled {
   realized: RealizedGroup;
-  /** The complete CPU scene: SVG export and the no-WebGL fallback. */
+  /** The complete background CPU scene: SVG export and the no-WebGL fallback. */
   scene: Scene;
-  /** The CPU items painted OVER the field (null when no field layer). */
+  /** The background CPU items painted OVER the field (null when no field layer). */
   overlay: Scene | null;
-  /** The GPU program for the first field-paintable layer (null when none). */
+  /** The GPU program for the first field-paintable BACKGROUND layer (null when none). */
   field: TilingStyle | null;
   camera: Camera;
+  /**
+   * Per-view CPU overlays (PLAN §13), painted over the background at the SAME
+   * camera. Empty when the document has no views. The field belongs to the
+   * background, so views are CPU-only — swapping one re-paints only vectors.
+   */
+  views: AssembledView[];
   diagnostics: RenderDiagnostics;
 }
 
@@ -208,149 +220,178 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
   let uniformCellCount = 0;
   const hullAreas: number[] = [];
 
-  figure.layers.forEach((layer, li) => {
-    // The first field-paintable layer becomes THE field; its CPU items stay
-    // in `scene` (SVG/fallback) but leave the overlay.
-    const layerField = field === null ? fieldFor(layer) : null;
-    if (layerField !== null) field = layerField;
-    const fieldPaintsThisLayer = layerField !== null;
-    const push = (items: SceneItem[]): void => {
-      scene.push(...items);
-      if (!fieldPaintsThisLayer) overlayItems.push(...items);
-    };
+  /**
+   * Where a run of layers deposits its items. The BACKGROUND uses
+   * `{ scene, overlay: overlayItems, allowField: true }`; a VIEW uses
+   * `{ scene: viewScene, overlay: null, allowField: false }` — the field
+   * belongs to the background, so a view is CPU-only, and `scope` namespaces
+   * its layer ids so background + active view never collide.
+   */
+  interface Sink {
+    scene: SceneItem[];
+    overlay: SceneItem[] | null;
+    allowField: boolean;
+    scope: string;
+  }
 
-    switch (layer.type) {
-      case 'domain':
-        scene.push(domainItem(true, layer.fill));
-        overlayItems.push(domainItem(false)); // the field paints the fill beneath
-        break;
-      case 'walls':
-        push(
-          wallItems(rg.poly.walls, (i) => ({
-            color: layer.colors?.[i] ?? WALL_COLORS[i % WALL_COLORS.length],
-            width: (layer.width ?? 0.05) * rg.r0,
-          })),
-        );
-        break;
-      case 'tessellation': {
-        const tiles = tilesFor(layer.extent);
-        tileCount += tiles.length;
-        const colorOf = tileColor(layer.color);
-        const opacity = layer.opacity ?? 0.9;
-        const styleOf = (t: Tile<Point2, Isometry2>): RegionStyle => ({
-          fill: { color: colorOf(t), opacity },
-        });
-        push(tilesToScene(tiles, styleOf));
-        // GPU parity cannot single out the identity; keep the fd tile honest
-        // on top (the house "fd always orange" ruling).
-        if (fieldPaintsThisLayer && !(layer.color && ('constant' in layer.color || layer.color.map === 'hue'))) {
-          overlayItems.push(
-            polygonItem(rg.poly.chamber, { fill: { color: TILE.identity, opacity } }, 'tile:e'),
+  const emitLayers = (layers: readonly Layer[], sink: Sink): void => {
+    layers.forEach((layer, li) => {
+      // Only the background may claim THE field; its CPU items stay in `scene`
+      // (SVG/fallback) but leave the overlay.
+      const layerField = sink.allowField && field === null ? fieldFor(layer) : null;
+      if (layerField !== null) field = layerField;
+      const fieldPaintsThisLayer = layerField !== null;
+      const push = (items: SceneItem[]): void => {
+        sink.scene.push(...items);
+        if (sink.overlay !== null && !fieldPaintsThisLayer) sink.overlay.push(...items);
+      };
+
+      switch (layer.type) {
+        case 'domain':
+          sink.scene.push(domainItem(true, layer.fill));
+          if (sink.overlay !== null) sink.overlay.push(domainItem(false)); // the field paints the fill beneath
+          break;
+        case 'walls':
+          push(
+            wallItems(rg.poly.walls, (i) => ({
+              color: layer.colors?.[i] ?? WALL_COLORS[i % WALL_COLORS.length],
+              width: (layer.width ?? 0.05) * rg.r0,
+            })),
           );
+          break;
+        case 'tessellation': {
+          const tiles = tilesFor(layer.extent);
+          tileCount += tiles.length;
+          const colorOf = tileColor(layer.color);
+          const opacity = layer.opacity ?? 0.9;
+          const styleOf = (t: Tile<Point2, Isometry2>): RegionStyle => ({
+            fill: { color: colorOf(t), opacity },
+          });
+          push(tilesToScene(tiles, styleOf));
+          // GPU parity cannot single out the identity; keep the fd tile honest
+          // on top (the house "fd always orange" ruling).
+          if (
+            fieldPaintsThisLayer &&
+            sink.overlay !== null &&
+            !(layer.color && ('constant' in layer.color || layer.color.map === 'hue'))
+          ) {
+            sink.overlay.push(
+              polygonItem(rg.poly.chamber, { fill: { color: TILE.identity, opacity } }, 'tile:e'),
+            );
+          }
+          // Panel-type edges: thin strokes that must ride ON TOP of the fill,
+          // GPU-painted or not, so they land in BOTH the scene and the overlay.
+          if (layer.edges) {
+            const edgeGen = edgeGenerators(rg.group.chamber, rg.poly.walls);
+            const width = (layer.edges.width ?? 0.03) * rg.r0;
+            const colors = layer.edges.colors;
+            const edgeItems = tessellationEdgeItems(rg.group, tiles, edgeGen, (i) => ({
+              color: colors?.[i] ?? WALL_COLORS[i % WALL_COLORS.length],
+              width,
+            }));
+            sink.scene.push(...edgeItems);
+            if (sink.overlay !== null) sink.overlay.push(...edgeItems);
+          }
+          break;
         }
-        // Panel-type edges: thin strokes that must ride ON TOP of the fill,
-        // GPU-painted or not, so they land in BOTH the scene and the overlay.
-        if (layer.edges) {
-          const edgeGen = edgeGenerators(rg.group.chamber, rg.poly.walls);
-          const width = (layer.edges.width ?? 0.03) * rg.r0;
-          const colors = layer.edges.colors;
-          const edgeItems = tessellationEdgeItems(rg.group, tiles, edgeGen, (i) => ({
-            color: colors?.[i] ?? WALL_COLORS[i % WALL_COLORS.length],
-            width,
-          }));
-          scene.push(...edgeItems);
-          overlayItems.push(...edgeItems);
+        case 'cayley': {
+          const graph = byExtent(
+            layer.extent,
+            (n) => rg.group.cayleyGraph(n, MAX_TILES),
+            (r) => rg.group.cayleyBall(r, MAX_TILES),
+          );
+          noteCap(graph.nodes.length);
+          cayleyNodeCount += graph.nodes.length;
+          push(
+            cayleyScene(rg.group, graph, {
+              edge: (g) => ({
+                color: WALL_COLORS[g % WALL_COLORS.length],
+                width: (layer.edge?.width ?? 0.06) * rg.r0,
+              }),
+              node: () => ({
+                color: layer.node?.color ?? '#333333',
+                radius: (layer.node?.size ?? 0.11) * rg.r0,
+              }),
+            }),
+          );
+          break;
         }
-        break;
-      }
-      case 'cayley': {
-        const graph = byExtent(
-          layer.extent,
-          (n) => rg.group.cayleyGraph(n, MAX_TILES),
-          (r) => rg.group.cayleyBall(r, MAX_TILES),
-        );
-        noteCap(graph.nodes.length);
-        cayleyNodeCount += graph.nodes.length;
-        push(
-          cayleyScene(rg.group, graph, {
-            edge: (g) => ({
-              color: WALL_COLORS[g % WALL_COLORS.length],
-              width: (layer.edge?.width ?? 0.06) * rg.r0,
-            }),
-            node: () => ({
-              color: layer.node?.color ?? '#333333',
-              radius: (layer.node?.size ?? 0.11) * rg.r0,
-            }),
-          }),
-        );
-        break;
-      }
-      case 'tiles': {
-        const tiles = rg.group.tilesFor(layer.words);
-        push(
-          tilesToScene(
-            tiles,
-            () => ({ fill: { color: layer.fill ?? LIST } }),
-            (w) => `list:${li}:${wordId(w)}`,
-          ),
-        );
-        break;
-      }
-      case 'hull': {
-        // The design-doc semantics: the hull of the BASE-POINT images w·x₀.
-        // Spherical hulls beyond a hemisphere throw (the house refusal);
-        // render() surfaces that as a problem value.
-        const hull = hullOfWords(rg.group, layer.words);
-        hullAreas.push(polygonArea(geom, hull.vertices));
-        push([
-          polygonItem(
-            hull,
-            {
-              fill: { color: layer.fill ?? HULL, opacity: layer.fill ? 0.85 : 0.35 },
-              edge: layer.stroke ? { color: layer.stroke, width: 0.03 * rg.r0 } : undefined,
-            },
-            `hull:${li}`,
-          ),
-        ]);
-        break;
-      }
-      case 'cosets': {
-        // Validation guarantees the anchor exists (∅ / one / a meeting pair).
-        // The tiles are the FIELD's vector twin, so they carry `field:tile:`
-        // ids — mergeFieldPaths coalesces same-hue cosets in the SVG.
-        const anchor = parabolicFixedPoint(rg.group, layer.subgroup)!;
-        const tiles = tilesFor(layer.extent);
-        tileCount += tiles.length;
-        push(
-          tilesToScene(
-            tiles,
-            (t) => ({ fill: { color: hueColor(hashHue(geom.apply(t.element, anchor))) } }),
-            fieldTileId,
-          ),
-        );
-        break;
-      }
-      case 'uniform': {
-        const colors = layer.palette ?? [...TYPE_COLORS];
-        const rings = [0, 1, 2].map((i) => layer.rings.includes(i));
-        const cells = uniformCells(rg.group, rg.poly, rings, coverRadius(), MAX_TILES);
-        noteCap(cells.length);
-        uniformCellCount += cells.length;
-        push(
-          cells.map((c, k) =>
-            polygonItem(
-              c.polytope,
-              {
-                fill: { color: colors[c.type % colors.length] },
-                edge: { color: UNIFORM_EDGE, width: 0.02 * rg.r0, opacity: 0.75 },
-              },
-              `field:tile:${c.type}:${k}`, // the field's vector twin (house id)
+        case 'tiles': {
+          const tiles = rg.group.tilesFor(layer.words);
+          push(
+            tilesToScene(
+              tiles,
+              () => ({ fill: { color: layer.fill ?? LIST } }),
+              (w) => `list:${sink.scope}${li}:${wordId(w)}`,
             ),
-          ),
-        );
-        break;
+          );
+          break;
+        }
+        case 'hull': {
+          // The design-doc semantics: the hull of the BASE-POINT images w·x₀.
+          // Spherical hulls beyond a hemisphere throw (the house refusal);
+          // render() surfaces that as a problem value.
+          const hull = hullOfWords(rg.group, layer.words);
+          hullAreas.push(polygonArea(geom, hull.vertices));
+          push([
+            polygonItem(
+              hull,
+              {
+                fill: { color: layer.fill ?? HULL, opacity: layer.fill ? 0.85 : 0.35 },
+                edge: layer.stroke ? { color: layer.stroke, width: 0.03 * rg.r0 } : undefined,
+              },
+              `hull:${sink.scope}${li}`,
+            ),
+          ]);
+          break;
+        }
+        case 'cosets': {
+          // Validation guarantees the anchor exists (∅ / one / a meeting pair).
+          // The tiles are the FIELD's vector twin, so they carry `field:tile:`
+          // ids — mergeFieldPaths coalesces same-hue cosets in the SVG.
+          const anchor = parabolicFixedPoint(rg.group, layer.subgroup)!;
+          const tiles = tilesFor(layer.extent);
+          tileCount += tiles.length;
+          push(
+            tilesToScene(
+              tiles,
+              (t) => ({ fill: { color: hueColor(hashHue(geom.apply(t.element, anchor))) } }),
+              fieldTileId,
+            ),
+          );
+          break;
+        }
+        case 'uniform': {
+          const colors = layer.palette ?? [...TYPE_COLORS];
+          const rings = [0, 1, 2].map((i) => layer.rings.includes(i));
+          const cells = uniformCells(rg.group, rg.poly, rings, coverRadius(), MAX_TILES);
+          noteCap(cells.length);
+          uniformCellCount += cells.length;
+          push(
+            cells.map((c, k) =>
+              polygonItem(
+                c.polytope,
+                {
+                  fill: { color: colors[c.type % colors.length] },
+                  edge: { color: UNIFORM_EDGE, width: 0.02 * rg.r0, opacity: 0.75 },
+                },
+                `field:tile:${c.type}:${k}`, // the field's vector twin (house id)
+              ),
+            ),
+          );
+          break;
+        }
       }
-    }
+    });
+  };
+
+  // The background: the shared picture, which owns the field and the camera.
+  emitLayers(figure.layers, { scene, overlay: overlayItems, allowField: true, scope: '' });
+  // Each view: a CPU overlay over the background, at the same camera.
+  const views: AssembledView[] = (figure.views ?? []).map((v, vi) => {
+    const viewScene: SceneItem[] = [];
+    emitLayers(v.layers, { scene: viewScene, overlay: null, allowField: false, scope: `v${vi}:` });
+    return { name: v.name, scene: viewScene };
   });
 
   return {
@@ -359,6 +400,7 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
     overlay: field !== null ? overlayItems : null,
     field,
     camera,
+    views,
     diagnostics: {
       geometry: rg.kind,
       tileCount,

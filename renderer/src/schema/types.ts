@@ -99,13 +99,28 @@ export type Layer =
  */
 export type GroupPresentation = { coxeterMatrix: CoxeterMatrix } | { polygon: readonly number[] };
 
+/**
+ * A named view: one figure-description (a bundle of drawing decisions) over
+ * the shared background. When a document carries views, the viewer offers a
+ * control (a toggle for 2, a dropdown for 3+) to swap between them; the
+ * background — the top-level `layers` — and the camera stay fixed. PLAN §13.
+ */
+export interface View {
+  name: string;
+  layers: Layer[];
+}
+
 export interface Figure {
-  version: '0.1';
+  /** '0.2' iff `views` is present; else '0.1' (a single picture, as before). */
+  version: '0.1' | '0.2';
   /** Optional display title: the saved page's browser-tab title, export filenames. */
   title?: string;
   group: GroupPresentation;
   model: ModelName; // defaulted to 'auto' by checkFigure
+  /** The background: layers shared by every view (or the whole picture, if no views). */
   layers: Layer[];
+  /** Swappable figure-descriptions over the background (present ⇒ version '0.2'). */
+  views?: View[];
 }
 
 /** One thing wrong with a document, located by a dotted path into it. */

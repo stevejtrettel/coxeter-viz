@@ -147,3 +147,43 @@ def test_document_is_a_copy():
 def test_unknown_save_format():
     with pytest.raises(ValueError, match="unknown output format"):
         cx.figure(M237).save("x.pdf")
+
+
+# ── views: background + swappable figure-descriptions (PLAN §13) ─────────
+
+
+def test_views_document_structure():
+    fig = cx.figure(M237, model="poincare")
+    fig.tessellation(ball=4.0, color="parity")            # the background
+    fig.view("words").tiles([[0, 1]], fill="#d15954")
+    fig.view("inverses").tiles([[1, 0]], fill="#2f6fb7")
+    doc = fig.document()
+    assert doc["version"] == "0.2"                         # views ⇒ v0.2
+    assert doc["layers"] == [
+        {"type": "tessellation", "extent": {"ball": 4.0}, "color": {"map": "parity"}}
+    ]
+    assert doc["views"] == [
+        {"name": "words", "layers": [{"type": "tiles", "words": [[0, 1]], "fill": "#d15954"}]},
+        {"name": "inverses", "layers": [{"type": "tiles", "words": [[1, 0]], "fill": "#2f6fb7"}]},
+    ]
+
+
+def test_no_views_stays_v01():
+    doc = cx.figure(M237).tessellation().document()
+    assert doc["version"] == "0.1"
+    assert "views" not in doc
+
+
+def test_view_ops_chain_into_the_view():
+    fig = cx.figure(M237)
+    v = fig.view("v")
+    assert v.tiles([[0]]).walls() is v          # view ops return the view
+    assert fig.tessellation() is fig            # figure ops return the figure
+    doc = fig.document()
+    assert doc["layers"] == [{"type": "tessellation"}]                       # background
+    assert doc["views"][0]["layers"] == [{"type": "tiles", "words": [[0]]}, {"type": "walls"}]
+
+
+def test_view_name_must_be_nonempty_string():
+    with pytest.raises(TypeError):
+        cx.figure(M237).view("")

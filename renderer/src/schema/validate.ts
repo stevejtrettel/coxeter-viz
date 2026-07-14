@@ -6,7 +6,7 @@ import {
 } from '@/coxeter/matrix';
 import type { RealizationSpec } from '@/coxeter/spec';
 import type { GeometryKind } from '@/geometry/types';
-import type { FigureCheck, FigureProblem, GroupPresentation, Layer, ModelName } from './types';
+import type { FigureCheck, FigureProblem, GroupPresentation, Layer, ModelName, View } from './types';
 
 /**
  * checkFigure (README): parse + validate a figure document, collecting every
@@ -60,11 +60,14 @@ export function checkFigure(raw: unknown): FigureCheck {
     return { ok: false, problems: [{ path: '', problem: 'a figure document is a JSON object.' }] };
   }
   for (const key of Object.keys(raw)) {
-    if (!['version', 'title', 'group', 'model', 'layers'].includes(key)) bad(key, 'unknown field.');
+    if (!['version', 'title', 'group', 'model', 'layers', 'views'].includes(key)) bad(key, 'unknown field.');
   }
 
-  if (raw.version !== '0.1') {
-    bad('version', `unknown version ${JSON.stringify(raw.version)}; this engine reads "0.1".`);
+  if (raw.version !== '0.1' && raw.version !== '0.2') {
+    bad('version', `unknown version ${JSON.stringify(raw.version)}; this engine reads "0.1" or "0.2".`);
+  }
+  if (raw.views !== undefined && raw.version !== '0.2') {
+    bad('views', 'a document with views must declare version "0.2".');
   }
 
   if (raw.title !== undefined && (typeof raw.title !== 'string' || raw.title.length === 0)) {
@@ -176,12 +179,14 @@ export function checkFigure(raw: unknown): FigureCheck {
     bad(path, 'a color spec is { "map": "parity" | "hue" } or { "constant": "#rrggbb" }.');
   };
 
-  // — the layers —
-  if (!Array.isArray(raw.layers)) {
-    bad('layers', 'required: an array of layers, painted back to front.');
-  } else {
-    raw.layers.forEach((l, i) => {
-      const p = `layers[${i}]`;
+  // — the layers (reused for the background and each view) —
+  const checkLayers = (value: unknown, base: string): void => {
+    if (!Array.isArray(value)) {
+      bad(base, 'required: an array of layers, painted back to front.');
+      return;
+    }
+    value.forEach((l, i) => {
+      const p = `${base}[${i}]`;
       if (!isRecord(l)) return bad(p, 'a layer is an object with a "type".');
       const t = l.type;
       if (typeof t !== 'string' || !(t in OP_FIELDS)) {
@@ -291,17 +296,43 @@ export function checkFigure(raw: unknown): FigureCheck {
           break;
       }
     });
+  };
+  checkLayers(raw.layers, 'layers');
+
+  // — the views: named layer-bundles over the background (PLAN §13) —
+  if (raw.views !== undefined) {
+    if (!Array.isArray(raw.views)) {
+      bad('views', 'views is an array of { "name", "layers" }.');
+    } else {
+      const names = new Set<string>();
+      raw.views.forEach((v, vi) => {
+        const vp = `views[${vi}]`;
+        if (!isRecord(v)) return bad(vp, 'a view is { "name", "layers" }.');
+        for (const k of Object.keys(v)) {
+          if (k !== 'name' && k !== 'layers') bad(`${vp}.${k}`, 'unknown field on a view.');
+        }
+        if (typeof v.name !== 'string' || v.name.length === 0) {
+          bad(`${vp}.name`, 'a view name is a non-empty string.');
+        } else if (names.has(v.name)) {
+          bad(`${vp}.name`, `duplicate view name ${JSON.stringify(v.name)}.`);
+        } else {
+          names.add(v.name);
+        }
+        checkLayers(v.layers, `${vp}.layers`);
+      });
+    }
   }
 
   if (problems.length > 0) return { ok: false, problems };
   return {
     ok: true,
     figure: {
-      version: '0.1',
+      version: raw.version as '0.1' | '0.2',
       ...(raw.title !== undefined ? { title: raw.title as string } : {}),
       group: raw.group as GroupPresentation,
       model,
       layers: raw.layers as Layer[],
+      ...(raw.views !== undefined ? { views: raw.views as View[] } : {}),
     },
   };
 }

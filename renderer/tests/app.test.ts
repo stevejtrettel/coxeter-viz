@@ -204,4 +204,37 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
     const tile = a.scene.find((i) => i.kind === 'polygon');
     expect(tile && tile.kind === 'polygon' && tile.style.fill?.color).toBe('#abcdef');
   });
+
+  it('views (P13): background owns the field + camera; each view is a CPU overlay', () => {
+    const a = assemble(
+      checked({
+        version: '0.2',
+        group: { coxeterMatrix: [[1, 2, 7], [2, 1, 3], [7, 3, 1]] },
+        layers: [{ type: 'tessellation', color: { map: 'parity' } }], // background (a field)
+        views: [
+          { name: 'words', layers: [{ type: 'tiles', words: [[0, 1]], fill: '#d15954' }] },
+          { name: 'inverses', layers: [{ type: 'tiles', words: [[1, 0]], fill: '#2f6fb7' }] },
+        ],
+      }),
+      SIZE,
+    );
+    // the background claims the field; the camera is the single shared one
+    expect(a.diagnostics.field).toBe(true);
+    expect(a.field).not.toBeNull();
+    // two named views, each a CPU overlay of its own tiles, scoped ids
+    expect(a.views.map((v) => v.name)).toEqual(['words', 'inverses']);
+    expect(a.views[0].scene.length).toBeGreaterThan(0);
+    expect(a.views[0].scene.every((i) => i.id.startsWith('list:v0:'))).toBe(true);
+    expect(a.views[1].scene.every((i) => i.id.startsWith('list:v1:'))).toBe(true);
+    const fills = a.views[0].scene.map((i) => (i.kind === 'polygon' ? i.style.fill?.color : undefined));
+    expect(fills).toContain('#d15954');
+    // view items never leak into the background scene/overlay
+    expect(a.scene.some((i) => i.id.startsWith('list:v'))).toBe(false);
+    expect((a.overlay ?? []).some((i) => i.id.startsWith('list:v'))).toBe(false);
+  });
+
+  it('no views ⇒ an empty views list, background unchanged', () => {
+    const a = assemble(fixture('tessellation.json'), SIZE);
+    expect(a.views).toEqual([]);
+  });
 });

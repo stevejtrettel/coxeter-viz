@@ -118,7 +118,7 @@ describe('the figure document (schema/, PLAN §7.4)', () => {
 
   it('collects every problem in one pass (validation never fail-fasts)', () => {
     const doc = {
-      version: '0.2',
+      version: '9.9', // unknown version
       group: { coxeterMatrix: [[1, -1], [-1, 1]] },
       layers: [{ type: 'walls', width: -1 }],
     };
@@ -163,5 +163,51 @@ describe('the figure document (schema/, PLAN §7.4)', () => {
 
     const noRings = { ...base(), layers: [{ type: 'uniform', rings: [] }] };
     expect(problemsOf(noRings).join('\n')).toMatch(/at least one ring/);
+  });
+});
+
+describe('views — background + swappable descriptions (PLAN §13)', () => {
+  const withViews = (views: unknown) => ({ ...base(), version: '0.2', views });
+
+  it('accepts a background + named views, echoing version 0.2', () => {
+    const fig = accepted(
+      withViews([
+        { name: 'words', layers: [{ type: 'tiles', words: [[0, 1]] }] },
+        { name: 'inverses', layers: [{ type: 'tiles', words: [[1, 0]] }] },
+      ]),
+    );
+    expect(fig.version).toBe('0.2');
+    expect(fig.views?.map((v) => v.name)).toEqual(['words', 'inverses']);
+    expect(fig.layers.length).toBe(1); // the background survives
+  });
+
+  it('a plain document stays 0.1 with no views', () => {
+    const fig = accepted(base());
+    expect(fig.version).toBe('0.1');
+    expect(fig.views).toBeUndefined();
+  });
+
+  it('views require version 0.2', () => {
+    expect(problemsOf({ ...base(), views: [{ name: 'a', layers: [] }] }).join()).toMatch(/version "0\.2"/);
+  });
+
+  it('rejects empty and duplicate view names', () => {
+    expect(problemsOf(withViews([{ name: '', layers: [] }])).join()).toMatch(/non-empty/);
+    expect(
+      problemsOf(withViews([{ name: 'x', layers: [] }, { name: 'x', layers: [] }])).join(),
+    ).toMatch(/duplicate/);
+  });
+
+  it("validates a view's layers, located by the view path", () => {
+    const p = problemsOf(
+      withViews([{ name: 'a', layers: [{ type: 'tiles', words: [[0, 99]] }] }]),
+    );
+    expect(p.some((s) => s.startsWith('views[0].layers[0].words'))).toBe(true);
+  });
+
+  it('rejects an unknown field on a view', () => {
+    expect(problemsOf(withViews([{ name: 'a', layers: [], extra: 1 }])).join()).toMatch(
+      /unknown field on a view/,
+    );
   });
 });

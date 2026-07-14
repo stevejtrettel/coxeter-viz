@@ -2520,11 +2520,37 @@ pictures (static export). It composes with the compute side: compute N bags
 
 ### 13.3 Increments (each green-gated, README-first where a module is new)
 
-1. **Schema + Python builder** (pure, no rendering): `views` in schema
-   types + `checkFigure`; the `View` sub-builder + `document()` + version
-   logic; cross-language fixtures. Fully testable at the document level.
-2. **Assemble: background + per-view overlays** — scene-level pins (shared
-   camera, background field, per-view overlay items).
+1. **Schema + Python builder — DONE 2026-07-13.** `View`/`Figure.views?` in
+   schema types; `checkFigure` accepts `views` (version `"0.2"` iff present;
+   distinct non-empty names; each view's layers validated via an extracted
+   `checkLayers`, located by the `views[i].layers[j]…` path) and echoes the
+   version. Python: the ops moved to a shared `_LayerBuilder`; `Figure` holds
+   the background `_layers` + ordered `_views`; `View(_LayerBuilder)`;
+   `fig.view(name)` returns a chainable view; `document()` emits `views` and
+   the right version (v0.1 unchanged when no views). save/show/check build
+   from `document()`. Assemble/render still draw only the background (views
+   rendered in increments 2–3). Pins: 6 TS (accept, version echo, views-need-
+   0.2, empty/duplicate names, view-layer path, unknown field) + 4 Python
+   (document structure, no-views-stays-0.1, view-ops-chain, name validation);
+   the existing multi-problem test repointed to an invalid version. **No
+   shared fixture yet** — a views fixture would hit the golden-SVG renderer,
+   which can't draw views until increment 3; cross-language agreement is
+   pinned inline instead. 498 vitest / 67 pytest. schema README updated.
+2. **Assemble: background + per-view overlays — DONE 2026-07-13.** The
+   per-layer switch extracted into `emitLayers(layers, sink)` where `sink =
+   { scene, overlay, allowField, scope }`. The BACKGROUND runs with
+   `{ scene, overlay: overlayItems, allowField: true, scope: '' }` (owns THE
+   field + the auto-fit camera; ids unchanged, so golden SVGs are
+   byte-identical). Each VIEW runs with `{ scene: viewScene, overlay: null,
+   allowField: false, scope: 'v<i>:' }` — CPU-only (the field is the
+   background's, so a swap re-paints only vectors), ids namespaced so
+   background + active view never collide. `Assembled` gains
+   `views: AssembledView[]` (`{ name, scene }`; empty when no views). render/
+   export unchanged (they ignore `views` — painting views is increment 3).
+   Pins: background field + shared camera, two named views as CPU overlays
+   with `list:v0:`/`list:v1:` ids, view fills correct, and view items never
+   leak into the background scene/overlay; no-views ⇒ `views: []`. 500
+   vitest / 67 pytest.
 3. **Viewer: `render()` view-switching + template control** — background
    once, overlay swap at fixed camera; headless-verified (the control
    appears, swapping changes only the overlay, camera preserved).

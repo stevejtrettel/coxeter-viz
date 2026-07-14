@@ -1,11 +1,15 @@
 """The figure builder: one method per drawing op, each appending one dict.
 
-Mirrors the figure-document schema v0.1 (src/schema/README.md in the
-repo) exactly — the cross-language tests pin the builder's output against
-the same fixture documents the engine's tests use, so the two languages
-cannot drift. Python does no mathematics and no semantic validation:
-structural coercion only (`operator.index` for generator indices — numpy
-ints pass, floats refuse), everything else is the engine's to judge.
+Mirrors the figure-document schema (renderer/src/schema/README.md) exactly —
+the cross-language tests pin the builder's output against the same fixture
+documents the engine's tests use, so the two languages cannot drift. Python
+does no mathematics and no semantic validation: structural coercion only
+(`operator.index` for generator indices — numpy ints pass, floats refuse),
+everything else is the engine's to judge.
+
+A figure carries a shared **background** (its own layers) and optional named
+**views** (`fig.view(name)`) — swappable figure-descriptions over that
+background (PLAN §13). Views ⇒ document version "0.2"; else "0.1".
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from __future__ import annotations
 import copy
 import operator
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from . import _html
 
@@ -106,28 +110,33 @@ def polygon(
     return Figure({"polygon": _indices(orders, "polygon vertex orders")}, title=title, model=model)
 
 
-class Figure:
-    def __init__(self, group: dict[str, Any], *, title: str | None = None, model: str | None = None):
-        self._doc: dict[str, Any] = {"version": "0.1"}
-        if title is not None:
-            self._doc["title"] = title
-        self._doc["group"] = group
-        if model is not None:
-            self._doc["model"] = model
-        self._doc["layers"] = []
+_Self = TypeVar("_Self", bound="_LayerBuilder")
 
-    # ── the ops (schema v0.1, one method each; all return self) ──────────
 
-    def domain(self, *, fill: str | None = None) -> "Figure":
+class _LayerBuilder:
+    """The drawing ops, shared by the figure (its background) and each view.
+
+    Each op appends one layer to ``self._layers`` and returns ``self`` so calls
+    chain: the figure's ops add to the shared background; a view's ops add to
+    that view (PLAN §13).
+    """
+
+    _layers: list[dict[str, Any]]
+
+    def _add(self: _Self, layer: dict[str, Any]) -> _Self:
+        self._layers.append(_clean(layer))
+        return self
+
+    def domain(self: _Self, *, fill: str | None = None) -> _Self:
         """The fundamental chamber."""
-        return self._layer({"type": "domain", "fill": fill})
+        return self._add({"type": "domain", "fill": fill})
 
-    def walls(self, *, width: float | None = None, colors: list[str] | None = None) -> "Figure":
+    def walls(self: _Self, *, width: float | None = None, colors: list[str] | None = None) -> _Self:
         """The mirrors of the generators. width is intrinsic, × the inradius."""
-        return self._layer({"type": "walls", "width": width, "colors": colors})
+        return self._add({"type": "walls", "width": width, "colors": colors})
 
     def tessellation(
-        self,
+        self: _Self,
         *,
         ball: float | None = None,
         depth: int | None = None,
@@ -136,7 +145,7 @@ class Figure:
         edges: bool = False,
         edge_width: float | None = None,
         edge_colors: list[str] | None = None,
-    ) -> "Figure":
+    ) -> _Self:
         """The orbit of the chamber; one tile per element.
 
         color: 'parity' | 'hue' | any constant color string.
@@ -152,7 +161,7 @@ class Figure:
             if edges or edge_width is not None or edge_colors is not None
             else None
         )
-        return self._layer(
+        return self._add(
             {
                 "type": "tessellation",
                 "extent": _extent(ball, depth),
@@ -163,18 +172,18 @@ class Figure:
         )
 
     def cayley(
-        self,
+        self: _Self,
         *,
         ball: float | None = None,
         depth: int | None = None,
         node_size: float | None = None,
         node_color: str | None = None,
         edge_width: float | None = None,
-    ) -> "Figure":
+    ) -> _Self:
         """The Cayley graph: vertices at the incenter orbit, edges by generator."""
         node = _clean({"size": node_size, "color": node_color})
         edge = _clean({"width": edge_width})
-        return self._layer(
+        return self._add(
             {
                 "type": "cayley",
                 "extent": _extent(ball, depth),
@@ -183,28 +192,28 @@ class Figure:
             }
         )
 
-    def tiles(self, words: Any, *, fill: str | None = None) -> "Figure":
+    def tiles(self: _Self, words: Any, *, fill: str | None = None) -> _Self:
         """The tiles the word list names: word w ↦ THE TILE w·(chamber)."""
-        return self._layer({"type": "tiles", "words": _words(words), "fill": fill})
+        return self._add({"type": "tiles", "words": _words(words), "fill": fill})
 
-    def hull(self, words: Any, *, fill: str | None = None, stroke: str | None = None) -> "Figure":
+    def hull(self: _Self, words: Any, *, fill: str | None = None, stroke: str | None = None) -> _Self:
         """The convex hull of the words' base-point images (area reported by the engine)."""
-        return self._layer({"type": "hull", "words": _words(words), "fill": fill, "stroke": stroke})
+        return self._add({"type": "hull", "words": _words(words), "fill": fill, "stroke": stroke})
 
     def cosets(
-        self,
+        self: _Self,
         subgroup: Any,
         *,
         ball: float | None = None,
         depth: int | None = None,
-    ) -> "Figure":
+    ) -> _Self:
         """Left cosets of the parabolic on these generators, one color each.
 
         The coloring is the engine's shared hue law (CPU/SVG/GPU agree
         bit-exactly); the subgroup must admit a fixed anchor — empty, one
         generator, or a meeting pair — else the engine refuses with why.
         """
-        return self._layer(
+        return self._add(
             {
                 "type": "cosets",
                 "subgroup": _indices(subgroup, "subgroup"),
@@ -212,15 +221,53 @@ class Figure:
             }
         )
 
-    def uniform(self, rings: Any, *, palette: list[str] | None = None) -> "Figure":
+    def uniform(self: _Self, rings: Any, *, palette: list[str] | None = None) -> _Self:
         """The Wythoff uniform tiling of the ringed seed (triangle groups)."""
-        return self._layer({"type": "uniform", "rings": _indices(rings, "rings"), "palette": palette})
+        return self._add({"type": "uniform", "rings": _indices(rings, "rings"), "palette": palette})
+
+
+class View(_LayerBuilder):
+    """One named figure-description over the background (PLAN §13): its ops add
+    to this view, which the viewer swaps in with a toggle/dropdown."""
+
+    def __init__(self, name: str):
+        if not isinstance(name, str) or not name:
+            raise TypeError("a view name is a non-empty string.")
+        self.name = name
+        self._layers: list[dict[str, Any]] = []
+
+
+class Figure(_LayerBuilder):
+    def __init__(self, group: dict[str, Any], *, title: str | None = None, model: str | None = None):
+        self._group = group
+        self._title = title
+        self._model = model
+        self._layers: list[dict[str, Any]] = []  # the background (shared by every view)
+        self._views: list[View] = []
+
+    def view(self, name: str) -> View:
+        """A named, swappable figure-description over the background. Its ops
+        add to the view, not the background; the viewer swaps between views
+        (a toggle for 2, a dropdown for 3+) at a fixed camera."""
+        v = View(name)
+        self._views.append(v)
+        return v
 
     # ── the document and the outputs ──────────────────────────────────────
 
     def document(self) -> dict[str, Any]:
-        """The figure document (a deep copy) — the exact JSON the engine reads."""
-        return copy.deepcopy(self._doc)
+        """The figure document (fresh each call) — the exact JSON the engine
+        reads. version '0.2' iff there are views, else '0.1'."""
+        doc: dict[str, Any] = {"version": "0.2" if self._views else "0.1"}
+        if self._title is not None:
+            doc["title"] = self._title
+        doc["group"] = copy.deepcopy(self._group)
+        if self._model is not None:
+            doc["model"] = self._model
+        doc["layers"] = copy.deepcopy(self._layers)
+        if self._views:
+            doc["views"] = [{"name": v.name, "layers": copy.deepcopy(v._layers)} for v in self._views]
+        return doc
 
     def save(self, path: str | Path, **options: Any) -> Path:
         """Write the figure. The format is the extension:
@@ -232,15 +279,16 @@ class Figure:
         """
         p = Path(path)
         suffix = p.suffix.lower()
+        doc = self.document()
         if suffix == ".html":
             if options:
                 raise TypeError(f"save('.html') takes no options; got {sorted(options)}")
-            p.write_text(_html.page(self._doc), encoding="utf-8")
+            p.write_text(_html.page(doc), encoding="utf-8")
             return p
         if suffix in (".png", ".svg"):
             from . import _export  # deferred: needs the [export] extra
 
-            _export.save(self._doc, p, suffix, **options)
+            _export.save(doc, p, suffix, **options)
             return p
         raise ValueError(f"unknown output format {suffix!r}: use .html, .png, or .svg")
 
@@ -256,7 +304,7 @@ class Figure:
         with tempfile.NamedTemporaryFile(
             "w", suffix=".html", prefix="coxeter-groups-", delete=False, encoding="utf-8"
         ) as f:
-            f.write(_html.page(self._doc))
+            f.write(_html.page(self.document()))
         webbrowser.open(f"file://{f.name}")
         return Path(f.name)
 
@@ -268,10 +316,4 @@ class Figure:
         """
         from . import _export
 
-        _export.check(self._doc)
-
-    # ── internals ─────────────────────────────────────────────────────────
-
-    def _layer(self, layer: dict[str, Any]) -> "Figure":
-        self._doc["layers"].append(_clean(layer))
-        return self
+        _export.check(self.document())

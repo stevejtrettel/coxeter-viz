@@ -55,7 +55,36 @@ Position in the dependency law:
   Poincaré (H), the plane (E), stereographic (S). A model incompatible
   with the inferred geometry is a validation problem. (The perspective
   globe is not a v0.1 model; parked.)
-- **`layers`** — painted back to front.
+- **`layers`** — painted back to front. With `views`, this is the shared
+  **background** (drawn under every view); without views it is the whole
+  picture.
+
+## Views (v0.2) — background + swappable descriptions (PLAN §13)
+
+A figure may carry named **views**, each a bundle of layers (a
+figure-description) over the shared background. The viewer draws the
+background once and offers a control — a toggle for 2, a dropdown for 3+ —
+to swap the active view, at a fixed camera; static export renders one
+picture per view. It is declarative data, not UI: the document says "N views
+over this background," the viewer decides how to present them.
+
+```jsonc
+{
+  "version": "0.2",                              // '0.2' IFF views present
+  "group": { "coxeterMatrix": [[1,2,7],[2,1,3],[7,3,1]] },
+  "layers": [ { "type": "tessellation", "color": { "map": "parity" } } ],  // background
+  "views": [
+    { "name": "words",    "layers": [ { "type": "tiles", "words": [[0,1]] } ] },
+    { "name": "inverses", "layers": [ { "type": "tiles", "words": [[1,0]] } ] }
+  ]
+}
+```
+
+- **`views`** — an array of `{ name, layers }`; names non-empty and
+  distinct; each view's `layers` validate exactly like the background.
+- **`version`** — `"0.2"` when `views` is present, else `"0.1"` (a plain
+  single picture, unchanged). Back-compatible: every v0.1 document is a
+  valid v0.2-capable document with no views.
 
 ## The ops (v0.1)
 
