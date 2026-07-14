@@ -14,6 +14,21 @@ from .element import Element
 from .rep import DEFAULT_TOL_DIGITS, ReflectionRep
 
 
+def _polygon_to_matrix(orders: Sequence[int]) -> list[list[int]]:
+    """Expand a polygon presentation to its Coxeter matrix (PLAN §10): entry
+    k is the order of s_k·s_{k+1 mod n} (the cyclic super/sub-diagonal);
+    non-adjacent walls never meet, so their entry is −1 (∞)."""
+    n = len(orders)
+    if n < 3:
+        raise ValueError("a polygon has at least 3 sides.")
+    M = [[1 if i == j else -1 for j in range(n)] for i in range(n)]  # diagonal 1, ∞ elsewhere
+    for k in range(n):
+        m = int(orders[k])
+        M[k][(k + 1) % n] = m
+        M[(k + 1) % n][k] = m
+    return M
+
+
 def _validate(M: list[list[int]]) -> None:
     n = len(M)
     if n == 0:
@@ -41,6 +56,15 @@ class CoxeterGroup:
         self.coxeter_matrix = M
         self.rank = len(M)
         self.rep = ReflectionRep(M, tol_digits=tol_digits)
+
+    @classmethod
+    def from_polygon(cls, orders: Sequence[int], *, tol_digits: int = DEFAULT_TOL_DIGITS) -> "CoxeterGroup":
+        """A group from its polygon presentation (PLAN §10; the default 2D
+        input): a cyclic list of vertex orders, entry k = the order of
+        s_k·s_{k+1 mod n}; non-adjacent walls never meet (∞). The same group
+        ``cx.polygon(orders)`` draws — e.g. ``from_polygon([2, 3, 7])`` is the
+        (2,3,7) triangle group."""
+        return cls(_polygon_to_matrix(orders), tol_digits=tol_digits)
 
     def element(self, word: Sequence[int]) -> Element:
         for i in word:

@@ -229,13 +229,32 @@ class _LayerBuilder:
 
 class View(_LayerBuilder):
     """One named figure-description over the background (PLAN §13): its ops add
-    to this view, which the viewer swaps in with a toggle/dropdown."""
+    to this view, which the viewer swaps in with a toggle/dropdown.
 
-    def __init__(self, name: str):
+    Chainable back to the figure: ``.view(name)`` opens another view and
+    ``.figure`` returns the figure — so a multi-view figure reads as one call:
+
+        (cx.figure(g).tessellation(color="parity")
+           .view("words").tiles(a.words(), fill="red")
+           .view("inverses").tiles(a.invert().words(), fill="blue")
+           .figure.save("x.html"))
+    """
+
+    def __init__(self, name: str, figure: "Figure"):
         if not isinstance(name, str) or not name:
             raise TypeError("a view name is a non-empty string.")
         self.name = name
+        self._figure = figure
         self._layers: list[dict[str, Any]] = []
+
+    @property
+    def figure(self) -> "Figure":
+        """The figure this view belongs to (to add a background layer, or save)."""
+        return self._figure
+
+    def view(self, name: str) -> "View":
+        """Open another view on the same figure (chains view-to-view)."""
+        return self._figure.view(name)
 
 
 class Figure(_LayerBuilder):
@@ -250,7 +269,7 @@ class Figure(_LayerBuilder):
         """A named, swappable figure-description over the background. Its ops
         add to the view, not the background; the viewer swaps between views
         (a toggle for 2, a dropdown for 3+) at a fixed camera."""
-        v = View(name)
+        v = View(name, self)
         self._views.append(v)
         return v
 

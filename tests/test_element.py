@@ -72,6 +72,20 @@ def test_index_and_matrix_validation():
         CoxeterGroup([[1, 1], [1, 1]])       # off-diagonal < 2
 
 
+def test_from_polygon():
+    # a triangle polygon = the (2,3,7) triangle group
+    assert CoxeterGroup.from_polygon([2, 3, 7]).coxeter_matrix == [[1, 2, 7], [2, 1, 3], [7, 3, 1]]
+    # a hexagon: orders on the cyclic diagonal, ∞ (−1) for non-adjacent walls
+    M = CoxeterGroup.from_polygon([2, 3, 2, 6, 4, 5]).coxeter_matrix
+    assert M[0][1] == 2 and M[3][4] == 6 and M[5][0] == 5
+    assert M[0][3] == -1 and M[1][4] == -1
+    assert all(M[i][i] == 1 for i in range(6))
+    # the polygon group is the group it expands to: [2,3,5] = H3, order 120
+    assert len(CoxeterGroup.from_polygon([2, 3, 5]).ball(50)) == 120
+    with pytest.raises(ValueError):
+        CoxeterGroup.from_polygon([2, 3])  # a polygon has ≥ 3 sides
+
+
 def test_figure_bridge_accepts_group():
     g = CoxeterGroup(A3)
     doc = cx.figure(g).tessellation().document()

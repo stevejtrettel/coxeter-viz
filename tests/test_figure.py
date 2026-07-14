@@ -187,3 +187,18 @@ def test_view_ops_chain_into_the_view():
 def test_view_name_must_be_nonempty_string():
     with pytest.raises(TypeError):
         cx.figure(M237).view("")
+
+
+def test_views_chain_fluently():
+    fig = (
+        cx.figure(M237)
+        .tessellation()
+        .view("a").tiles([[0]])
+        .view("b").tiles([[1]])
+        .figure
+    )
+    doc = fig.document()
+    assert [v["name"] for v in doc["views"]] == ["a", "b"]
+    assert doc["layers"] == [{"type": "tessellation"}]  # background from the figure op
+    assert doc["views"][0]["layers"] == [{"type": "tiles", "words": [[0]]}]
+    assert doc["views"][1]["layers"] == [{"type": "tiles", "words": [[1]]}]
