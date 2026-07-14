@@ -25,6 +25,12 @@ import { EXPORT_EPSILON_PX, pngFromAssembled, svgFromAssembled } from './export'
 
 export interface RenderHandle {
   diagnostics: RenderDiagnostics;
+  /** View names, in document order ([] when the document has no views). */
+  views: string[];
+  /** The active view's index (−1 when there are no views). */
+  activeView: number;
+  /** Switch the active view — re-paints its overlay at the SAME camera (no re-fit). */
+  setView(i: number): void;
   /** The picture AS PANNED/ZOOMED, re-assembled at export depth (ε 1.5 px). */
   svg(): string;
   /** k× resolution through the compositor: the field re-folds per pixel. */
@@ -92,12 +98,18 @@ export function render(container: HTMLElement, figure: unknown): RenderResult {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   let camera = asm.camera;
+  // The active view (−1 = none): a per-view CPU overlay painted OVER the
+  // background at the same camera. Swapping it re-paints only vectors.
+  let activeView = asm.views.length > 0 ? 0 : -1;
   let raf = 0;
   const repaint = (): void => {
     raf = 0;
     if (shader !== null && asm.field !== null) shader.draw(scaleCamera(camera, dpr), asm.field);
     g.clearRect(0, 0, widthPx, heightPx);
     paint(g, buildPathList(cpuScene, { geom, model: asm.realized.model, camera, size }), camera);
+    if (activeView >= 0) {
+      paint(g, buildPathList(asm.views[activeView].scene, { geom, model: asm.realized.model, camera, size }), camera);
+    }
   };
   const schedule = (): void => {
     if (raf === 0) raf = requestAnimationFrame(repaint);
@@ -123,8 +135,19 @@ export function render(container: HTMLElement, figure: unknown): RenderResult {
     ok: true,
     handle: {
       diagnostics: asm.diagnostics,
-      svg: () => svgFromAssembled(exportAssembled(), size),
-      png: (k, background) => pngFromAssembled(exportAssembled(), size, k, background),
+      views: asm.views.map((v) => v.name),
+      get activeView(): number {
+        return activeView;
+      },
+      setView(i: number): void {
+        if (i >= 0 && i < asm.views.length && i !== activeView) {
+          activeView = i;
+          schedule(); // same camera; only the overlay re-paints
+        }
+      },
+      svg: () => svgFromAssembled(exportAssembled(), size, activeView >= 0 ? activeView : undefined),
+      png: (k, background) =>
+        pngFromAssembled(exportAssembled(), size, k, background, activeView >= 0 ? activeView : undefined),
       dispose(): void {
         if (raf !== 0) cancelAnimationFrame(raf);
         interaction.dispose();

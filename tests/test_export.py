@@ -32,6 +32,32 @@ def test_save_svg(tmp_path):
     assert 'data-id="tile:e"' in svg
 
 
+def views_figure() -> cx.Figure:
+    fig = cx.figure(M237, model="poincare").tessellation(ball=4.0, color="parity")
+    fig.view("words").tiles([[0, 1], [0, 1, 2]], fill="#d15954")
+    fig.view("inverses").tiles([[1, 0], [2, 1, 0]], fill="#2f6fb7")
+    return fig
+
+
+def test_per_view_svg_export(tmp_path):
+    out = views_figure().save(tmp_path / "fig.svg")
+    assert isinstance(out, list)
+    assert {p.name for p in out} == {"fig-words.svg", "fig-inverses.svg"}
+    a, b = (p.read_text(encoding="utf-8") for p in out)
+    assert a.startswith("<svg") and b.startswith("<svg")
+    assert 'data-id="list:v0:' in a  # the words view's tiles, over the background
+    assert 'data-id="list:v1:' in b  # the inverses view's tiles
+    assert a != b                    # the two views differ
+
+
+def test_per_view_png_export(tmp_path):
+    out = views_figure().save(tmp_path / "fig.png", scale=2)
+    assert isinstance(out, list)
+    assert {p.name for p in out} == {"fig-words.png", "fig-inverses.png"}
+    for p in out:
+        assert p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 def test_save_png_at_scale(tmp_path):
     out = tiling().save(tmp_path / "237.png", scale=2, size=400)
     w, h = png_dimensions(out.read_bytes())

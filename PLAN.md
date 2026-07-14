@@ -2551,11 +2551,38 @@ pictures (static export). It composes with the compute side: compute N bags
    with `list:v0:`/`list:v1:` ids, view fills correct, and view items never
    leak into the background scene/overlay; no-views ⇒ `views: []`. 500
    vitest / 67 pytest.
-3. **Viewer: `render()` view-switching + template control** — background
-   once, overlay swap at fixed camera; headless-verified (the control
-   appears, swapping changes only the overlay, camera preserved).
-4. **Per-view exports** — `figureToSvg`/`figureToPng`/`save` emit one output
-   per view.
+3. **Viewer: view-switching + template control — DONE 2026-07-13.**
+   `render()` mounts the background once (field canvas + vector canvas) and
+   paints the active view's scene ON TOP at the same camera; the handle gains
+   `views: string[]`, `activeView`, `setView(i)` (which just re-`schedule()`s
+   a repaint — no re-assemble, no re-fit). `template.html` builds a
+   hover-revealed bottom-left control: a **toggle (buttons) for 2 views, a
+   dropdown for 3+**, none for 0/1; wired to `setView`. Headless-verified
+   (Playwright): the control appears (2→buttons, 3→dropdown with the right
+   names), swapping changes the picture and the active button, the canvases
+   are the SAME nodes after a swap (no re-mount ⇒ camera preserved), zero
+   console errors. 500 vitest / 67 pytest. **Known gap → increment 4:** the
+   live `svg()`/`png()` exports still render the background only (not the
+   active view).
+4. **Per-view exports — DONE 2026-07-13.** `ExportOptions.view?: number`
+   threads through `figureToSvg`/`figureToPng` → `svg/pngFromAssembled`,
+   overlaying `asm.views[view].scene` on the background (SVG: appended to the
+   scene; PNG: appended to the overlay/scene layer). The live handle's
+   `svg()`/`png()` now pass the ACTIVE view (closing the increment-3 gap);
+   the template names downloads `stem-<view>`. Python: `_export.save(…,
+   view=)`; `Figure.save('.svg'/'.png')` with views writes ONE FILE PER VIEW
+   (`stem-<safe-name>.ext`) and returns `list[Path]` (single `Path` when no
+   views — unchanged). `.html` stays the one interactive multi-view page.
+   Pins: 1 TS (per-view SVG carries `list:v0:`/`list:v1:`, distinct, over the
+   background) + 2 Python (per-view `.svg`/`.png` files, right names, PNG
+   headers, views differ). 501 vitest / 69 pytest.
+
+**MILESTONE §13 COMPLETE (increments 1–4, 2026-07-13).** The full grammar
+runs end to end: `fig.view(name)` (Python) → schema v0.2 (`views` +
+background) → assemble (shared background + per-view CPU overlays, one
+camera) → the live viewer (background once, toggle/dropdown swaps the view
+at a fixed camera, headless-verified) → per-view SVG/PNG + the single
+multi-view HTML. Deferred/parked as before (§12.7).
 
 Start at (1): it fixes the grammar and the document contract with zero
 rendering risk, and everything downstream builds against it.

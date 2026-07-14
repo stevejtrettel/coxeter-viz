@@ -76,20 +76,25 @@ def _size_opt(size: Any) -> dict[str, int]:
     return {"widthPx": int(w), "heightPx": int(h)}
 
 
-def _svg(document: dict[str, Any], size: Any) -> str:
+def _svg(document: dict[str, Any], size: Any, view: int | None = None) -> str:
+    opts: dict[str, Any] = {"size": _size_opt(size)}
+    if view is not None:
+        opts["view"] = view
     result = _page().evaluate(
         "(a) => coxeterViz.figureToSvg(a.doc, a.opts)",
-        {"doc": document, "opts": {"size": _size_opt(size)}},
+        {"doc": document, "opts": opts},
     )
     if not result["ok"]:
         _raise_problems(result["problems"])
     return result["value"]
 
 
-def _png(document: dict[str, Any], size: Any, scale: int, background: str | None) -> bytes:
+def _png(document: dict[str, Any], size: Any, scale: int, background: str | None, view: int | None = None) -> bytes:
     opts: dict[str, Any] = {"size": _size_opt(size)}
     if background is not None:
         opts["background"] = background
+    if view is not None:
+        opts["view"] = view
     result = _page().evaluate(
         """
         async (a) => {
@@ -120,15 +125,17 @@ def save(
     scale: int | None = None,
     background: str | None = None,
     size: Any = 800,
+    view: int | None = None,
 ) -> None:
     """Write .svg (vector; no scale/background — honest at any size) or
-    .png (shader-rendered at scale×; background default: transparent)."""
+    .png (shader-rendered at scale×; background default: transparent).
+    `view` overlays that view on the background (PLAN §13)."""
     if suffix == ".svg":
         if scale is not None or background is not None:
             raise TypeError("SVG export takes no scale/background (a vector is honest at any size)")
-        path.write_text(_svg(document, size), encoding="utf-8")
+        path.write_text(_svg(document, size, view), encoding="utf-8")
         return
-    path.write_bytes(_png(document, size, scale if scale is not None else 2, background))
+    path.write_bytes(_png(document, size, scale if scale is not None else 2, background, view))
 
 
 def check(document: dict[str, Any]) -> None:

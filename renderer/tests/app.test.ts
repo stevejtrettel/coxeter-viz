@@ -237,4 +237,26 @@ describe('app/assemble (P3): checked figure → scene + camera', () => {
     const a = assemble(fixture('tessellation.json'), SIZE);
     expect(a.views).toEqual([]);
   });
+
+  it('figureToSvg per view (P13): background + the selected view, distinct per view', () => {
+    const doc = {
+      version: '0.2',
+      group: { coxeterMatrix: [[1, 2, 7], [2, 1, 3], [7, 3, 1]] },
+      layers: [{ type: 'walls' }], // a simple (non-field) background
+      views: [
+        { name: 'words', layers: [{ type: 'tiles', words: [[0, 1]], fill: '#d15954' }] },
+        { name: 'inverses', layers: [{ type: 'tiles', words: [[1, 0]], fill: '#2f6fb7' }] },
+      ],
+    };
+    const bg = figureToSvg(doc);
+    const v0 = figureToSvg(doc, { view: 0 });
+    const v1 = figureToSvg(doc, { view: 1 });
+    expect(bg.ok && v0.ok && v1.ok).toBe(true);
+    if (!bg.ok || !v0.ok || !v1.ok) return;
+    expect(bg.value).not.toContain('list:v0:'); // background alone: no view tiles
+    expect(v0.value).toContain('list:v0:'); // each view overlays its own tiles
+    expect(v1.value).toContain('list:v1:');
+    expect(v0.value).not.toEqual(v1.value); // the views differ
+    expect(v0.value).toContain('wall:'); // the background is still under the view
+  });
 });

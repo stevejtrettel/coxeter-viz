@@ -23,6 +23,19 @@
       border: 1px solid #ccc; border-radius: 4px;
     }
     #exports button:hover { background: #f2f0ea; }
+    /* The view switcher (bottom-left), hover-revealed like the exports. */
+    #views {
+      position: fixed; left: 12px; bottom: 12px; display: flex; gap: 6px; align-items: center;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    body:hover #views { opacity: 1; }
+    #views button, #views select {
+      font: 12px system-ui, sans-serif; padding: 4px 10px; cursor: pointer;
+      color: #444; background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #ccc; border-radius: 4px;
+    }
+    #views button:hover { background: #f2f0ea; }
+    #views button.active { background: #444; color: #fff; border-color: #444; }
   </style>
 </head>
 <body>
@@ -31,6 +44,7 @@
     <button id="dl-svg" type="button">SVG</button>
     <button id="dl-png" type="button">PNG 4&times;</button>
   </div>
+  <div id="views" hidden></div>
   <script>/*__COXETER_VIZ_BUNDLE__*/</script>
   <script>
     (function () {
@@ -38,7 +52,46 @@
       var FIGURE = "__COXETER_VIZ_FIGURE__";
       var container = document.getElementById('figure');
       var exportsBox = document.getElementById('exports');
+      var viewsBox = document.getElementById('views');
       var handle = null;
+
+      // The view switcher: a toggle for 2 views, a dropdown for 3+, none for
+      // 0/1. Switching calls handle.setView — the background and camera stay.
+      function buildViewControl() {
+        viewsBox.textContent = '';
+        if (!handle || handle.views.length < 2) {
+          viewsBox.hidden = true;
+          return;
+        }
+        viewsBox.hidden = false;
+        var names = handle.views;
+        if (names.length === 2) {
+          names.forEach(function (name, i) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = name;
+            if (i === handle.activeView) b.className = 'active';
+            b.addEventListener('click', function () {
+              handle.setView(i);
+              Array.prototype.forEach.call(viewsBox.children, function (c, j) {
+                c.className = j === i ? 'active' : '';
+              });
+            });
+            viewsBox.appendChild(b);
+          });
+        } else {
+          var sel = document.createElement('select');
+          names.forEach(function (name, i) {
+            var o = document.createElement('option');
+            o.value = String(i);
+            o.textContent = name;
+            if (i === handle.activeView) o.selected = true;
+            sel.appendChild(o);
+          });
+          sel.addEventListener('change', function () { handle.setView(Number(sel.value)); });
+          viewsBox.appendChild(sel);
+        }
+      }
 
       function mount() {
         if (handle) handle.dispose();
@@ -53,10 +106,12 @@
             .join('\n\n');
           container.appendChild(pre);
           exportsBox.hidden = true;
+          viewsBox.hidden = true;
           return;
         }
         handle = result.handle;
         exportsBox.hidden = false;
+        buildViewControl();
       }
       mount();
 
@@ -74,11 +129,15 @@
         a.click();
         setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
       }
+      function viewSuffix() {
+        if (!handle || handle.views.length < 2) return '';
+        return '-' + handle.views[handle.activeView].replace(/[^a-z0-9]+/gi, '-');
+      }
       document.getElementById('dl-svg').addEventListener('click', function () {
-        if (handle) download(stem + '.svg', new Blob([handle.svg()], { type: 'image/svg+xml' }));
+        if (handle) download(stem + viewSuffix() + '.svg', new Blob([handle.svg()], { type: 'image/svg+xml' }));
       });
       document.getElementById('dl-png').addEventListener('click', function () {
-        if (handle) handle.png(4).then(function (blob) { download(stem + '@4x.png', blob); });
+        if (handle) handle.png(4).then(function (blob) { download(stem + viewSuffix() + '@4x.png', blob); });
       });
     })();
   </script>

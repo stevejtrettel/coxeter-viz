@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import operator
+import re
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -269,13 +270,17 @@ class Figure(_LayerBuilder):
             doc["views"] = [{"name": v.name, "layers": copy.deepcopy(v._layers)} for v in self._views]
         return doc
 
-    def save(self, path: str | Path, **options: Any) -> Path:
+    def save(self, path: str | Path, **options: Any) -> Path | list[Path]:
         """Write the figure. The format is the extension:
 
-        .html — a self-contained live illustration (no dependencies).
+        .html — a self-contained live illustration (no dependencies); with
+                views, ONE interactive page whose toggle/dropdown swaps them.
         .png  — shader-rendered raster; options: scale (the k×, default 2),
                 background (default: honestly transparent), size.  [export extra]
         .svg  — the exact vector picture; options: size.            [export extra]
+
+        With views, .png/.svg write ONE FILE PER VIEW (``stem-<name>.ext``)
+        and return the list of paths; otherwise a single file / one Path.
         """
         p = Path(path)
         suffix = p.suffix.lower()
@@ -288,6 +293,14 @@ class Figure(_LayerBuilder):
         if suffix in (".png", ".svg"):
             from . import _export  # deferred: needs the [export] extra
 
+            if self._views:
+                paths: list[Path] = []
+                for i, v in enumerate(self._views):
+                    safe = re.sub(r"[^a-z0-9]+", "-", v.name.lower()).strip("-") or f"view{i}"
+                    vp = p.with_name(f"{p.stem}-{safe}{p.suffix}")
+                    _export.save(doc, vp, suffix, view=i, **options)
+                    paths.append(vp)
+                return paths
             _export.save(doc, p, suffix, **options)
             return p
         raise ValueError(f"unknown output format {suffix!r}: use .html, .png, or .svg")
