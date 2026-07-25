@@ -37,20 +37,20 @@ _COLOR_MAPS = ("parity", "hue")
 _UNSET = object()  # "no default given" — distinct from any real default value
 
 
-class _Unspecified:
-    """The marker for a field left *unspecified* — a hole that becomes a live
+class _Variable:
+    """The marker for a field left as a *variable* — a hole that becomes a live
     INPUT in the ``.html`` explorer (and is filled back in with ``.specify``).
 
     Field-agnostic by design: it carries no type of its own; the site it is
     dropped into stamps its kind and coerces its default
-    (``cx.polygon(cx.unspecified)`` → a hole of kind ``"polygon"``). So the
-    same marker generalizes to any field we later open (a depth, a color, a
-    word list), not just the group.
+    (``cx.polygon(cx.variable)`` → a hole of kind ``"polygon"``,
+    ``tessellation(depth=cx.variable)`` → kind ``"depth"``). So the same marker
+    generalizes to any field we open — the group, a depth, later a color.
 
-    Use the bare singleton ``cx.unspecified`` for a blank hole, or CALL it to
-    carry a starting value: ``cx.unspecified([2, 3, 7])`` — the value the
-    input is prefilled with, and what a static export (or ``.specify()`` with
-    no argument) draws.
+    Use the bare singleton ``cx.variable`` for a blank hole, or CALL it to
+    carry a starting value: ``cx.variable([2, 3, 7])`` — the value the input is
+    prefilled with, and what a static export (or ``.specify()`` with no
+    argument) draws.
     """
 
     __slots__ = ("default",)
@@ -58,16 +58,28 @@ class _Unspecified:
     def __init__(self, default: Any = _UNSET):
         self.default = default
 
-    def __call__(self, default: Any) -> "_Unspecified":
-        """A hole carrying a default (the input's starting value)."""
-        return _Unspecified(default)
+    def __call__(self, default: Any) -> "_Variable":
+        """A variable carrying a default (the input's starting value)."""
+        return _Variable(default)
 
     def __repr__(self) -> str:
-        return "cx.unspecified" if self.default is _UNSET else f"cx.unspecified({self.default!r})"
+        return "cx.variable" if self.default is _UNSET else f"cx.variable({self.default!r})"
 
 
-#: The singleton hole marker (see :class:`_Unspecified`).
-unspecified = _Unspecified()
+#: The singleton variable marker (see :class:`_Variable`).
+variable = _Variable()
+
+
+def _hole(marker: _Variable, kind: str, coerce: Any) -> dict[str, Any]:
+    """A variable field, as it lands in the document: ``{"variable": kind}``,
+    plus a ``"default"`` (coerced by the site, exactly like a concrete value)
+    when the marker carries one. ``kind`` names how the page renders/parses the
+    input and how the value is rebuilt into the document (see the engine's
+    ``app/inputs``)."""
+    hole: dict[str, Any] = {"variable": kind}
+    if marker.default is not _UNSET:
+        hole["default"] = coerce(marker.default)
+    return hole
 
 
 def _indices(values: Any, what: str) -> list[int]:
@@ -90,14 +102,28 @@ def _wordlist(words: Any) -> list[list[int]]:
     return _words(words)
 
 
-def _extent(ball: float | None, depth: int | None) -> dict[str, Any] | None:
+def _extent(ball: Any, depth: Any) -> dict[str, Any] | None:
     if ball is not None and depth is not None:
         raise TypeError("give ball= (a metric radius) or depth= (a word length), not both")
+    if isinstance(ball, _Variable):
+        raise TypeError("a variable ball isn't supported yet; make depth the variable instead")
     if ball is not None:
         return {"ball": ball}
+    if isinstance(depth, _Variable):  # depth left open — a live word-length input
+        return {"depth": _hole(depth, "depth", operator.index)}
     if depth is not None:
         return {"depth": operator.index(depth)}
     return None  # omitted = the engine covers the frame
+
+
+def _has_variable(obj: Any) -> bool:
+    """Does this structure contain a variable field anywhere? (A document is
+    *parametric* — version '0.3' — iff so.)"""
+    if isinstance(obj, dict):
+        return "variable" in obj or any(_has_variable(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(_has_variable(v) for v in obj)
+    return False
 
 
 def _color(color: str) -> dict[str, str]:
@@ -152,15 +178,13 @@ def polygon(
     right angles at vertices 0 and 2. The geometry is inferred by the
     engine, never declared.
 
-    Pass ``cx.unspecified`` (optionally ``cx.unspecified([2, 3, 7])`` to carry
-    a default) in place of the orders to leave the GROUP open — a hole that
+    Pass ``cx.variable`` (optionally ``cx.variable([2, 3, 7])`` to carry a
+    default) in place of the orders to leave the GROUP open — a hole that
     becomes a live input in the ``.html`` explorer, filled back in with
     :meth:`Figure.specify`.
     """
-    if isinstance(orders, _Unspecified):
-        hole: dict[str, Any] = {"unspecified": "polygon"}
-        if orders.default is not _UNSET:
-            hole["default"] = _indices(orders.default, "polygon vertex orders")
+    if isinstance(orders, _Variable):
+        hole = _hole(orders, "polygon", lambda v: _indices(v, "polygon vertex orders"))
         return Figure(hole, title=title, model=model)
     return Figure({"polygon": _indices(orders, "polygon vertex orders")}, title=title, model=model)
 
@@ -194,7 +218,7 @@ class _LayerBuilder:
         self: _Self,
         *,
         ball: float | None = None,
-        depth: int | None = None,
+        depth: "int | _Variable | None" = None,
         color: str | None = None,
         opacity: float | None = None,
         edges: bool = False,
@@ -204,6 +228,10 @@ class _LayerBuilder:
         """The orbit of the chamber; one tile per element.
 
         color: 'parity' | 'hue' | any constant color string.
+
+        ``depth`` may be ``cx.variable`` (optionally ``cx.variable(8)``) to
+        leave the word-length depth open — a live integer input in the
+        ``.html`` explorer, alongside (or instead of) a variable group.
 
         Set ``edges=True`` (or pass ``edge_width`` / ``edge_colors``) to stroke
         the tiling's edges, colored by PANEL TYPE — the generator index each
@@ -332,25 +360,26 @@ class Figure(_LayerBuilder):
     # ── the document and the outputs ──────────────────────────────────────
 
     def specify(self, *, group: Any = _UNSET) -> "Figure":
-        """Fill an unspecified field, recovering the ordinary figure.
+        """Fill a variable GROUP, recovering the ordinary figure.
 
-        ``cx.polygon(cx.unspecified).….specify(group=orders)`` is identical
-        to ``cx.polygon(orders)`` carrying the same layers/views — the hole is
+        ``cx.polygon(cx.variable).….specify(group=orders)`` is identical to
+        ``cx.polygon(orders)`` carrying the same layers/views — the hole is
         upstream, so nothing about the figure's construction changes. Omit
-        ``group`` to use the hole's default (if it carries one). (Only the
-        group is openable today; the keyword generalizes to other fields.)
+        ``group`` to use the variable's default (if it carries one). (This
+        fills the group variable; the ``.html`` explorer fills any variable,
+        the group or a layer's, through the engine's ``resolveFigure``.)
         """
-        kind = self._group.get("unspecified")
+        kind = self._group.get("variable")
         if kind is None:
-            raise TypeError("this figure has no unspecified group to specify.")
+            raise TypeError("this figure has no variable group to specify.")
         if group is _UNSET:
             if "default" not in self._group:
-                raise TypeError("no value given and this open group has no default.")
+                raise TypeError("no value given and this variable group has no default.")
             group = self._group["default"]
         if kind == "polygon":
             filled = {"polygon": _indices(group, "polygon vertex orders")}
         else:  # pragma: no cover - only 'polygon' is wired up today
-            raise TypeError(f"cannot specify a group hole of kind {kind!r}.")
+            raise TypeError(f"cannot specify a group variable of kind {kind!r}.")
         fig = Figure(filled, title=self._title, model=self._model)
         fig._layers = copy.deepcopy(self._layers)
         for v in self._views:
@@ -359,9 +388,12 @@ class Figure(_LayerBuilder):
 
     def document(self) -> dict[str, Any]:
         """The figure document (fresh each call) — the exact JSON the engine
-        reads. An unspecified (open) group ⇒ version '0.3'; else '0.2' iff
+        reads. Any variable field ⇒ version '0.3' (parametric); else '0.2' iff
         there are views, else '0.1'."""
-        if "unspecified" in self._group:
+        parametric = _has_variable(self._group) or _has_variable(self._layers) or any(
+            _has_variable(v._layers) for v in self._views
+        )
+        if parametric:
             version = "0.3"
         else:
             version = "0.2" if self._views else "0.1"

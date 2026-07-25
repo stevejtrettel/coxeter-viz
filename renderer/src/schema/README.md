@@ -86,6 +86,49 @@ over this background," the viewer decides how to present them.
   single picture, unchanged). Back-compatible: every v0.1 document is a
   valid v0.2-capable document with no views.
 
+## Variable fields (v0.3) — a field left open, filled in the page
+
+A document may leave **any field a variable** — a hole that becomes a live
+input in the `.html` explorer, filled back in as you type. In place of the
+value, the field carries
+
+```jsonc
+{ "variable": "<kind>", "default": <value> }   // "default" optional
+```
+
+- **`kind`** is the one vocabulary shared by the page (how the input renders
+  and parses) and the resolver (how a value becomes the concrete field).
+  Today: **`"polygon"`** — the whole `group`, value = the presentation
+  `{ "polygon": [...] }`; **`"depth"`** — a layer's `extent.depth`, value =
+  the integer. New kinds are additive.
+- **`default`** — the input's starting value, and what a static export (or a
+  no-argument fill) draws. Omitted ⇒ a blank input that must be typed before
+  there is a picture.
+- **`version`** — **`"0.3"` iff any field is a variable** (parametric), else
+  `"0.2"` (views) / `"0.1"`. Back-compatible and additive: every concrete
+  document is unchanged.
+
+```jsonc
+{
+  "version": "0.3",
+  "group": { "variable": "polygon", "default": [2, 3, 7] },   // the group is open
+  "layers": [
+    { "type": "tessellation",
+      "extent": { "depth": { "variable": "depth", "default": 8 } } }  // and so is the depth
+  ]
+}
+```
+
+**Resolved UPSTREAM, never by `checkFigure`.** A variable document is turned
+into an ordinary CONCRETE document *before* the render path sees it — by
+`app/inputs` (`figureInputs` enumerates the holes for the page; `resolveFigure`
+fills them and drops the version back to `"0.2"`/`"0.1"`), exactly as Python's
+`cx.variable` / `Figure.specify` build and fill them. So **`checkFigure` and
+everything below only ever see concrete documents** and need no notion of a
+hole; a variable field reaching `checkFigure` unresolved is (correctly)
+refused. The seam stays plain data — the hole is just a value the layer above
+knows to fill.
+
 ## The ops (v0.1)
 
 Every word-driven op states what a word *maps to* (the semantics rule).

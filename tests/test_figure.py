@@ -204,7 +204,7 @@ def test_views_chain_fluently():
     assert doc["views"][1]["layers"] == [{"type": "tiles", "words": [[1]]}]
 
 
-# ── unspecified: a field left open, to become an HTML input ──────────────
+# ── variable: a field left open, to become an HTML input ─────────────────
 
 
 def _decorate(fig):
@@ -214,18 +214,18 @@ def _decorate(fig):
 
 @pytest.mark.parametrize("seq", [[2, 3, 7], [2, 2, 2, 2, 2], [2, 3, 2, 6, 4, 5], [3, 3, 4]])
 def test_specify_is_byte_for_byte_the_ordinary_polygon(seq):
-    # Specifying the open group with any sequence gives EXACTLY the figure
+    # Specifying the variable group with any sequence gives EXACTLY the figure
     # cx.polygon would have drawn — the hole is upstream; nothing downstream
     # changes.
-    specified = _decorate(cx.polygon(cx.unspecified)).specify(group=seq)
+    specified = _decorate(cx.polygon(cx.variable)).specify(group=seq)
     ordinary = _decorate(cx.polygon(seq))
     assert specified.document() == ordinary.document()
 
 
-def test_unspecified_group_document_records_the_hole():
-    doc = _decorate(cx.polygon(cx.unspecified, title="explorer")).document()
-    assert doc["version"] == "0.3"                              # an open field ⇒ v0.3
-    assert doc["group"] == {"unspecified": "polygon"}
+def test_variable_group_document_records_the_hole():
+    doc = _decorate(cx.polygon(cx.variable, title="explorer")).document()
+    assert doc["version"] == "0.3"                              # a variable field ⇒ v0.3
+    assert doc["group"] == {"variable": "polygon"}
     assert doc["title"] == "explorer"
     # the layers are the ordinary layers, shared by every value the input takes
     assert doc["layers"] == [
@@ -236,37 +236,66 @@ def test_unspecified_group_document_records_the_hole():
 
 def test_specify_coerces_indices_exactly():
     with pytest.raises(TypeError):
-        cx.polygon(cx.unspecified).specify(group=[2.0, 3.5])
+        cx.polygon(cx.variable).specify(group=[2.0, 3.5])
 
 
 def test_specify_refuses_a_concrete_figure():
-    with pytest.raises(TypeError, match="no unspecified group"):
+    with pytest.raises(TypeError, match="no variable group"):
         cx.polygon([2, 3, 7]).specify(group=[3, 3, 4])
 
 
 # ── a default: the input's starting value ────────────────────────────────
 
 
-def test_unspecified_default_is_recorded_and_coerced():
-    doc = _decorate(cx.polygon(cx.unspecified([2, 3, 7]))).document()
+def test_variable_default_is_recorded_and_coerced():
+    doc = _decorate(cx.polygon(cx.variable([2, 3, 7]))).document()
     assert doc["version"] == "0.3"
-    assert doc["group"] == {"unspecified": "polygon", "default": [2, 3, 7]}
+    assert doc["group"] == {"variable": "polygon", "default": [2, 3, 7]}
     with pytest.raises(TypeError):  # the site coerces the default like any orders
-        cx.polygon(cx.unspecified([2.0, 3.5]))
+        cx.polygon(cx.variable([2.0, 3.5]))
 
 
 def test_specify_without_a_value_uses_the_default():
     # An open-with-default figure realizes statically as its default.
-    fromdefault = _decorate(cx.polygon(cx.unspecified([2, 3, 7]))).specify()
+    fromdefault = _decorate(cx.polygon(cx.variable([2, 3, 7]))).specify()
     ordinary = _decorate(cx.polygon([2, 3, 7]))
     assert fromdefault.document() == ordinary.document()
 
 
 def test_specify_overrides_the_default():
-    both = _decorate(cx.polygon(cx.unspecified([2, 3, 7]))).specify(group=[3, 3, 4])
+    both = _decorate(cx.polygon(cx.variable([2, 3, 7]))).specify(group=[3, 3, 4])
     assert both.document() == _decorate(cx.polygon([3, 3, 4])).document()
 
 
 def test_specify_without_value_and_no_default_refuses():
     with pytest.raises(TypeError, match="no default"):
-        cx.polygon(cx.unspecified).specify()
+        cx.polygon(cx.variable).specify()
+
+
+# ── a second field kind: a variable depth, nested in a layer ─────────────
+
+
+def test_variable_depth_records_a_nested_hole_and_marks_parametric():
+    # A concrete group with a variable DEPTH: the hole sits inside the layer,
+    # and the document is still parametric (v0.3).
+    doc = cx.polygon([2, 3, 7]).tessellation(depth=cx.variable(8), color="parity").document()
+    assert doc["version"] == "0.3"
+    assert doc["group"] == {"polygon": [2, 3, 7]}               # the group is concrete
+    assert doc["layers"][0]["extent"] == {"depth": {"variable": "depth", "default": 8}}
+
+
+def test_variable_depth_default_is_coerced_like_a_concrete_depth():
+    with pytest.raises(TypeError):
+        cx.polygon([2, 3, 7]).tessellation(depth=cx.variable(8.5))
+
+
+def test_group_and_depth_can_both_be_variable():
+    doc = cx.polygon(cx.variable([2, 3, 7])).tessellation(depth=cx.variable(8)).document()
+    assert doc["version"] == "0.3"
+    assert doc["group"] == {"variable": "polygon", "default": [2, 3, 7]}
+    assert doc["layers"][0]["extent"] == {"depth": {"variable": "depth", "default": 8}}
+
+
+def test_variable_ball_is_refused_for_now():
+    with pytest.raises(TypeError, match="variable ball"):
+        cx.polygon([2, 3, 7]).tessellation(ball=cx.variable(4.0))

@@ -79,10 +79,18 @@
       var inputs = coxeterViz.figureInputs(FIGURE);
       var values = {};
 
-      // A field's value, parsed from its text box. Only 'polygon' today: a
-      // comma/space-separated integer sequence. Bad text is a hint, not a draw.
+      // A field's value, parsed from its text box, by kind. Bad text is a hint,
+      // not a draw. The value's SHAPE must match the engine's build() for the
+      // kind: 'polygon' → an integer sequence, 'depth' → one positive integer.
       function parseField(kind, text) {
         var tokens = text.split(/[\s,]+/).filter(function (t) { return t.length; });
+        if (kind === 'depth') {
+          if (tokens.length !== 1) return { hint: 'one whole number, e.g. 8' };
+          var d = Number(tokens[0]);
+          if (!Number.isInteger(d) || d < 1) return { hint: 'a positive whole number' };
+          return { value: d };
+        }
+        // 'polygon' (and the default): a comma/space-separated integer sequence.
         if (!tokens.length) return { hint: 'enter a sequence, e.g. 2, 3, 7' };
         var nums = tokens.map(Number);
         if (nums.some(function (n) { return !Number.isInteger(n); })) {
@@ -91,10 +99,17 @@
         return { value: nums };
       }
 
+      // A default value, shown in the box: a sequence joins with commas, a
+      // scalar prints plainly, absent is blank.
+      function showDefault(value) {
+        if (value === undefined || value === null) return '';
+        return Array.isArray(value) ? value.join(', ') : String(value);
+      }
+
       function buildInputs() {
         inputsBox.textContent = '';
         inputs.forEach(function (field) {
-          var start = Array.isArray(field.default) ? field.default.join(', ') : '';
+          var start = showDefault(field.default);
           var row = document.createElement('div');
           row.className = 'field';
           var label = document.createElement('label');
@@ -110,14 +125,14 @@
           inputsBox.appendChild(row);
 
           var seed = parseField(field.kind, start);
-          if (seed.value) values[field.id] = seed.value;
+          if ('value' in seed) values[field.id] = seed.value;
 
           var timer;
           input.addEventListener('input', function () {
             clearTimeout(timer);
             timer = setTimeout(function () {
               var parsed = parseField(field.kind, input.value);
-              if (parsed.value) {
+              if ('value' in parsed) {
                 msg.textContent = '';
                 values[field.id] = parsed.value;
                 mount();

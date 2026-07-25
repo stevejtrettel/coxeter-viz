@@ -26,7 +26,7 @@ All rendering mathematics lives in the vendored JavaScript engine
 from importlib.metadata import PackageNotFoundError, version as _version
 
 from .compute import CoxeterGroup, Element, WordSet
-from .viz import CoxeterVizError, Figure, figure, polygon, unspecified
+from .viz import CoxeterVizError, Figure, figure, polygon, variable
 
 try:
     __version__ = _version("coxeter-groups")
@@ -39,7 +39,7 @@ __all__ = [
     "WordSet",
     "figure",
     "polygon",
-    "unspecified",
+    "variable",
     "Figure",
     "CoxeterVizError",
     "__version__",

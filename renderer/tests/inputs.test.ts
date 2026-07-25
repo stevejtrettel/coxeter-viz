@@ -2,16 +2,41 @@ import { describe, expect, it } from 'vitest';
 import { figureInputs, resolveFigure } from '@/app/inputs';
 import { checkFigure } from '@/schema/validate';
 
-const OPEN = {
+// An open GROUP (top-level hole).
+const OPEN_GROUP = {
   version: '0.3',
   title: 'explorer',
-  group: { unspecified: 'polygon', default: [2, 3, 7] },
+  group: { variable: 'polygon', default: [2, 3, 7] },
   layers: [{ type: 'tessellation', color: { map: 'parity' } }, { type: 'walls' }],
 };
 
-describe('app/inputs — open fields resolve upstream of the render path', () => {
-  it('figureInputs reports the open group with its kind and default', () => {
-    expect(figureInputs(OPEN)).toEqual([{ id: 'group', kind: 'polygon', label: 'polygon', default: [2, 3, 7] }]);
+// An open DEPTH (a hole nested inside a layer's extent) — a concrete group.
+const OPEN_DEPTH = {
+  version: '0.3',
+  group: { polygon: [2, 3, 7] },
+  layers: [{ type: 'tessellation', extent: { depth: { variable: 'depth', default: 8 } } }],
+};
+
+// Both open at once — proves the walk is not group-shaped.
+const OPEN_BOTH = {
+  version: '0.3',
+  group: { variable: 'polygon', default: [2, 3, 7] },
+  layers: [{ type: 'tessellation', extent: { depth: { variable: 'depth', default: 8 } } }],
+};
+
+describe('app/inputs — variable fields resolve upstream of the render path', () => {
+  it('figureInputs reports the open group with its kind, label, default', () => {
+    expect(figureInputs(OPEN_GROUP)).toEqual([{ id: 'group', kind: 'polygon', label: 'polygon', default: [2, 3, 7] }]);
+  });
+
+  it('figureInputs finds a hole nested in a layer, by dotted-path id', () => {
+    expect(figureInputs(OPEN_DEPTH)).toEqual([
+      { id: 'layers.0.extent.depth', kind: 'depth', label: 'depth', default: 8 },
+    ]);
+  });
+
+  it('figureInputs reports several holes in document order', () => {
+    expect(figureInputs(OPEN_BOTH).map((f) => f.id)).toEqual(['group', 'layers.0.extent.depth']);
   });
 
   it('an ordinary (fully specified) figure has no open fields', () => {
@@ -19,35 +44,30 @@ describe('app/inputs — open fields resolve upstream of the render path', () =>
     expect(figureInputs(concrete)).toEqual([]);
   });
 
-  it('a hole with no default reports default: undefined', () => {
-    const blank = { version: '0.3', group: { unspecified: 'polygon' }, layers: [] };
-    expect(figureInputs(blank)).toEqual([{ id: 'group', kind: 'polygon', label: 'polygon', default: undefined }]);
+  it('resolveFigure fills the group (value wrapped as a presentation), version drops', () => {
+    const c = resolveFigure(OPEN_GROUP, { group: [2, 2, 2, 2, 2] }) as Record<string, unknown>;
+    expect(c.group).toEqual({ polygon: [2, 2, 2, 2, 2] });
+    expect(c.version).toBe('0.1');
   });
 
-  it('resolveFigure fills the group and drops the version to a concrete one', () => {
-    const concrete = resolveFigure(OPEN, { group: [2, 2, 2, 2, 2] }) as Record<string, unknown>;
-    expect(concrete.group).toEqual({ polygon: [2, 2, 2, 2, 2] });
-    expect(concrete.version).toBe('0.1');
-    expect(concrete.layers).toBe(OPEN.layers); // layers carried through unchanged
+  it('resolveFigure fills a nested depth (value placed as-is)', () => {
+    const c = resolveFigure(OPEN_DEPTH, { 'layers.0.extent.depth': 12 }) as { layers: { extent: unknown }[] };
+    expect(c.layers[0].extent).toEqual({ depth: 12 });
   });
 
-  it('resolveFigure falls back to the hole default when no value is given', () => {
-    const concrete = resolveFigure(OPEN, {}) as Record<string, unknown>;
-    expect(concrete.group).toEqual({ polygon: [2, 3, 7] });
+  it('resolveFigure fills every hole, from values or defaults, and validates', () => {
+    const c = resolveFigure(OPEN_BOTH, { group: [3, 3, 4] }); // depth from its default
+    expect((c as { layers: { extent: unknown }[] }).layers[0].extent).toEqual({ depth: 8 });
+    expect((c as { group: unknown }).group).toEqual({ polygon: [3, 3, 4] });
+    expect(checkFigure(c).ok).toBe(true);
+    expect(OPEN_BOTH.group).toEqual({ variable: 'polygon', default: [2, 3, 7] }); // input not mutated
   });
 
-  it('the resolved document is concrete and checkFigure-valid; the input is untouched', () => {
-    const concrete = resolveFigure(OPEN, { group: [3, 3, 4] });
-    const checked = checkFigure(concrete);
-    expect(checked.ok).toBe(true);
-    expect(OPEN.group).toEqual({ unspecified: 'polygon', default: [2, 3, 7] }); // not mutated
-  });
-
-  it('a still-open document (no value, no default) stays open and is refused by the render path', () => {
-    const blank = { version: '0.3', group: { unspecified: 'polygon' }, layers: [] };
+  it('a hole left open (no value, no default) keeps 0.3 and the render path refuses it', () => {
+    const blank = { version: '0.3', group: { variable: 'polygon' }, layers: [] };
     const still = resolveFigure(blank, {});
-    expect(still).toEqual(blank); // nothing to fill → unchanged
-    expect(checkFigure(still).ok).toBe(false); // the engine refuses an open group
+    expect(still).toEqual(blank);
+    expect(checkFigure(still).ok).toBe(false);
   });
 
   it('an ordinary figure passes through resolveFigure unchanged', () => {

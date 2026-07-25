@@ -26,6 +26,18 @@ matrix hands us a `RealizationSpec` directly, so the spec-shaped entry
 composes `solvePolygon` + `groupFromPolygon` + `defaultModel` the same way.
 (`kit/README.md` gains it then.)
 
+## Variable fields resolve here, upstream of render
+
+`inputs.ts` is the engine side of "leave a field open" (Python's `cx.variable`
+/ `Figure.specify`; the contract is in `schema/README.md` → *Variable fields*).
+A document may carry holes `{ "variable": kind, "default"? }` anywhere;
+`figureInputs(figure)` enumerates them (dotted-path id + kind + default) for the
+saved page's input controls, and `resolveFigure(figure, values)` fills them into
+an ordinary concrete document (dropping the parametric version `0.3`). Both are
+pure data transforms — the hole is resolved *before* `checkFigure`, so the whole
+pipeline below stays hole-unaware. Adding a field kind is one `KINDS` entry here
+plus its parser in `template.html`.
+
 ## The paint convention (invisible to users)
 
 Every op has a **paths** representation (the CPU scene → `buildPathList`) —
