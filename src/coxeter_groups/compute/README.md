@@ -94,6 +94,46 @@ returned by `g.ball`/`g.sphere`.
   deterministic order. The drawing ops accept a `WordSet` directly
   (`figure(g).tiles(ws)`), so this is mostly an escape hatch.
 
+## `parabolic.py` — `Parabolic`, a subset of generators
+
+A **standard parabolic** `W_S = ⟨sᵢ : i ∈ S⟩` for a subset `S` of the
+generator indices. Made by `g.parabolic(S)`. It is the object a *selection*
+names (`docs/plan-diagrams-and-selection.md`): choosing nodes of the Coxeter
+diagram, walls of the chamber, or edge labels of the Cayley graph are all the
+same act — choosing `S`.
+
+Two theorems make the surface almost free:
+
+- **`W_S` is itself a Coxeter group**, presented by the principal submatrix
+  `M_S` (Bourbaki). So `p.coxeter_matrix` is that submatrix, and
+  `cx.CoxeterGroup(p.coxeter_matrix)` is `W_S` standing alone.
+- **`W_S` is finite ⟺ the Tits form restricted to `span(αᵢ : i ∈ S)` is
+  positive definite** — and that restriction is exactly the principal
+  submatrix `B_S`. So `p.is_finite()` is a positive-definiteness test, done by
+  Cholesky (a non-positive pivot ⇒ not definite).
+
+- `p.generators` — the sorted index tuple; the seam datum, and what a
+  selection carries across to the renderer.
+- `p.coxeter_matrix` — `M_S`, indexed by position in `p.generators`.
+- `p.is_finite()` — as above. `S = ∅` is the trivial group: finite.
+- `p.order()` — `|W_S|` when finite (BFS over the `S`-generators only,
+  deduped by key, exactly as `ball`/`sphere` do); raises when infinite rather
+  than looping forever.
+
+Why finiteness is the interesting predicate: `W_S` finite is exactly the
+condition for the selected walls to **meet** — a finite `W_S` fixes a point,
+which is the anchor the renderer needs to draw the cell. It is the same
+condition the figure schema already enforces for `cosets`.
+
+**Float caveat** (the module-wide ruling, applied here). The pivot test uses a
+tolerance, so it inherits the same liability as the key. The tight case is the
+dihedral `I₂(m)`, whose smallest pivot is `sin²(π/m)` — vanishing as
+`m → ∞`, i.e. as `I₂(m)` degenerates toward the infinite dihedral group. With
+`PD_EPS = 1e-12` the verdict is correct for `m` up to `~10⁶`, and the
+Euclidean/affine boundary (a true pivot of `0`, float noise `~1e-16`) is
+separated comfortably. Exact arithmetic — or the finite-type classification,
+which decides this combinatorially with no arithmetic at all — is the upgrade.
+
 ## Deliberate, revisitable choices
 
 - **Float + tolerance, not exact** (user ruling 2026-07-13). `B` uses

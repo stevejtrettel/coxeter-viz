@@ -8,7 +8,8 @@ import { Stereographic2 } from '@/models/stereographic';
 import { classifyGroup } from '@/schema/validate';
 import type { Tile } from '@/group/CoxeterGroup';
 import { wordId } from '@/group/CoxeterGroup';
-import { hullOfWords, parabolicFixedPoint } from '@/group/wordlists';
+import { matrixKey } from '@/group/orbit';
+import { hullOfWords, parabolicFixedPoint, parabolicWords } from '@/group/wordlists';
 import { uniformCells, wythoffPoint } from '@/group/wythoff';
 import { polygonArea } from '@/polytope/measure';
 import type { Camera, RegionStyle, Scene, SceneItem, ViewSize } from '@/viz2d/render/types';
@@ -30,8 +31,8 @@ import {
 } from '@/viz2d/kit/scene';
 import { blankStyle, cosetField, fieldStyle, regionsField, rgba, starBands, starField } from '@/viz2d/kit/field';
 import { fitToDomain } from '@/viz2d/kit/camera';
-import { HULL, LIST, TILE, TYPE_COLORS, WALL_COLORS } from '@/viz2d/kit/palette';
-import type { ColorSpec, Extent, Figure, Layer, ModelName } from '@/schema/types';
+import { ENTRY, HULL, LIST, TILE, TYPE_COLORS, WALL_COLORS } from '@/viz2d/kit/palette';
+import type { ColorSpec, Extent, Figure, Highlight, Layer, ModelName } from '@/schema/types';
 
 /**
  * Assembly (README): a CHECKED figure document → the realized group, the
@@ -164,6 +165,23 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
     return tiles;
   };
 
+  /**
+   * A selection's elements, as words. W_S must be FINITE — an infinite
+   * parabolic is walls that never all meet, which bound no cell to highlight.
+   * Throwing is the house refusal path at assembly (like the spherical hull);
+   * `render`/`figureTo*` surface it as a problem value.
+   */
+  const highlightWords = (h: Highlight): number[][] => {
+    const words = parabolicWords(rg.group, h.generators);
+    if (words === null) {
+      throw new Error(
+        `highlight: the parabolic W_S for S = {${h.generators.join(', ')}} is infinite — ` +
+          'those walls do not all meet, so they bound no cell to highlight.',
+      );
+    }
+    return words;
+  };
+
   const tileColor = (spec: ColorSpec | undefined): ((t: Tile<Point2, Isometry2>) => string) => {
     if (spec && 'constant' in spec) return () => spec.constant;
     if (spec && spec.map === 'hue') {
@@ -292,6 +310,18 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
             sink.scene.push(...edgeItems);
             if (sink.overlay !== null) sink.overlay.push(...edgeItems);
           }
+          // The selection's cell: the W_S-orbit of the chamber, opaque on top
+          // (it must read through a GPU-painted field, so it lands in BOTH).
+          if (layer.highlight) {
+            const color = layer.highlight.color ?? ENTRY;
+            const items = tilesToScene(
+              rg.group.tilesFor(highlightWords(layer.highlight)),
+              () => ({ fill: { color } }),
+              (w) => `hl:${sink.scope}${li}:${wordId(w)}`,
+            );
+            sink.scene.push(...items);
+            if (sink.overlay !== null) sink.overlay.push(...items);
+          }
           break;
         }
         case 'cayley': {
@@ -314,6 +344,40 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
               }),
             }),
           );
+          // The selection's subgraph: the W_S nodes, and the edges labeled by
+          // S between them — drawn again, emphasized, on top.
+          if (layer.highlight) {
+            const color = layer.highlight.color ?? ENTRY;
+            const els = [...rg.group.elements(highlightWords(layer.highlight)).entries()];
+            const index = new Map(els.map(([k], i) => [k, i]));
+            const pts = els.map(([, v]) => geom.apply(v.element, rg.group.basePoint));
+            const items: SceneItem[] = [];
+            const drawn = new Set<string>();
+            els.forEach(([, v], a) => {
+              for (const i of layer.highlight!.generators) {
+                const b = index.get(matrixKey(geom.compose(v.element, rg.group.reflections[i])));
+                if (b === undefined) continue;
+                const pair = a < b ? `${a}:${b}` : `${b}:${a}`;
+                if (drawn.has(pair)) continue;
+                drawn.add(pair);
+                items.push({
+                  id: `hledge:${sink.scope}${li}:${pair}`,
+                  kind: 'geodesic',
+                  source: { type: 'segment', a: pts[a], b: pts[b] },
+                  style: { color, width: (layer.edge?.width ?? 0.06) * 1.6 * rg.r0 },
+                });
+              }
+            });
+            els.forEach(([, v], a) => {
+              items.push({
+                id: `hlnode:${sink.scope}${li}:${wordId(v.word)}`,
+                kind: 'point',
+                at: pts[a],
+                style: { color, radius: (layer.node?.size ?? 0.11) * 1.5 * rg.r0 },
+              });
+            });
+            push(items);
+          }
           break;
         }
         case 'tiles': {

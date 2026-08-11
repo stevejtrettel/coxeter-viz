@@ -145,6 +145,25 @@ Words are lists of generator indices applied **left to right** (`[i₀,…,i_k]`
 | `hull` | **`words`**, `fill`, `stroke` | the convex hull of the base-point images w·x₀ (straight chart); its Gauss–Bonnet area is reported in render diagnostics |
 | `cosets` | **`subgroup`** (generator indices), `extent` | left cosets of the parabolic W_S, one color per coset through the shared `hashHue` law (CPU/SVG/GPU agree bit-exactly; no palette knob, by design). S must admit a W_S-fixed anchor — ∅, one generator, or a MEETING pair — else W_S is infinite/anchorless and validation refuses. |
 | `uniform` | **`rings`** (≥ 1 generator indices), `palette` | the Wythoff tiling of the ringed seed; faces colored by dihedral-orbit type, edged by the seed-star net. Triangle chambers (rank 3) only. |
+| `diagram` | `style` (`"coxeter"` \| `"artin"`, default `coxeter`) | the abstract group's **Coxeter / Artin diagram** (`diagram/README.md`): nodes are generators, edges carry the orders. Needs NO realization — see below. |
+
+### The diagram op is the one op with no geometry
+
+A diagram is a pure function of the Coxeter matrix, so it must draw for
+exactly the groups the inference layer *refuses*. Two consequences for
+validation:
+
+- **A diagram-only document tolerates the GEOMETRIC refusals**
+  (`rank-too-small`, `non-compact`, `free-product`, `not-2d`) and still
+  refuses the structural ones (`invalid-matrix`, `invalid-polygon`). This is
+  the single exception to "the group presentation goes through the matching
+  classifier" below.
+- **Diagram and realized layers cannot be mixed** in one document (they live
+  in different spaces), and a diagram figure has no `views`. Both are refused
+  with a reason; compose a diagram beside a tiling as two figures.
+
+A diagram document also bypasses `app/assemble` entirely — `figureToSvg` /
+`figureToPng` dispatch to `diagram/` before the realization path.
 
 ## Pinned conventions
 

@@ -11,6 +11,7 @@ from typing import Sequence
 
 from .wordset import WordSet
 from .element import Element
+from .parabolic import Parabolic
 from .rep import DEFAULT_TOL_DIGITS, ReflectionRep
 
 
@@ -122,6 +123,15 @@ class CoxeterGroup:
     def words(self, items=()) -> WordSet:
         """A WordSet of the given words or elements (deduped by element)."""
         return WordSet(self, items)
+
+    def parabolic(self, generators: Sequence[int], *, color: str | None = None) -> Parabolic:
+        """The standard parabolic W_S = ⟨s_i : i ∈ S⟩ — a subset of the
+        generators as an object. It is itself a Coxeter group (the principal
+        submatrix), and `is_finite()` says whether the selected walls meet.
+
+        `color` is an inert annotation carried for drawing: pass the same
+        parabolic to a diagram and a tiling and both pictures agree."""
+        return Parabolic(self, generators, color=color)
 
     def __repr__(self) -> str:
         return f"CoxeterGroup(rank={self.rank})"

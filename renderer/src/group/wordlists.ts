@@ -14,6 +14,43 @@ import type { CoxeterGroup } from './CoxeterGroup';
  */
 
 /**
+ * The elements of the standard parabolic W_S = ⟨R_i : i ∈ S⟩, as WORDS — BFS
+ * over the S-generators, deduplicated by matrix key, one (reduced) spelling
+ * kept per element. Composition follows the house `neighbor` law: appending
+ * generator i to the FRONT of the word is composing R_i on the right.
+ *
+ * **Returns null when W_S is infinite** (the BFS passed `maxCount`) — the
+ * caller reports that as a refusal rather than drawing a truncated cell. W_S
+ * is finite exactly when the selected walls meet, which is the same condition
+ * `cosets` already needs an anchor for.
+ */
+export function parabolicWords<P extends Vec, I extends Float64Array>(
+  group: CoxeterGroup<P, I>,
+  S: readonly number[],
+  maxCount = 5000,
+): number[][] | null {
+  const id = group.geom.identity();
+  const seen = new Map<string, number[]>([[matrixKey(id), []]]);
+  let frontier: { element: I; word: number[] }[] = [{ element: id, word: [] }];
+  while (frontier.length > 0) {
+    const next: { element: I; word: number[] }[] = [];
+    for (const { element, word } of frontier) {
+      for (const i of S) {
+        const h = group.geom.compose(element, group.reflections[i]);
+        const k = matrixKey(h);
+        if (seen.has(k)) continue;
+        const w = [i, ...word];
+        seen.set(k, w);
+        if (seen.size > maxCount) return null; // infinite (or beyond the cap)
+        next.push({ element: h, word: w });
+      }
+    }
+    frontier = next;
+  }
+  return [...seen.values()];
+}
+
+/**
  * The alternating words of the dihedral parabolic ⟨R_i, R_j⟩ (order 2m): the
  * length-k prefixes of iji… and jij… for k = 0…2m−1 enumerate all 2m
  * elements (duplicates collapse in `elements`). The standard patch for coset

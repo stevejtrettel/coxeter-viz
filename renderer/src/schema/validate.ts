@@ -3,6 +3,7 @@ import {
   classifyPolygonOrders,
   type CoxeterMatrix,
   type MatrixClassification,
+  type RefusalReason,
 } from '@/coxeter/matrix';
 import type { RealizationSpec } from '@/coxeter/spec';
 import type { GeometryKind } from '@/geometry/types';
@@ -32,13 +33,25 @@ const MODEL_GEOMETRY: Record<Exclude<ModelName, 'auto'>, GeometryKind> = {
 const OP_FIELDS: Record<Layer['type'], readonly string[]> = {
   domain: ['fill'],
   walls: ['width', 'colors'],
-  tessellation: ['extent', 'color', 'opacity', 'edges'],
-  cayley: ['extent', 'node', 'edge'],
+  tessellation: ['extent', 'color', 'opacity', 'edges', 'highlight'],
+  cayley: ['extent', 'node', 'edge', 'highlight'],
   tiles: ['words', 'fill'],
   hull: ['words', 'fill', 'stroke'],
   cosets: ['subgroup', 'extent'],
   uniform: ['rings', 'palette'],
+  diagram: ['style', 'highlight'],
 };
+
+const DIAGRAM_STYLES = ['coxeter', 'artin'] as const;
+
+/**
+ * A diagram needs a well-formed matrix, NOT a realization — that is the point
+ * of it (diagram/README). So a diagram-only document tolerates the GEOMETRIC
+ * refusals (rank-too-small, non-compact, free-product, not-2d) and still
+ * refuses the structural ones.
+ */
+const isStructuralRefusal = (reason: RefusalReason): boolean =>
+  reason === 'invalid-matrix' || reason === 'invalid-polygon';
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -74,6 +87,25 @@ export function checkFigure(raw: unknown): FigureCheck {
     bad('title', 'a title is a non-empty string.');
   }
 
+  // — is this a DIAGRAM document? (decided before the group check, because it
+  //   decides which refusals are fatal). Diagram and realized layers live in
+  //   different spaces and cannot be mixed.
+  const rawLayerTypes = (Array.isArray(raw.layers) ? raw.layers : []).map((l) =>
+    isRecord(l) ? l.type : undefined,
+  );
+  const anyDiagram = rawLayerTypes.some((t) => t === 'diagram');
+  const diagramOnly = rawLayerTypes.length > 0 && rawLayerTypes.every((t) => t === 'diagram');
+  if (anyDiagram && !diagramOnly) {
+    bad(
+      'layers',
+      'a "diagram" layer draws the abstract group and has no geometry, so it cannot share a ' +
+        'document with the realized ops — give the diagram its own figure (compose side by side).',
+    );
+  }
+  if (anyDiagram && raw.views !== undefined) {
+    bad('views', 'a diagram figure has no views.');
+  }
+
   // — the group: exactly one presentation, through the inference layer —
   let rank = 0;
   let geometry: GeometryKind | undefined;
@@ -100,8 +132,13 @@ export function checkFigure(raw: unknown): FigureCheck {
         presentation === 'coxeterMatrix'
           ? classifyCoxeterMatrix(value as CoxeterMatrix)
           : classifyPolygonOrders(value as readonly number[]);
-      if (cls.kind === 'refused') bad(`group.${presentation}`, `${cls.reason}: ${cls.detail}`);
-      else {
+      if (cls.kind === 'refused') {
+        // A diagram needs a well-formed matrix, not a realization: the
+        // geometric refusals are exactly the groups it exists to draw.
+        if (!diagramOnly || isStructuralRefusal(cls.reason)) {
+          bad(`group.${presentation}`, `${cls.reason}: ${cls.detail}`);
+        }
+      } else {
         spec = cls.spec;
         geometry = spec.geometry;
       }
@@ -168,6 +205,19 @@ export function checkFigure(raw: unknown): FigureCheck {
       bad(path, `${what}: an array of color strings.`);
     }
   };
+  /**
+   * A selection: distinct generator indices naming W_S, plus a color. The
+   * FINITENESS of W_S is a geometric fact, checked at assembly (the diagram
+   * needs no such check — every subset of nodes is highlightable).
+   */
+  const checkHighlight = (v: unknown, path: string): void => {
+    if (!isRecord(v)) return bad(path, 'a highlight is { "generators": [...], "color"? }.');
+    for (const k of Object.keys(v)) {
+      if (k !== 'generators' && k !== 'color') bad(`${path}.${k}`, 'unknown field on a highlight.');
+    }
+    checkGeneratorSet(v.generators, `${path}.generators`, 'highlight generators');
+    if (v.color !== undefined) checkColor(v.color, `${path}.color`);
+  };
   const checkColorSpec = (v: unknown, path: string): void => {
     if (isRecord(v) && Object.keys(v).length === 1) {
       if ('map' in v) {
@@ -227,6 +277,7 @@ export function checkFigure(raw: unknown): FigureCheck {
               }
             }
           }
+          if (l.highlight !== undefined) checkHighlight(l.highlight, `${p}.highlight`);
           break;
         case 'cayley':
           if (l.extent !== undefined) checkExtent(l.extent, `${p}.extent`);
@@ -241,6 +292,7 @@ export function checkFigure(raw: unknown): FigureCheck {
             if (!isRecord(l.edge)) bad(`${p}.edge`, 'edge style is { "width"? }.');
             else if (l.edge.width !== undefined) checkLength(l.edge.width, `${p}.edge.width`);
           }
+          if (l.highlight !== undefined) checkHighlight(l.highlight, `${p}.highlight`);
           break;
         case 'tiles':
           checkWords(l.words, `${p}.words`);
@@ -293,6 +345,12 @@ export function checkFigure(raw: unknown): FigureCheck {
           if (Array.isArray(l.rings) && l.rings.length === 0) {
             bad(`${p}.rings`, 'at least one ring (an unringed diagram pins the seed to nothing).');
           }
+          break;
+        case 'diagram':
+          if (l.style !== undefined && !DIAGRAM_STYLES.includes(l.style as 'coxeter' | 'artin')) {
+            bad(`${p}.style`, `a diagram style is ${DIAGRAM_STYLES.join(' or ')}.`);
+          }
+          if (l.highlight !== undefined) checkHighlight(l.highlight, `${p}.highlight`);
           break;
       }
     });

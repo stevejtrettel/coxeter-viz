@@ -5,7 +5,8 @@ Pure group theory: no drawing, no import of `viz`. See the README.
 
 from .rep import ReflectionRep
 from .element import Element
+from .parabolic import Parabolic
 from .wordset import WordSet
 from .group import CoxeterGroup
 
-__all__ = ["CoxeterGroup", "Element", "WordSet", "ReflectionRep"]
+__all__ = ["CoxeterGroup", "Element", "WordSet", "Parabolic", "ReflectionRep"]

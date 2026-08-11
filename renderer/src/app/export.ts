@@ -1,5 +1,6 @@
 import { checkFigure } from '@/schema/validate';
-import type { FigureProblem } from '@/schema/types';
+import type { Figure, FigureProblem } from '@/schema/types';
+import { diagramToPng, diagramToSvg, isDiagramFigure } from '@/diagram';
 import { buildPathList } from '@/viz2d/render/scene';
 import { toSvg } from '@/viz2d/render/svg';
 import { renderPng, sceneLayer, type RasterLayer } from '@/viz2d/render/png';
@@ -90,8 +91,24 @@ export function pngFromAssembled(
   return renderPng(layers, asm.camera, size, k, background);
 }
 
+/**
+ * A DIAGRAM document takes a parallel path: it has no realization, so it never
+ * reaches `assemble`. Returns null when this is an ordinary figure.
+ */
+function checkedDiagram(
+  figure: unknown,
+  opts?: ExportOptions,
+): { ok: true; figure: Figure; size: ViewSize } | { ok: false; problems: FigureProblem[] } | null {
+  const checked = checkFigure(figure);
+  if (!checked.ok) return { ok: false, problems: checked.problems };
+  if (!isDiagramFigure(checked.figure)) return null;
+  return { ok: true, figure: checked.figure, size: opts?.size ?? DEFAULT_SIZE };
+}
+
 /** Raw document → SVG string. Pure — no DOM anywhere. `opts.view` overlays a view. */
 export function figureToSvg(figure: unknown, opts?: ExportOptions): ExportResult<string> {
+  const d = checkedDiagram(figure, opts);
+  if (d !== null) return d.ok ? { ok: true, value: diagramToSvg(d.figure, d.size) } : d;
   const r = assembleForExport(figure, opts);
   if (!r.ok) return r;
   return { ok: true, value: svgFromAssembled(r.asm, r.size, opts?.view) };
@@ -103,6 +120,15 @@ export async function figureToPng(
   k: number,
   opts?: ExportOptions,
 ): Promise<ExportResult<Blob>> {
+  const d = checkedDiagram(figure, opts);
+  if (d !== null) {
+    if (!d.ok) return d;
+    try {
+      return { ok: true, value: await diagramToPng(d.figure, d.size, k, opts?.background) };
+    } catch (e) {
+      return { ok: false, problems: [{ path: '', problem: e instanceof Error ? e.message : String(e) }] };
+    }
+  }
   const r = assembleForExport(figure, opts);
   if (!r.ok) return r;
   try {

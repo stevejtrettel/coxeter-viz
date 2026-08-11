@@ -16,6 +16,24 @@ export type Extent = { ball: number } | { depth: number };
 /** A tile coloring: a named map, or one constant color. */
 export type ColorSpec = { map: 'parity' | 'hue' } | { constant: string };
 
+/**
+ * A SELECTION: a subset S of generator indices, naming the standard parabolic
+ * W_S. The one primitive shared by every picture — diagram nodes are |S| = 1,
+ * diagram edges (= chamber vertices) are |S| = 2 — so the same selection reads
+ * as the same data in a diagram, a tiling and a Cayley graph side by side.
+ *
+ * What it emphasizes, per op: the diagram highlights the nodes of S and the
+ * edges within S; the tessellation highlights the W_S-orbit of the chamber
+ * (the cell those walls bound); the Cayley graph highlights the W_S nodes and
+ * the edges labeled by S. W_S must be FINITE for the two geometric ops — an
+ * infinite parabolic bounds no cell — and that is refused with a reason.
+ */
+export interface Highlight {
+  /** Distinct generator indices. Empty = the trivial parabolic (the chamber alone). */
+  generators: number[];
+  color?: string;
+}
+
 export interface DomainLayer {
   type: 'domain';
   fill?: string;
@@ -38,12 +56,16 @@ export interface TessellationLayer {
    * even when a GPU field paints the fill to pixel depth beneath them.
    */
   edges?: { width?: number; colors?: string[] };
+  /** Emphasize the W_S-orbit of the chamber (the cell walls S bound). */
+  highlight?: Highlight;
 }
 export interface CayleyLayer {
   type: 'cayley';
   extent?: Extent;
   node?: { size?: number; color?: string }; // size × r₀
   edge?: { width?: number }; // × r₀; edges are colored by generator
+  /** Emphasize the W_S nodes and the edges labeled by S. */
+  highlight?: Highlight;
 }
 export interface TilesLayer {
   type: 'tiles';
@@ -80,6 +102,20 @@ export interface UniformLayer {
   palette?: string[];
 }
 
+/**
+ * The Coxeter / Artin diagram of the abstract group (diagram/README). A pure
+ * function of the Coxeter matrix — no realization — so it draws for groups the
+ * geometric pipeline refuses. It lives in its own space, so a diagram layer
+ * cannot be mixed with the realized ops; validation refuses the mixture.
+ */
+export interface DiagramLayer {
+  type: 'diagram';
+  /** The convention: `coxeter` (m=2 omitted, ∞ dashed) or `artin` (all finite orders labeled, ∞ omitted). Default `coxeter`. */
+  style?: 'coxeter' | 'artin';
+  /** Emphasize the nodes of S and the edges within S. */
+  highlight?: Highlight;
+}
+
 export type Layer =
   | DomainLayer
   | WallsLayer
@@ -88,7 +124,8 @@ export type Layer =
   | TilesLayer
   | HullLayer
   | CosetsLayer
-  | UniformLayer;
+  | UniformLayer
+  | DiagramLayer;
 
 /**
  * The group, by presentation (exactly one):

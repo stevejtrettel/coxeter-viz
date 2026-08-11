@@ -36,6 +36,12 @@ _COLOR_MAPS = ("parity", "hue")
 
 _UNSET = object()  # "no default given" — distinct from any real default value
 
+#: A diagram has no camera or interaction story yet, so there is no live page.
+_DIAGRAM_HTML = (
+    "a diagram figure has no .html yet (it has no camera to pan or zoom).\n"
+    "Save it as .svg or .png, and compose it beside the tiling yourself."
+)
+
 
 class _Variable:
     """The marker for a field left as a *variable* — a hole that becomes a live
@@ -131,6 +137,21 @@ def _color(color: str) -> dict[str, str]:
     return {"map": color} if color in _COLOR_MAPS else {"constant": color}
 
 
+def _highlight(selection: Any) -> dict[str, Any] | None:
+    """A selection, as it lands in the document: ``{"generators": [...],
+    "color"?}``. Duck-typed on ``generators`` (and an optional inert
+    ``color``), so ``viz`` never imports ``compute`` — a ``Parabolic`` passes,
+    and so does a bare list of generator indices."""
+    if selection is None:
+        return None
+    gens = getattr(selection, "generators", selection)
+    out: dict[str, Any] = {"generators": _indices(gens, "highlight generators")}
+    color = getattr(selection, "color", None)
+    if color is not None:
+        out["color"] = color
+    return out
+
+
 def _clean(layer: dict[str, Any]) -> dict[str, Any]:
     """Drop unset options — the document carries only what was said."""
     return {k: v for k, v in layer.items() if v is not None}
@@ -189,6 +210,62 @@ def polygon(
     return Figure({"polygon": _indices(orders, "polygon vertex orders")}, title=title, model=model)
 
 
+def diagram(
+    group: Any,
+    *,
+    style: str = "coxeter",
+    highlight: Any = None,
+    title: str | None = None,
+) -> "Figure":
+    """A new figure for the **Coxeter or Artin diagram** of a group.
+
+    The diagram is a pure function of the Coxeter matrix — nodes are the
+    generators, edges carry the orders — so it needs no geometric
+    realization, and it draws for groups ``cx.figure`` refuses (rank ≥ 4,
+    free products, non-compact chambers).
+
+    ``style`` picks the convention:
+
+    ===========  =============================  ============================
+    pair         ``"coxeter"``                  ``"artin"``
+    ===========  =============================  ============================
+    m = 2        no edge                        edge labeled 2
+    m = 3        unlabeled edge                 edge labeled 3
+    m >= 4       edge labeled m                 edge labeled m
+    m = infinity dashed edge                    no edge
+    ===========  =============================  ============================
+
+    ``group`` is a Coxeter matrix (a list of rows), a flat list of vertex
+    orders (the polygon presentation, exactly as :func:`polygon` takes it),
+    or anything exposing a ``coxeter_matrix`` (a ``compute.CoxeterGroup``) —
+    duck-typed, so ``viz`` never imports ``compute``. The two list forms are
+    told apart by nesting: a matrix row is a list, a vertex order is an int.
+
+    ``cx.diagram([2, 2, 2, 2, 2], style="artin")`` draws the right-angled
+    pentagon; the same group in ``"coxeter"`` style draws the pentagram.
+
+    Node ``i`` is painted the same color wall ``i`` carries in a tiling, so a
+    diagram and a tessellation read as the same data side by side.
+
+    ``highlight`` takes a selection — ``g.parabolic(S)``, or a bare list of
+    generator indices — and rings the nodes of ``S`` and thickens the edges
+    *within* ``S``. Pass the same selection to ``tessellation(highlight=...)``
+    or ``cayley(highlight=...)`` and the two pictures agree.
+    """
+    source = getattr(group, "coxeter_matrix", group)
+    if not isinstance(source, (list, tuple)) or len(source) == 0:
+        raise TypeError("a group is a Coxeter matrix, a list of vertex orders, or a CoxeterGroup.")
+    if isinstance(source[0], (list, tuple)):
+        presentation: dict[str, Any] = {
+            "coxeterMatrix": [_indices(row, "a Coxeter-matrix row") for row in source]
+        }
+    else:
+        presentation = {"polygon": _indices(source, "polygon vertex orders")}
+    fig = Figure(presentation, title=title)
+    fig._layers.append(_clean({"type": "diagram", "style": style, "highlight": _highlight(highlight)}))
+    return fig
+
+
 _Self = TypeVar("_Self", bound="_LayerBuilder")
 
 
@@ -224,6 +301,7 @@ class _LayerBuilder:
         edges: bool = False,
         edge_width: float | None = None,
         edge_colors: list[str] | None = None,
+        highlight: Any = None,
     ) -> _Self:
         """The orbit of the chamber; one tile per element.
 
@@ -238,6 +316,12 @@ class _LayerBuilder:
         edge is a translated mirror of. ``edge_colors[i]`` is generator i's
         color (defaults to the house wall colors); ``edge_width`` is intrinsic,
         × the inradius.
+
+        ``highlight`` takes a selection — ``g.parabolic(S)``, or a bare list of
+        generator indices — and paints the **W_S-orbit of the chamber**: the
+        cell those walls bound. |S| = 1 is the chamber and its mirror; a meeting
+        pair with order m is the 2m-gon around that vertex. W_S must be finite
+        (the walls must meet), else the engine refuses with the reason.
         """
         edge = (
             _clean({"width": edge_width, "colors": edge_colors})
@@ -251,6 +335,7 @@ class _LayerBuilder:
                 "color": _color(color) if color is not None else None,
                 "opacity": opacity,
                 "edges": edge,
+                "highlight": _highlight(highlight),
             }
         )
 
@@ -262,8 +347,13 @@ class _LayerBuilder:
         node_size: float | None = None,
         node_color: str | None = None,
         edge_width: float | None = None,
+        highlight: Any = None,
     ) -> _Self:
-        """The Cayley graph: vertices at the incenter orbit, edges by generator."""
+        """The Cayley graph: vertices at the incenter orbit, edges by generator.
+
+        ``highlight`` takes a selection — ``g.parabolic(S)`` or a list of
+        generator indices — and emphasizes the **W_S subgraph**: its nodes, and
+        the edges labeled by S between them. W_S must be finite."""
         node = _clean({"size": node_size, "color": node_color})
         edge = _clean({"width": edge_width})
         return self._add(
@@ -272,6 +362,7 @@ class _LayerBuilder:
                 "extent": _extent(ball, depth),
                 "node": node or None,
                 "edge": edge or None,
+                "highlight": _highlight(highlight),
             }
         )
 
@@ -349,6 +440,11 @@ class Figure(_LayerBuilder):
         self._layers: list[dict[str, Any]] = []  # the background (shared by every view)
         self._views: list[View] = []
 
+    def _is_diagram(self) -> bool:
+        """A diagram figure: its layers are the abstract-group diagram, which
+        has no camera and so (yet) no live page."""
+        return bool(self._layers) and all(l.get("type") == "diagram" for l in self._layers)
+
     def view(self, name: str) -> View:
         """A named, swappable figure-description over the background. Its ops
         add to the view, not the background; the viewer swaps between views
@@ -424,6 +520,8 @@ class Figure(_LayerBuilder):
         suffix = p.suffix.lower()
         doc = self.document()
         if suffix == ".html":
+            if self._is_diagram():
+                raise CoxeterVizError(_DIAGRAM_HTML)
             if options:
                 raise TypeError(f"save('.html') takes no options; got {sorted(options)}")
             p.write_text(_html.page(doc), encoding="utf-8")
@@ -452,6 +550,8 @@ class Figure(_LayerBuilder):
         import tempfile
         import webbrowser
 
+        if self._is_diagram():
+            raise CoxeterVizError(_DIAGRAM_HTML)
         with tempfile.NamedTemporaryFile(
             "w", suffix=".html", prefix="coxeter-groups-", delete=False, encoding="utf-8"
         ) as f:

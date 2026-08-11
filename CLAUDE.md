@@ -64,6 +64,10 @@ so end users never need node. The renderer is the renderer's internals —
   matrix); `a*b` (= `element(u+v)`), `a.inverse()`, `len(a)` (ℓ),
   `a.descents()`. Two words are equal iff same key — the word problem, via
   the faithful reflection (Tits) representation.
+- `g.parabolic(S)` → `Parabolic`, the standard parabolic W_S: `.generators`,
+  `.coxeter_matrix` (the principal submatrix — W_S is itself Coxeter),
+  `.is_finite()` (positive-definiteness of the restricted Tits form = "do the
+  selected walls meet?"), `.order()`.
 - `WordSet` (`g.words(...)`, `ball`/`sphere`): `set`-backed; `.invert()`,
   `.shift(by)`, `|`/`&`/`-`; `.words()` is the plain-list accessor, but the
   drawing ops take a `WordSet` directly (`fig.tiles(ws)`).
@@ -72,6 +76,15 @@ so end users never need node. The renderer is the renderer's internals —
 - `cx.figure(matrix_or_group)` / `cx.polygon(orders)` → a `Figure`.
 - Ops: `domain`, `walls`, `tessellation` (+ `edges=`), `cayley`, `tiles`,
   `hull`, `cosets`, `uniform`.
+- `highlight=` on `diagram` / `tessellation` / `cayley` takes a selection
+  (`g.parabolic(S)`, or a list of indices): the diagram rings the nodes of S
+  and thickens the edges within S; the tessellation paints the W_S-orbit of
+  the chamber; the Cayley graph emphasizes the W_S subgraph. Infinite W_S is
+  refused with the reason. Pass the SAME selection to each for a side-by-side.
+- `cx.diagram(group, style="coxeter"|"artin")` → the abstract group's
+  **Coxeter / Artin diagram**, a standalone `.svg`/`.png` figure. Needs no
+  realization, so it draws groups `cx.figure` refuses (rank ≥ 4, free
+  products, non-compact). No `.html` yet; no overlay — compose side by side.
 - **Views** (background + swappable): `fig.view(name)` opens a named
   figure-description over the shared background; the viewer swaps them (a
   toggle for 2, a dropdown for 3+) at a fixed camera. Chainable
@@ -133,6 +146,7 @@ so end users never need node. The renderer is the renderer's internals —
 
 ## Current work
 
+Diagrams + selection are BUILT (`docs/plan-diagrams-and-selection.md`).
 The active next build is the **interactive group explorer** (an HTML mode
 with a live input field for the group spec, re-drawing the tessellation as
 you type) — plan in **`docs/plan-group-explorer.md`**. Cusps for triangle

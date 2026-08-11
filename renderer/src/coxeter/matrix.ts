@@ -35,6 +35,26 @@ const refuse = (reason: RefusalReason, detail: string): MatrixClassification => 
   detail,
 });
 
+/**
+ * Expand a polygon presentation to its Coxeter matrix (PLAN §10): entry k is
+ * the order of s_k·s_{k+1 mod n} (the cyclic super/sub-diagonal); non-adjacent
+ * walls never meet, so their entry is −1 (∞). Purely combinatorial — the
+ * uniform way to get AT the matrix when a caller (the diagram) needs the
+ * abstract group rather than a realization.
+ */
+export function polygonToMatrix(orders: readonly number[]): number[][] {
+  const n = orders.length;
+  const M: number[][] = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => (i === j ? 1 : INF)),
+  );
+  for (let k = 0; k < n; k++) {
+    const m = orders[k];
+    M[k][(k + 1) % n] = m;
+    M[(k + 1) % n][k] = m;
+  }
+  return M;
+}
+
 export function classifyCoxeterMatrix(M: CoxeterMatrix): MatrixClassification {
   // — a Coxeter matrix at all? (defensive: the input crosses the JSON seam) —
   if (!Array.isArray(M) || M.length === 0 || M.some((row) => !Array.isArray(row) || row.length !== M.length)) {
