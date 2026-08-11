@@ -31,7 +31,7 @@ import {
 } from '@/viz2d/kit/scene';
 import { blankStyle, cosetField, fieldStyle, regionsField, rgba, starBands, starField } from '@/viz2d/kit/field';
 import { fitToDomain } from '@/viz2d/kit/camera';
-import { ENTRY, HULL, LIST, TILE, TYPE_COLORS, WALL_COLORS } from '@/viz2d/kit/palette';
+import { ENTRY, GREY, HULL, LIST, TILE, TYPE_COLORS, WALL_COLORS } from '@/viz2d/kit/palette';
 import type { ColorSpec, Extent, Figure, Highlight, Layer, ModelName } from '@/schema/types';
 
 /**
@@ -56,6 +56,15 @@ const MAX_TILES = 20_000;
 
 /** ε px for the cover-the-frame default extent (the live convention). */
 const COVER_EPSILON_PX = 3;
+
+/**
+ * How much a highlight outweighs what it sits on. A selection cannot read by
+ * HUE alone — the Cayley graph and the tiling edges are already colored by
+ * generator, and the wall palette spans most hues — so it reads by weight,
+ * plus a page-colored casing drawn underneath.
+ */
+const HL_EDGE = 2.6;
+const HL_NODE = 1.9;
 
 /** The uniform tiling's edge-net brown (the house §5.8 D3 dressing). */
 const UNIFORM_EDGE = '#5a4f3f';
@@ -351,7 +360,15 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
             const els = [...rg.group.elements(highlightWords(layer.highlight)).entries()];
             const index = new Map(els.map(([k], i) => [k, i]));
             const pts = els.map(([, v]) => geom.apply(v.element, rg.group.basePoint));
-            const items: SceneItem[] = [];
+            // The Cayley graph is ALREADY colored by generator (the house wall
+            // palette spans most hues), so a highlight cannot read by hue
+            // alone — whatever color it takes will collide with some
+            // generator's. It reads by WEIGHT and by a page-colored CASING
+            // drawn underneath, which separates it from whatever it crosses.
+            const ew = (layer.edge?.width ?? 0.06) * rg.r0;
+            const nr = (layer.node?.size ?? 0.11) * rg.r0;
+            const casings: SceneItem[] = [];
+            const marks: SceneItem[] = [];
             const drawn = new Set<string>();
             els.forEach(([, v], a) => {
               for (const i of layer.highlight!.generators) {
@@ -360,23 +377,36 @@ export function assemble(figure: Figure, size: ViewSize, opts?: AssembleOptions)
                 const pair = a < b ? `${a}:${b}` : `${b}:${a}`;
                 if (drawn.has(pair)) continue;
                 drawn.add(pair);
-                items.push({
+                const source = { type: 'segment' as const, a: pts[a], b: pts[b] };
+                casings.push({
+                  id: `hlcase:${sink.scope}${li}:${pair}`,
+                  kind: 'geodesic',
+                  source,
+                  style: { color: GREY.page, width: ew * HL_EDGE * 2.1 },
+                });
+                marks.push({
                   id: `hledge:${sink.scope}${li}:${pair}`,
                   kind: 'geodesic',
-                  source: { type: 'segment', a: pts[a], b: pts[b] },
-                  style: { color, width: (layer.edge?.width ?? 0.06) * 1.6 * rg.r0 },
+                  source,
+                  style: { color, width: ew * HL_EDGE },
                 });
               }
             });
             els.forEach(([, v], a) => {
-              items.push({
+              casings.push({
+                id: `hlnodecase:${sink.scope}${li}:${wordId(v.word)}`,
+                kind: 'point',
+                at: pts[a],
+                style: { color: GREY.page, radius: nr * HL_NODE * 1.5 },
+              });
+              marks.push({
                 id: `hlnode:${sink.scope}${li}:${wordId(v.word)}`,
                 kind: 'point',
                 at: pts[a],
-                style: { color, radius: (layer.node?.size ?? 0.11) * 1.5 * rg.r0 },
+                style: { color, radius: nr * HL_NODE },
               });
             });
-            push(items);
+            push([...casings, ...marks]);
           }
           break;
         }

@@ -1,9 +1,11 @@
 import { GREY, WALL_COLORS } from '@/viz2d/kit/palette';
 import type { ViewSize } from '@/viz2d/render/types';
 import {
+  CASING_SCALE,
   DASH,
   EDGE_WIDTH,
   HIGHLIGHT_SCALE,
+  RING_RADIUS,
   LABEL_SIZE,
   NODE_RADIUS,
   edgeLabelAt,
@@ -46,9 +48,15 @@ export function diagramSvg(d: DiagramDrawing, size: ViewSize): string {
     const seg = edgeSegment(d, e);
     const [x1, y1] = project(F, seg.a[0], seg.a[1]);
     const [x2, y2] = project(F, seg.b[0], seg.b[1]);
+    const line = `x1="${f2(x1)}" y1="${f2(y1)}" x2="${f2(x2)}" y2="${f2(y2)}"`;
+    if (hl) {
+      out.push(
+        `<line ${line} stroke="${GREY.page}" stroke-width="${f2(w * CASING_SCALE)}" stroke-linecap="round"/>`,
+      );
+    }
     out.push(
-      `<line x1="${f2(x1)}" y1="${f2(y1)}" x2="${f2(x2)}" y2="${f2(y2)}" ` +
-        `stroke="${hl ? d.highlightColor : INK}" stroke-width="${f2(w)}" stroke-linecap="round"${dash}/>`,
+      `<line ${line} stroke="${hl ? d.highlightColor : INK}" ` +
+        `stroke-width="${f2(w)}" stroke-linecap="round"${dash}/>`,
     );
   }
 
@@ -68,9 +76,13 @@ export function diagramSvg(d: DiagramDrawing, size: ViewSize): string {
   for (const p of d.nodes) {
     const [x, y] = project(F, p.x, p.y);
     if (p.highlighted && d.highlightColor !== null) {
+      const r = px(NODE_RADIUS) * RING_RADIUS;
+      const rw = px(EDGE_WIDTH) * HIGHLIGHT_SCALE;
       out.push(
-        `<circle cx="${f2(x)}" cy="${f2(y)}" r="${f2(px(NODE_RADIUS) * 1.55)}" ` +
-          `fill="none" stroke="${d.highlightColor}" stroke-width="${f2(px(EDGE_WIDTH) * HIGHLIGHT_SCALE)}"/>`,
+        `<circle cx="${f2(x)}" cy="${f2(y)}" r="${f2(r)}" fill="none" ` +
+          `stroke="${GREY.page}" stroke-width="${f2(rw * CASING_SCALE)}"/>`,
+        `<circle cx="${f2(x)}" cy="${f2(y)}" r="${f2(r)}" fill="none" ` +
+          `stroke="${d.highlightColor}" stroke-width="${f2(rw)}"/>`,
       );
     }
     out.push(

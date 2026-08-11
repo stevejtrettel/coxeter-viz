@@ -22,8 +22,17 @@ export const LABEL_GAP = 0.2;
 export const DIAMETER_SHIFT = 0.22;
 /** The house accent, when a highlight names no color of its own. */
 export const DEFAULT_HIGHLIGHT = '#e84a5f';
-/** How much a highlighted node/edge grows. */
-export const HIGHLIGHT_SCALE = 1.9;
+/**
+ * How much a highlighted node/edge outweighs the rest. A selection cannot read
+ * by HUE alone — nodes are already colored by generator, and the wall palette
+ * spans most hues — so it reads by weight, plus a page-colored CASING drawn
+ * underneath that separates it from whatever it crosses.
+ */
+export const HIGHLIGHT_SCALE = 2.6;
+/** The casing under a highlighted stroke, as a multiple of its own width. */
+export const CASING_SCALE = 2.0;
+/** A highlighted node's ring radius, as a multiple of the node radius. */
+export const RING_RADIUS = 1.75;
 /** The dash pattern for the Coxeter ∞ edge. */
 export const DASH: readonly [number, number] = [0.11, 0.09];
 

@@ -1,9 +1,11 @@
 import { GREY, WALL_COLORS } from '@/viz2d/kit/palette';
 import type { RasterLayer } from '@/viz2d/render/png';
 import {
+  CASING_SCALE,
   DASH,
   EDGE_WIDTH,
   HIGHLIGHT_SCALE,
+  RING_RADIUS,
   LABEL_SIZE,
   NODE_RADIUS,
   edgeLabelAt,
@@ -41,16 +43,25 @@ export function diagramLayer(d: DiagramDrawing): RasterLayer {
       for (const e of d.edges) {
         const hl = e.highlighted && d.highlightColor !== null;
         const k = hl ? HIGHLIGHT_SCALE : 1;
-        g.strokeStyle = hl ? d.highlightColor! : INK;
-        g.lineWidth = px(EDGE_WIDTH) * k;
-        g.setLineDash(e.dashed ? [px(DASH[0]) * k, px(DASH[1]) * k] : []);
         const seg = edgeSegment(d, e);
         const [x1, y1] = project(F, seg.a[0], seg.a[1]);
         const [x2, y2] = project(F, seg.b[0], seg.b[1]);
-        g.beginPath();
-        g.moveTo(x1, y1);
-        g.lineTo(x2, y2);
-        g.stroke();
+        const stroke = (): void => {
+          g.beginPath();
+          g.moveTo(x1, y1);
+          g.lineTo(x2, y2);
+          g.stroke();
+        };
+        if (hl) {
+          g.setLineDash([]);
+          g.strokeStyle = GREY.page;
+          g.lineWidth = px(EDGE_WIDTH) * k * CASING_SCALE;
+          stroke();
+        }
+        g.strokeStyle = hl ? d.highlightColor! : INK;
+        g.lineWidth = px(EDGE_WIDTH) * k;
+        g.setLineDash(e.dashed ? [px(DASH[0]) * k, px(DASH[1]) * k] : []);
+        stroke();
       }
       g.setLineDash([]);
 
@@ -71,11 +82,15 @@ export function diagramLayer(d: DiagramDrawing): RasterLayer {
       for (const p of d.nodes) {
         const [x, y] = project(F, p.x, p.y);
         if (p.highlighted && d.highlightColor !== null) {
-          g.strokeStyle = d.highlightColor;
-          g.lineWidth = px(EDGE_WIDTH) * HIGHLIGHT_SCALE;
-          g.beginPath();
-          g.arc(x, y, px(NODE_RADIUS) * 1.55, 0, 2 * Math.PI);
-          g.stroke();
+          const r = px(NODE_RADIUS) * RING_RADIUS;
+          const rw = px(EDGE_WIDTH) * HIGHLIGHT_SCALE;
+          for (const [c, w] of [[GREY.page, rw * CASING_SCALE], [d.highlightColor, rw]] as const) {
+            g.strokeStyle = c as string;
+            g.lineWidth = w as number;
+            g.beginPath();
+            g.arc(x, y, r, 0, 2 * Math.PI);
+            g.stroke();
+          }
         }
         g.strokeStyle = GREY.page;
         g.lineWidth = px(EDGE_WIDTH);
